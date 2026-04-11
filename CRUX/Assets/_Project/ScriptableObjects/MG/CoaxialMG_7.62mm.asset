@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be2eff244a7bf6241a1f1ab03e371a29, type: 3}
+  m_Name: CoaxialMG_7.62mm
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.MachineGunDataSO
+  mgName: "7.62mm \uB3D9\uCD95 \uAE30\uAD00\uCD1D"
+  type: 1
+  burstCount: 6
+  damagePerShot: 2
+  penetration: 15
+  apCost: 2
+  accuracyModifier: -0.15
+  spreadPerShot: 8
