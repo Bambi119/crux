@@ -23,6 +23,15 @@ namespace Crux.Unit
         private float hullAngle;
         private bool isMoving;
 
+        // 상태이상
+        private bool isOnFire;
+        private int remainingSmokeCharges;
+
+        // 탄약 잔량
+        private int mainGunAmmoCount;
+        private int mgAmmoLoaded;
+        private int mgAmmoTotal;
+
         // 모듈 매니저
         private ModuleManager moduleManager = new();
 
@@ -49,8 +58,15 @@ namespace Crux.Unit
         public float HullAngle => hullAngle;
         public TankDataSO Data => tankData;
         public ModuleManager Modules => moduleManager;
+        public bool IsOnFire => isOnFire;
+        public int RemainingSmokeCharges => remainingSmokeCharges;
+        public int MainGunAmmoCount => mainGunAmmoCount;
+        public int MaxMainGunAmmo => tankData != null ? tankData.maxMainGunAmmo : 0;
+        public int MGAmmoLoaded => mgAmmoLoaded;
+        public int MGAmmoTotal => mgAmmoTotal;
 
         public System.Action<GridTankUnit> OnDeath;
+        public System.Action<GridTankUnit> OnFireKilled; // 화재 누적 사망 전용
         public System.Action OnAPChanged;
         public System.Action OnMoveComplete;
 
@@ -64,7 +80,12 @@ namespace Crux.Unit
                 currentAP = currentAP,
                 hullAngle = hullAngle,
                 isDestroyed = IsDestroyed,
-                moduleSaves = moduleManager.SaveAll()
+                moduleSaves = moduleManager.SaveAll(),
+                isOnFire = isOnFire,
+                remainingSmokeCharges = remainingSmokeCharges,
+                mainGunAmmoCount = mainGunAmmoCount,
+                mgAmmoLoaded = mgAmmoLoaded,
+                mgAmmoTotal = mgAmmoTotal
             };
         }
 
@@ -88,6 +109,11 @@ namespace Crux.Unit
 
             // 모듈 상태 복원
             moduleManager.RestoreAll(state.moduleSaves);
+            isOnFire = state.isOnFire;
+            remainingSmokeCharges = state.remainingSmokeCharges;
+            mainGunAmmoCount = state.mainGunAmmoCount;
+            mgAmmoLoaded = state.mgAmmoLoaded;
+            mgAmmoTotal = state.mgAmmoTotal;
 
             UpdateVisual();
 
@@ -109,6 +135,10 @@ namespace Crux.Unit
             currentHP = data.maxHP;
             currentAP = data.maxAP;
             hullAngle = side == PlayerSide.Player ? 0f : 180f;
+            remainingSmokeCharges = data.smokeCharges;
+            mainGunAmmoCount = data.maxMainGunAmmo;
+            mgAmmoLoaded = data.mgLoadedAmmo;
+            mgAmmoTotal = data.maxMGAmmo;
 
             // 모듈 초기화 — moduleHP가 0이면 기본값 사용
             if (data.moduleHP.engine <= 0)
@@ -130,6 +160,34 @@ namespace Crux.Unit
         public void OnTurnStart()
         {
             currentAP = tankData != null ? tankData.maxAP : 6;
+
+            // 화재 처리
+            if (isOnFire)
+            {
+                // 자동 소화 30%
+                if (Random.value < 0.3f)
+                {
+                    isOnFire = false;
+                    Debug.Log($"[CRUX] {tankData?.tankName} 화재 자동 소화!");
+                }
+                else
+                {
+                    // HP -10% (maxHP 기준)
+                    float fireDmg = (tankData != null ? tankData.maxHP : 100) * 0.1f;
+                    currentHP -= fireDmg;
+                    Debug.Log($"[CRUX] {tankData?.tankName} 화재 데미지 -{fireDmg:F0} (HP: {currentHP:F0})");
+
+                    if (currentHP <= 0)
+                    {
+                        currentHP = 0;
+                        OnFireKilled?.Invoke(this);
+                        OnDeath?.Invoke(this);
+                        UpdateVisual();
+                        return;
+                    }
+                }
+            }
+
             OnAPChanged?.Invoke();
         }
 
@@ -162,10 +220,10 @@ namespace Crux.Unit
         public bool CanRotate() => moduleManager.CanRotate();
 
         /// <summary>실효 이동 AP 비용 (1셀당)</summary>
-        public int GetMoveCostPerCell() => GameConstants.MoveCostPerCell + moduleManager.GetMoveAPPenalty();
+        public int GetMoveCostPerCell() => GameConstants.MoveCostPerCell + moduleManager.GetMoveAPPenalty() + (isOnFire ? 1 : 0);
 
         /// <summary>실효 사격 AP 비용</summary>
-        public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty();
+        public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
 
         // ===== 이동 (애니메이션) =====
 
@@ -294,30 +352,131 @@ namespace Crux.Unit
             OnAPChanged?.Invoke();
         }
 
+        /// <summary>주포 1발 소모 — 잔탄 없으면 false</summary>
+        public bool ConsumeMainGunRound()
+        {
+            if (mainGunAmmoCount <= 0) return false;
+            mainGunAmmoCount--;
+            return true;
+        }
+
+        /// <summary>기관총 burstCount 발 소모 — 장전량 우선, 부족분은 전체에서 충전</summary>
+        public void ConsumeMGBurst(int burst)
+        {
+            int spent = Mathf.Min(burst, mgAmmoLoaded + Mathf.Max(0, mgAmmoTotal - mgAmmoLoaded));
+            // 장전량에서 우선 차감
+            int fromLoaded = Mathf.Min(spent, mgAmmoLoaded);
+            mgAmmoLoaded -= fromLoaded;
+            mgAmmoTotal -= spent;
+            if (mgAmmoTotal < 0) mgAmmoTotal = 0;
+            // 장전량 0이면 남은 총량에서 재장전 (간단 구현)
+            if (mgAmmoLoaded <= 0 && mgAmmoTotal > 0 && tankData != null)
+            {
+                mgAmmoLoaded = Mathf.Min(tankData.mgLoadedAmmo, mgAmmoTotal);
+            }
+        }
+
+        // ===== 화재/연막 =====
+
+        /// <summary>화재 발생</summary>
+        public void SetOnFire()
+        {
+            if (isOnFire) return;
+            isOnFire = true;
+            Debug.Log($"[CRUX] {tankData?.tankName} 화재 발생!");
+        }
+
+        /// <summary>수동 소화 (AP 2 소모)</summary>
+        public bool TryExtinguish()
+        {
+            if (!isOnFire || currentAP < 2) return false;
+            currentAP -= 2;
+            isOnFire = false;
+            OnAPChanged?.Invoke();
+            Debug.Log($"[CRUX] {tankData?.tankName} 수동 소화! AP -2");
+            return true;
+        }
+
+        /// <summary>연막 사용 가능 여부</summary>
+        public bool CanUseSmoke() => remainingSmokeCharges > 0 && currentAP >= 1 && !isMoving;
+
+        /// <summary>연막 사용 (AP 1, 수량 -1)</summary>
+        public bool UseSmoke()
+        {
+            if (!CanUseSmoke()) return false;
+            remainingSmokeCharges--;
+            currentAP -= 1;
+            OnAPChanged?.Invoke();
+            Debug.Log($"[CRUX] {tankData?.tankName} 연막 발사! 잔여: {remainingSmokeCharges}");
+            return true;
+        }
+
         // ===== 데미지 =====
 
+        /// <summary>즉시 데미지 — 롤 포함 (전략맵에서 직접 호출용, 기존 호환)</summary>
         public void TakeDamage(DamageInfo info)
         {
-            currentHP -= info.damage;
+            var outcome = PreRollDamage(info);
+            ApplyPrerolledDamage(info, outcome);
+        }
+
+        /// <summary>데미지 + 모듈 + 화재 + 격파 사전 롤 — 실제 적용 없음</summary>
+        public DamageOutcome PreRollDamage(DamageInfo info)
+        {
+            var outcome = new DamageOutcome();
 
             // 모듈 피격 확률: 관통 40%, 일반 Hit 15%
             float moduleHitChance = info.outcome == ShotOutcome.Penetration ? 0.4f : 0.15f;
             if (info.outcome >= ShotOutcome.Hit && Random.value < moduleHitChance)
             {
-                bool ammoExplode = moduleManager.DamageRandomModule(
-                    info.damage * 0.5f, info.hitZone,
-                    tankData != null ? tankData.tankName : gameObject.name);
-
-                if (ammoExplode)
-                {
-                    currentHP = 0;
-                    OnDeath?.Invoke(this);
-                    UpdateVisual();
-                    return;
-                }
+                outcome = moduleManager.RollModuleHit(info.damage * 0.5f, info.hitZone);
             }
 
-            if (currentHP <= 0)
+            // 유폭이면 격파 보장
+            if (outcome.ammoExploded)
+            {
+                outcome.killed = true;
+                return outcome;
+            }
+
+            // 화재 발생 확률 (관통 시)
+            if (info.outcome == ShotOutcome.Penetration && !isOnFire)
+            {
+                float fireChance = 0.25f;
+                var ammo = moduleManager.Get(ModuleType.AmmoRack);
+                if (ammo.state >= ModuleState.Damaged) fireChance += 0.20f;
+                // 탄약고 피격 사전 롤이 있으면 예상 상태로 판정
+                if (outcome.moduleHit && outcome.damagedModule == ModuleType.AmmoRack
+                    && outcome.newState >= ModuleState.Damaged) fireChance += 0.20f;
+                var engine = moduleManager.Get(ModuleType.Engine);
+                if (engine.state >= ModuleState.Damaged) fireChance += 0.15f;
+
+                if (Random.value < fireChance)
+                    outcome.fireStarted = true;
+            }
+
+            // 체력 0 예측 (피해만으로 격파)
+            if (currentHP - info.damage <= 0)
+                outcome.killed = true;
+
+            return outcome;
+        }
+
+        /// <summary>사전 롤된 데미지 적용 — 결정론적</summary>
+        public void ApplyPrerolledDamage(DamageInfo info, DamageOutcome outcome)
+        {
+            currentHP -= info.damage;
+
+            if (outcome.moduleHit)
+            {
+                moduleManager.ApplyModuleHit(outcome,
+                    tankData != null ? tankData.tankName : gameObject.name);
+            }
+
+            if (outcome.fireStarted && !isOnFire)
+                SetOnFire();
+
+            if (outcome.ammoExploded || outcome.killed || currentHP <= 0)
             {
                 currentHP = 0;
                 OnDeath?.Invoke(this);

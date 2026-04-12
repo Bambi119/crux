@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using Crux.Core;
 using Crux.Combat;
+using Crux.Unit;
 
 namespace Crux.Cinematic
 {
@@ -96,17 +97,25 @@ namespace Crux.Cinematic
                 yield return PlayOpenFireSequence(attackerPos, targetPos, fireDir, attackerAngle);
             }
 
-            // 포탑 위치 + 머즐 오프셋으로 포구 위치 계산
+            // 포탑이 향하는 방향 = 포탄이 나가는 방향 (직선 정렬)
             Vector3 turretPos = attackerTurret != null ? attackerTurret.position : attackerObj.transform.position;
-            Vector2 currentFireDir = ((Vector3)targetObj.transform.position - turretPos).normalized;
-            // 머즐 오프셋을 포탑 회전 방향으로 변환
-            float muzzleAngle = Mathf.Atan2(currentFireDir.y, currentFireDir.x);
+
+            // 포탑의 Unity Z 회전에서 정확한 전방 벡터 추출
+            float turretZ = attackerTurret != null
+                ? attackerTurret.eulerAngles.z
+                : attackerObj.transform.eulerAngles.z;
+            float turretRad = turretZ * Mathf.Deg2Rad;
+
+            // 머즐 위치: 포탑 회전 기준으로 오프셋
             Vector2 muzzleOff = data.attackerMuzzleOffset;
             Vector3 rotatedOffset = new Vector3(
-                muzzleOff.x * Mathf.Cos(muzzleAngle) - muzzleOff.y * Mathf.Sin(muzzleAngle),
-                muzzleOff.x * Mathf.Sin(muzzleAngle) + muzzleOff.y * Mathf.Cos(muzzleAngle),
+                muzzleOff.x * Mathf.Cos(turretRad) - muzzleOff.y * Mathf.Sin(turretRad),
+                muzzleOff.x * Mathf.Sin(turretRad) + muzzleOff.y * Mathf.Cos(turretRad),
                 0);
             Vector3 muzzlePos = turretPos + rotatedOffset;
+
+            // 사격 방향: 머즐 → 대상
+            Vector2 currentFireDir = ((Vector3)targetObj.transform.position - muzzlePos).normalized;
 
             // ===== 사격! =====
             MuzzleFlash.Spawn(muzzlePos, currentFireDir);
@@ -118,16 +127,18 @@ namespace Crux.Cinematic
             Vector3 actualTargetPos = targetObj.transform.position;
             Vector3 impactPos = actualTargetPos;
 
-            // 엄폐물 피격 시 착탄점을 벽 쪽으로 오프��� (비주얼은 배치 단계에서 이미 생성됨)
             if (data.targetCoverHit)
             {
-                Vector2 toAttacker = ((Vector2)(attackerObj.transform.position - actualTargetPos)).normalized;
-                impactPos = actualTargetPos + (Vector3)(toAttacker * 0.6f);
+                Vector2 toMuzzle = ((Vector2)(muzzlePos - actualTargetPos)).normalized;
+                impactPos = actualTargetPos + (Vector3)(toMuzzle * 0.6f);
             }
 
             var projectile = CreateProjectile(muzzlePos);
+            // 트레이서를 진행 방향으로 회전
+            float projAngle = Mathf.Atan2(currentFireDir.y, currentFireDir.x) * Mathf.Rad2Deg;
+            projectile.transform.rotation = Quaternion.Euler(0, 0, projAngle);
 
-            float flightTime = 0.15f;
+            float flightTime = 0.12f;
             float ft = 0;
 
             Vector3 midPoint = (attackerObj.transform.position + impactPos) * 0.5f;
@@ -188,10 +199,200 @@ namespace Crux.Cinematic
                         yield return PlayPenetrationSequence(impactPos, currentFireDir);
                         break;
                 }
+
+                // 사후 상태: 격파 / 유폭 / 화재 / 모듈 손상
+                if (data.result.hit && data.result.damageDealt > 0)
+                    yield return PlayPostImpactNarratives(impactPos, data.mainOutcome);
             }
 
             yield return new WaitForSeconds(0.6f);
             sequenceDone = true;
+        }
+
+        /// <summary>사격 결과 이후 상태 표시 시퀀스 — 격파/유폭/화재/모듈</summary>
+        private IEnumerator PlayPostImpactNarratives(Vector3 impactPos, DamageOutcome outcome)
+        {
+            yield return new WaitForSeconds(0.3f);
+
+            // 1. 유폭 → 별도 그래픽 + 격파
+            if (outcome.ammoExploded)
+            {
+                ShowNarrative("▲ 탄약고 유폭!", new Color(1f, 0.9f, 0.2f));
+                subText = "내부 탄약 연쇄 폭발";
+
+                // 대형 폭발 그래픽 — 2단계
+                HitEffects.SpawnExplosion(impactPos);
+                StartCoroutine(CameraShake(0.5f, 0.22f));
+                SpawnAmmoCookoffEffect(impactPos);
+
+                yield return new WaitForSeconds(0.6f);
+
+                HitEffects.SpawnExplosion(impactPos + Vector3.up * 0.2f);
+                StartCoroutine(CameraShake(0.4f, 0.18f));
+                yield return new WaitForSeconds(0.5f);
+
+                ShowNarrative("◆ 격파!", new Color(1f, 0.2f, 0.15f));
+                subText = $"{data.targetName} 대파";
+                yield return new WaitForSeconds(0.8f);
+                yield break;
+            }
+
+            // 2. 격파 (유폭 제외)
+            if (outcome.killed)
+            {
+                ShowNarrative("◆ 격파!", new Color(1f, 0.2f, 0.15f));
+                subText = $"{data.targetName} 전투 불능";
+                HitEffects.SpawnExplosion(impactPos);
+                StartCoroutine(CameraShake(0.35f, 0.15f));
+                yield return new WaitForSeconds(0.8f);
+                yield break;
+            }
+
+            // 3. 격파가 아닌 경우: 상태이상
+            if (outcome.fireStarted)
+            {
+                ShowNarrative("🔥 화재 발생!", new Color(1f, 0.5f, 0.15f));
+                subText = "매 턴 HP 감소 / AP 비용 +1";
+                SpawnFireIndicator(impactPos);
+                yield return new WaitForSeconds(0.7f);
+            }
+
+            // 4. 모듈 파괴 판정
+            if (outcome.moduleHit && outcome.stateChanged)
+            {
+                string moduleName = ModuleManager.GetModuleName(outcome.damagedModule);
+                string stateName = ModuleManager.GetStateName(outcome.newState);
+
+                Color col = outcome.newState switch
+                {
+                    ModuleState.Damaged => new Color(1f, 0.9f, 0.3f),
+                    ModuleState.Broken => new Color(1f, 0.5f, 0.2f),
+                    ModuleState.Destroyed => new Color(1f, 0.25f, 0.2f),
+                    _ => Color.white
+                };
+                ShowNarrative($"⚙ {moduleName} {stateName}!", col);
+                subText = GetModulePenaltyDescription(outcome.damagedModule, outcome.newState);
+                yield return new WaitForSeconds(0.7f);
+            }
+        }
+
+        /// <summary>모듈 상태별 효과 설명</summary>
+        private static string GetModulePenaltyDescription(ModuleType type, ModuleState state)
+        {
+            if (state == ModuleState.Destroyed)
+            {
+                return type switch
+                {
+                    ModuleType.Engine => "이동 불가",
+                    ModuleType.Barrel => "주포 사용 불가",
+                    ModuleType.MachineGun => "기총 사용 불가",
+                    ModuleType.AmmoRack => "장전 불가",
+                    ModuleType.Loader => "장전기 작동 불능",
+                    ModuleType.TurretRing => "포탑 회전 불가",
+                    ModuleType.CaterpillarLeft => "좌측 궤도 완파",
+                    ModuleType.CaterpillarRight => "우측 궤도 완파",
+                    _ => "완파"
+                };
+            }
+            if (state == ModuleState.Broken)
+            {
+                return type switch
+                {
+                    ModuleType.Engine => "이동 불가 (수리 시 복구)",
+                    ModuleType.Barrel => "주포 사용 불가",
+                    ModuleType.AmmoRack => "사격 AP +2",
+                    ModuleType.Loader => "사격 AP +2",
+                    ModuleType.TurretRing => "사격 AP +2",
+                    _ => "기능 정지"
+                };
+            }
+            return type switch
+            {
+                ModuleType.Engine => "이동 AP +1",
+                ModuleType.Barrel => "명중률 -15%",
+                ModuleType.MachineGun => "버스트 -2, 명중 -10%",
+                ModuleType.Loader or ModuleType.AmmoRack or ModuleType.TurretRing => "사격 AP +1",
+                ModuleType.CaterpillarLeft or ModuleType.CaterpillarRight => "이동 AP +1",
+                _ => "성능 저하"
+            };
+        }
+
+        /// <summary>탄약고 유폭 시 추가 대형 폭발 그래픽 (수직 파편 분출)</summary>
+        private void SpawnAmmoCookoffEffect(Vector3 pos)
+        {
+            // 수직 화염 기둥
+            for (int i = 0; i < 20; i++)
+            {
+                var p = new GameObject("Cookoff");
+                p.transform.position = pos + (Vector3)(Random.insideUnitCircle * 0.15f);
+
+                var sr = p.AddComponent<SpriteRenderer>();
+                sr.sprite = GetCircleSprite();
+                float t = Random.value;
+                sr.color = t < 0.4f ? new Color(1f, 0.95f, 0.4f, 1f)
+                        : t < 0.75f ? new Color(1f, 0.55f, 0.1f, 0.95f)
+                                    : new Color(0.9f, 0.2f, 0.05f, 0.9f);
+                sr.sortingOrder = 65;
+                p.transform.localScale = Vector3.one * Random.Range(0.15f, 0.3f);
+
+                var rb = p.AddComponent<Rigidbody2D>();
+                rb.gravityScale = -0.5f; // 위로 솟구침
+                rb.linearDamping = 0.8f;
+                rb.linearVelocity = new Vector2(
+                    Random.Range(-1.5f, 1.5f),
+                    Random.Range(3f, 6f));
+
+                p.AddComponent<Combat.FadeAndShrink>();
+                Destroy(p, Random.Range(0.8f, 1.3f));
+            }
+
+            // 외곽 쇼크웨이브 링
+            var ring = new GameObject("CookoffRing");
+            ring.transform.position = pos;
+            var rs = ring.AddComponent<SpriteRenderer>();
+            rs.sprite = GetCircleSprite();
+            rs.color = new Color(1f, 0.9f, 0.5f, 0.7f);
+            rs.sortingOrder = 55;
+            ring.transform.localScale = Vector3.one * 0.3f;
+            StartCoroutine(ExpandRing(ring.transform, rs, 2.5f, 0.5f));
+        }
+
+        private IEnumerator ExpandRing(Transform t, SpriteRenderer sr, float maxScale, float duration)
+        {
+            float el = 0f;
+            Color c0 = sr.color;
+            while (el < duration)
+            {
+                el += Time.deltaTime;
+                float f = el / duration;
+                t.localScale = Vector3.one * Mathf.Lerp(0.3f, maxScale, f);
+                sr.color = new Color(c0.r, c0.g, c0.b, c0.a * (1f - f));
+                yield return null;
+            }
+            Destroy(t.gameObject);
+        }
+
+        /// <summary>화재 시작 지시자 — 대상 위 작은 불꽃</summary>
+        private void SpawnFireIndicator(Vector3 pos)
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                var p = new GameObject("FireInd");
+                p.transform.position = pos + Vector3.up * 0.15f + (Vector3)(Random.insideUnitCircle * 0.2f);
+                var sr = p.AddComponent<SpriteRenderer>();
+                sr.sprite = GetCircleSprite();
+                sr.color = new Color(1f, 0.6f, 0.15f, 0.85f);
+                sr.sortingOrder = 50;
+                p.transform.localScale = Vector3.one * Random.Range(0.08f, 0.15f);
+
+                var rb = p.AddComponent<Rigidbody2D>();
+                rb.gravityScale = -0.3f;
+                rb.linearDamping = 1.5f;
+                rb.linearVelocity = new Vector2(Random.Range(-0.3f, 0.3f), Random.Range(0.8f, 1.5f));
+
+                p.AddComponent<Combat.FadeAndShrink>();
+                Destroy(p, 0.8f);
+            }
         }
 
         // ===== 엄폐 상태 사격 연출 =====
@@ -206,8 +407,8 @@ namespace Crux.Cinematic
             // 차체 방향에 수직인 벡터 (엄폐물 벽 방향)
             Vector2 wallDir = new Vector2(-hullDir.y, hullDir.x);
 
-            // 적 위치 — 전술맵 차체 방향 유지
-            Vector3 enemyPos = (Vector3)(fireDir * 5f);
+            // 적 위치 — fireDir 방향 멀리 배치 (측면 전개 후 각도 왜곡 최소화)
+            Vector3 enemyPos = (Vector3)(fireDir * 8f);
             float enemyAngle = data.targetHullAngle;
 
             // 엄폐물 위치 (전방 2.5유닛)
@@ -270,33 +471,47 @@ namespace Crux.Cinematic
 
             yield return new WaitForSeconds(0.5f);
 
-            // [2] 측면으로 이동 — 엄폐물 옆으로 빠져나옴
+            // [2] 측면으로 이동 — 전개 방향으로 차체 회전하며 이동
             ShowNarrative("측면 전개!", Color.white);
 
             Vector3 camStart = new Vector3(tankStart.x, tankStart.y, -10f);
             Vector3 camEnd = new Vector3(peekPos.x, peekPos.y, -10f);
 
+            // 이동 방향 각도 계산
+            Vector2 moveDir = ((Vector2)(peekPos - tankStart)).normalized;
+            float moveDirAngle = AngleUtil.FromDir(moveDir);
+
             float moveTime = 0.6f;
             float mt = 0;
+            float currentAngle = myAngle;
             while (mt < 1f)
             {
                 mt += Time.deltaTime / moveTime;
                 float t = Mathf.SmoothStep(0, 1, Mathf.Clamp01(mt));
+
+                // 위치 이동
                 attackerObj.transform.position = Vector3.Lerp(tankStart, peekPos, t);
                 cam.transform.position = Vector3.Lerp(camStart, camEnd, t);
+
+                // 차체를 이동 방향으로 회전
+                currentAngle = Mathf.LerpAngle(myAngle, moveDirAngle, Mathf.Clamp01(t * 1.5f));
+                attackerObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(currentAngle));
+                if (attackerTurret != null)
+                    attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(currentAngle));
+
                 yield return null;
             }
             attackerObj.transform.position = peekPos;
 
             yield return new WaitForSeconds(0.15f);
 
-            // [3] 포탑 회전 — 적 방향 (나침반 각도)
+            // [3] 포탑 회전 — peekPos에서 enemyPos로 정확히 조준
             Vector2 aimDir = ((Vector2)(enemyPos - peekPos)).normalized;
             float aimAngle = AngleUtil.FromDir(aimDir);
 
             if (attackerTurret != null)
             {
-                float startAngle = myAngle;
+                float startAngle = currentAngle; // 측면 전개 후 차체 각도에서 시작
                 float elapsed = 0f;
                 float rotDuration = 0.4f;
 
@@ -432,6 +647,9 @@ namespace Crux.Cinematic
             Vector2 ricochetDir = Vector2.Reflect(fireDir, normal).normalized;
 
             var ricochetBullet = CreateProjectile(targetPos);
+            // 트레이서를 도탄 방향으로 회전
+            float ricochetAngle = Mathf.Atan2(ricochetDir.y, ricochetDir.x) * Mathf.Rad2Deg;
+            ricochetBullet.transform.rotation = Quaternion.Euler(0, 0, ricochetAngle);
             var ricochetSr = ricochetBullet.GetComponent<SpriteRenderer>();
             if (ricochetSr != null) ricochetSr.color = new Color(1f, 0.5f, 0.2f, 0.8f);
 
@@ -493,6 +711,9 @@ namespace Crux.Cinematic
             // 반대편으로 포탄 뚫고 나옴
             Vector3 exitPoint = targetPos + (Vector3)(fireDir * 0.6f);
             var exitBullet = CreateProjectile(exitPoint);
+            // 관통 탄환을 진행 방향으로 회전
+            float exitAngle = Mathf.Atan2(fireDir.y, fireDir.x) * Mathf.Rad2Deg;
+            exitBullet.transform.rotation = Quaternion.Euler(0, 0, exitAngle);
             var exitSr = exitBullet.GetComponent<SpriteRenderer>();
             if (exitSr != null) exitSr.color = new Color(1f, 0.3f, 0.1f);
 
@@ -515,7 +736,6 @@ namespace Crux.Cinematic
             SpawnLingeringSmoke(targetPos);
             SpawnLingeringSmoke(targetPos + Vector3.up * 0.2f);
 
-            subText += "\n내부 폭발! 전차가 불타오른다!";
             yield return new WaitForSeconds(0.5f);
         }
 
@@ -572,11 +792,15 @@ namespace Crux.Cinematic
 
                 // [2] 탄환 생성 + 비행 (빠르게, 0.08초)
                 var bullet = CreateProjectile(muzzle);
+                // MG 탄환을 진행 방향으로 회전
+                Vector2 mgDir = ((Vector2)(shotTarget - muzzle)).normalized;
+                float mgAngle = Mathf.Atan2(mgDir.y, mgDir.x) * Mathf.Rad2Deg;
+                bullet.transform.rotation = Quaternion.Euler(0, 0, mgAngle);
                 var bulletSr = bullet.GetComponent<SpriteRenderer>();
                 if (bulletSr != null)
                 {
                     bulletSr.color = new Color(1f, 0.9f, 0.4f);
-                    bullet.transform.localScale = Vector3.one * 0.025f;
+                    bullet.transform.localScale = new Vector3(0.2f, 0.04f, 1f); // MG도 선형
                 }
 
                 float flightTime = 0.08f;
@@ -641,7 +865,13 @@ namespace Crux.Cinematic
             if (totalDamage > 0)
                 DamagePopup.Spawn(targetPos + Vector3.up * 0.5f, totalDamage, ShotOutcome.Hit);
 
-            yield return new WaitForSeconds(1f);
+            yield return new WaitForSeconds(0.5f);
+
+            // 사후 상태: 격파 / 유폭 / 화재 / 모듈
+            if (totalDamage > 0)
+                yield return PlayPostImpactNarratives(targetPos, data.mgAggregateOutcome);
+
+            yield return new WaitForSeconds(0.5f);
             sequenceDone = true;
         }
 
@@ -847,17 +1077,35 @@ namespace Crux.Cinematic
             var sr = obj.AddComponent<SpriteRenderer>();
             if (_cachedBullet == null)
             {
-                var tex = new Texture2D(4, 4);
-                var pixels = new Color[16];
-                for (int i = 0; i < 16; i++) pixels[i] = Color.white;
+                // 트레이서 형태: 가로로 긴 선 (16x3)
+                int w = 16, h = 3;
+                var tex = new Texture2D(w, h);
+                tex.filterMode = FilterMode.Point;
+                var pixels = new Color[w * h];
+                for (int y = 0; y < h; y++)
+                {
+                    for (int x = 0; x < w; x++)
+                    {
+                        // 선두(밝음) → 꼬리(어두움) 그라데이션
+                        float t = (float)x / w;
+                        float alpha = t; // 선두가 밝고 꼬리가 투명
+                        Color c = Color.Lerp(
+                            new Color(1f, 0.6f, 0.1f, 0.3f),  // 꼬리: 주황 반투명
+                            new Color(1f, 1f, 0.8f, 1f),       // 선두: 백열
+                            t);
+                        // 중앙 라인이 밝고 가장자리 어두움
+                        if (y == 0 || y == h - 1) c.a *= 0.4f;
+                        pixels[y * w + x] = c;
+                    }
+                }
                 tex.SetPixels(pixels);
                 tex.Apply();
-                _cachedBullet = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4);
+                _cachedBullet = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(1f, 0.5f), 16);
             }
             sr.sprite = _cachedBullet;
-            sr.color = new Color(1f, 0.9f, 0.3f);
+            sr.color = Color.white;
             sr.sortingOrder = 20;
-            obj.transform.localScale = Vector3.one * 0.06f;
+            obj.transform.localScale = new Vector3(0.5f, 0.08f, 1f); // 길고 얇게
             return obj;
         }
 

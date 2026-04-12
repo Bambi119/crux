@@ -121,6 +121,37 @@ namespace Crux.Grid
             coverArcs.Clear();
         }
 
+        // 연막 오버레이
+        private Dictionary<Vector2Int, GameObject> smokeOverlays = new();
+
+        /// <summary>셀에 연막 오버레이 표시</summary>
+        public void ShowSmoke(Vector2Int pos)
+        {
+            if (smokeOverlays.ContainsKey(pos)) return;
+
+            var obj = new GameObject("Smoke");
+            obj.transform.position = grid.GridToWorld(pos);
+            obj.transform.SetParent(transform);
+
+            var sr = obj.AddComponent<SpriteRenderer>();
+            sr.sprite = GetSquareSprite();
+            sr.color = new Color(0.6f, 0.6f, 0.55f, 0.45f);
+            sr.sortingOrder = 5;
+            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 0.95f;
+
+            smokeOverlays[pos] = obj;
+        }
+
+        /// <summary>셀의 연막 제거</summary>
+        public void ClearSmoke(Vector2Int pos)
+        {
+            if (smokeOverlays.TryGetValue(pos, out var obj))
+            {
+                if (obj != null) Destroy(obj);
+                smokeOverlays.Remove(pos);
+            }
+        }
+
         public void ClearHighlights()
         {
             foreach (var obj in highlights)

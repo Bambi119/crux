@@ -2,11 +2,22 @@ using UnityEngine;
 
 namespace Crux.Data
 {
+    /// <summary>전차 분류 — 무게/역할 기준</summary>
+    public enum TankClass
+    {
+        Vehicle,    // 차량 (비전투차량, 경장갑)
+        Light,      // 경전차
+        Medium,     // 중형전차
+        Heavy       // 중전차
+    }
+
     [CreateAssetMenu(fileName = "NewTank", menuName = "CRUX/Tank Data")]
     public class TankDataSO : ScriptableObject
     {
         [Header("기본 정보")]
         public string tankName;
+        [Tooltip("전차 분류 (차량/경/중형/중전차)")]
+        public TankClass tankClass = TankClass.Medium;
 
         [Header("AP")]
         public int maxAP = 6;
@@ -22,11 +33,27 @@ namespace Crux.Data
         [Tooltip("포구 위치 오프셋 (차체 로컬 기준, 스프라이트 → 방향)")]
         public Vector2 muzzleOffset = new Vector2(0.8f, 0f);
 
+        [Header("주포")]
+        [Tooltip("주포 구경 (mm)")]
+        public int mainGunCaliber = 75;
+
         [Header("사격")]
         public int fireCost = 3;
 
         [Header("내구력")]
         public int maxHP = 100;
+
+        [Header("연막")]
+        [Tooltip("연막 발사기 장탄수 (0=미장착)")]
+        public int smokeCharges = 2;
+
+        [Header("탄약 적재량")]
+        [Tooltip("주포 최대 적재 탄수")]
+        public int maxMainGunAmmo = 42;
+        [Tooltip("기관총 최대 적재 탄수 (벨트 포함 총량)")]
+        public int maxMGAmmo = 1200;
+        [Tooltip("기관총 1벨트 장전량 (한 번에 장전된 수량)")]
+        public int mgLoadedAmmo = 120;
 
         [Header("모듈 내구력")]
         public ModuleHPProfile moduleHP;

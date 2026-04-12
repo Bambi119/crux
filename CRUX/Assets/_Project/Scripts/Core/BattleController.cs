@@ -45,6 +45,8 @@ namespace Crux.Core
         private TurnPhase currentPhase = TurnPhase.PlayerTurn;
         private GridTankUnit selectedUnit;
         private GridTankUnit targetUnit;
+        private GridTankUnit inspectedUnit; // 정보 조회용 (아군/적 공용)
+        private GridTankUnit hoveredTarget; // Fire 모드 호버 대상
         private int turnCount = 1;
         private bool waitingForCinematic;
         private int currentEnemyIndex; // 적 턴 중 행동 중인 적 인덱스
@@ -73,6 +75,11 @@ namespace Crux.Core
 
         // UI 텍스처 캐시
         private Dictionary<Color, Texture2D> texCache = new();
+
+        // 전략맵 배너 (화재 전소 등 이벤트 알림)
+        private string bannerText;
+        private Color bannerColor;
+        private float bannerEndTime;
 
         public TurnPhase CurrentPhase => currentPhase;
         public int TurnCount => turnCount;
@@ -123,6 +130,12 @@ namespace Crux.Core
 
             playerUnit = mapSetup.PlayerUnit;
             enemyUnits = mapSetup.EnemyUnits;
+
+            // 화재 사망 이벤트 구독
+            if (playerUnit != null)
+                playerUnit.OnFireKilled += HandleFireKill;
+            foreach (var e in enemyUnits)
+                if (e != null) e.OnFireKilled += HandleFireKill;
 
             // 카메라 — 맵 전체가 보이도록 자동 조정
             if (mainCam != null)
@@ -256,6 +269,9 @@ namespace Crux.Core
                 selectedUnit = playerUnit;
             }
 
+            // 연막 턴 감소
+            TickSmoke();
+
             turnCount++;
             Debug.Log($"[CRUX] === 플레이어 턴 {turnCount} ===");
         }
@@ -296,18 +312,43 @@ namespace Crux.Core
                 }
                 else if (enemy.CanMove())
                 {
-                    // 플레이어 방향으로 이동
+                    // 플레이어 방향으로 이동 — 엄폐물 셀 우선, 사거리 내 정지
                     var reachable = grid.GetReachableCells(enemy.GridPosition, enemy.CurrentAP);
                     Vector2Int bestPos = enemy.GridPosition;
-                    float bestDist = dist;
+                    float bestScore = float.MinValue;
 
                     foreach (var pos in reachable)
                     {
                         float d = grid.GetDistance(pos, playerUnit.GridPosition);
-                        if (d < bestDist)
+
+                        // 사거리 안이면 더 이상 접근하지 않음
+                        if (d > GameConstants.MaxFireRange) continue;
+
+                        // 점수: 가까울수록 +, 엄폐물 있으면 보너스
+                        float score = -d;
+                        var cell = grid.GetCell(pos);
+                        if (cell != null && cell.HasCover)
+                            score += 3f; // 엄폐물 보너스
+
+                        if (score > bestScore)
                         {
-                            bestDist = d;
+                            bestScore = score;
                             bestPos = pos;
+                        }
+                    }
+
+                    // 사거리 내 셀이 없으면 가장 가까운 셀로
+                    if (bestPos == enemy.GridPosition)
+                    {
+                        float bestDist = dist;
+                        foreach (var pos in reachable)
+                        {
+                            float d = grid.GetDistance(pos, playerUnit.GridPosition);
+                            if (d < bestDist)
+                            {
+                                bestDist = d;
+                                bestPos = pos;
+                            }
                         }
                     }
 
@@ -354,25 +395,23 @@ namespace Crux.Core
                 return;
             }
 
-            // ===== 무기 선택 모드 =====
+            // ===== 무기 선택 모드 — 1/2/3은 선택만, Space/Enter/Click으로 확정 =====
             if (inputMode == InputMode.WeaponSelect && pendingTarget != null)
             {
-                if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetMouseButtonDown(0))
-                {
+                if (Input.GetKeyDown(KeyCode.Alpha1))
                     selectedWeapon = WeaponType.MainGun;
-                    ExecuteFire(selectedUnit, pendingTarget);
-                    return;
-                }
-                if (Input.GetKeyDown(KeyCode.Alpha2) && coaxialMGData != null)
-                {
+                else if (Input.GetKeyDown(KeyCode.Alpha2) && coaxialMGData != null)
                     selectedWeapon = WeaponType.CoaxialMG;
-                    ExecuteMGFire(selectedUnit, pendingTarget, coaxialMGData);
-                    return;
-                }
-                if (Input.GetKeyDown(KeyCode.Alpha3) && mountedMGData != null)
-                {
+                else if (Input.GetKeyDown(KeyCode.Alpha3) && mountedMGData != null)
                     selectedWeapon = WeaponType.MountedMG;
-                    ExecuteMGFire(selectedUnit, pendingTarget, mountedMGData);
+
+                // Space / Enter / 좌클릭: 현재 선택 무기로 사격 확정
+                bool commit = Input.GetKeyDown(KeyCode.Space)
+                              || Input.GetKeyDown(KeyCode.Return)
+                              || Input.GetMouseButtonDown(0);
+                if (commit)
+                {
+                    CommitFire(selectedUnit, pendingTarget, selectedWeapon);
                     return;
                 }
                 return; // 무기 선택 중 다른 입력 차단
@@ -438,7 +477,44 @@ namespace Crux.Core
             if ((Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.F)) && selectedUnit.CanFire())
             {
                 inputMode = InputMode.Fire;
+                selectedWeapon = WeaponType.MainGun;
                 visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
+            }
+
+            // Fire 모드: 마우스 호버 대상 갱신 + 1/2/3으로 무기 전환
+            if (inputMode == InputMode.Fire)
+            {
+                UpdateHoveredTarget();
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    selectedWeapon = WeaponType.MainGun;
+                else if (Input.GetKeyDown(KeyCode.Alpha2) && coaxialMGData != null)
+                    selectedWeapon = WeaponType.CoaxialMG;
+                else if (Input.GetKeyDown(KeyCode.Alpha3) && mountedMGData != null)
+                    selectedWeapon = WeaponType.MountedMG;
+            }
+            else
+            {
+                hoveredTarget = null;
+            }
+
+            // C: 소화
+            if (Input.GetKeyDown(KeyCode.C) && selectedUnit.IsOnFire && inputMode == InputMode.Select)
+            {
+                selectedUnit.TryExtinguish();
+            }
+
+            // V: 연막
+            if (Input.GetKeyDown(KeyCode.V) && selectedUnit.CanUseSmoke() && inputMode == InputMode.Select)
+            {
+                if (selectedUnit.UseSmoke())
+                {
+                    var cell = grid.GetCell(selectedUnit.GridPosition);
+                    if (cell != null)
+                    {
+                        cell.SmokeTurnsLeft = 2; // 현재 턴 + 다음 턴
+                        visualizer.ShowSmoke(selectedUnit.GridPosition);
+                    }
+                }
             }
 
             // Space: 턴 종료 (Select 모드에서만)
@@ -464,8 +540,129 @@ namespace Crux.Core
                     case InputMode.Fire:
                         TrySelectTarget(clickedPos);
                         break;
+                    case InputMode.Select:
+                        InspectCell(clickedPos);
+                        break;
                 }
             }
+        }
+
+        /// <summary>화재 누적 사망 — 전략맵 내 폭파 연출 + 배너 표시</summary>
+        private void HandleFireKill(GridTankUnit unit)
+        {
+            if (unit == null) return;
+            Vector3 pos = unit.transform.position;
+
+            // 폭파 이펙트 — 기존 HitEffects 재사용
+            Crux.Combat.HitEffects.SpawnExplosion(pos);
+
+            // 배너 표시
+            ShowBanner($"화재로 인한 전소! — {unit.Data?.tankName}",
+                       new Color(1f, 0.4f, 0.15f), 2.5f);
+
+            // 유닛 외형 비활성화 (남은 처리는 기존 IsDestroyed 로직에 맡김)
+            var cell = grid.GetCell(unit.GridPosition);
+            if (cell != null && cell.Occupant == unit.gameObject)
+                cell.Occupant = null;
+            unit.gameObject.SetActive(false);
+
+            Debug.Log($"[CRUX] {unit.Data?.tankName} 화재로 인한 전소");
+        }
+
+        /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
+        private void ShowBanner(string text, Color color, float duration)
+        {
+            bannerText = text;
+            bannerColor = color;
+            bannerEndTime = Time.time + duration;
+        }
+
+        private void DrawBanner()
+        {
+            if (string.IsNullOrEmpty(bannerText)) return;
+            float remaining = bannerEndTime - Time.time;
+            if (remaining <= 0)
+            {
+                bannerText = null;
+                return;
+            }
+
+            float alpha = Mathf.Clamp01(remaining / 0.6f);
+            float bw = 520, bh = 56;
+            float bx = ScaledW / 2 - bw / 2;
+            float by = 70;
+
+            var bg = new GUIStyle(GetBoxStyle());
+            bg.normal.background = GetTex(new Color(0, 0, 0, 0.75f * alpha));
+            GUI.Box(new Rect(bx, by, bw, bh), "", bg);
+
+            var s = new GUIStyle(GetLabelStyle());
+            s.fontSize = 26;
+            s.alignment = TextAnchor.MiddleCenter;
+            s.normal.textColor = new Color(bannerColor.r, bannerColor.g, bannerColor.b, alpha);
+            GUI.Label(new Rect(bx, by, bw, bh), bannerText, s);
+        }
+
+        /// <summary>Fire 모드: 마우스 위치의 적을 hoveredTarget에 기록</summary>
+        private void UpdateHoveredTarget()
+        {
+            if (mainCam == null) return;
+            var worldPos = mainCam.ScreenToWorldPoint(Input.mousePosition);
+            var pos = grid.WorldToGrid(worldPos);
+            if (!grid.IsInBounds(pos))
+            {
+                hoveredTarget = null;
+                return;
+            }
+            var cell = grid.GetCell(pos);
+            if (cell == null || cell.Occupant == null)
+            {
+                hoveredTarget = null;
+                return;
+            }
+            var unit = cell.Occupant.GetComponent<GridTankUnit>();
+            hoveredTarget = (unit != null && unit.side == PlayerSide.Enemy && !unit.IsDestroyed)
+                            ? unit : null;
+        }
+
+        /// <summary>현재 선택된 무기로 사격 — 주포/기총 분기</summary>
+        private void CommitFire(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
+        {
+            if (weapon == WeaponType.MainGun)
+            {
+                ExecuteFire(attacker, target);
+            }
+            else if (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
+            {
+                ExecuteMGFire(attacker, target, coaxialMGData);
+            }
+            else if (weapon == WeaponType.MountedMG && mountedMGData != null)
+            {
+                ExecuteMGFire(attacker, target, mountedMGData);
+            }
+            else
+            {
+                ExecuteFire(attacker, target);
+            }
+        }
+
+        /// <summary>Select 모드에서 셀 클릭 — 유닛이면 정보 조회</summary>
+        private void InspectCell(Vector2Int pos)
+        {
+            var cell = grid.GetCell(pos);
+            if (cell == null || cell.Occupant == null)
+            {
+                inspectedUnit = null;
+                return;
+            }
+            var unit = cell.Occupant.GetComponent<GridTankUnit>();
+            if (unit == null || unit.IsDestroyed)
+            {
+                inspectedUnit = null;
+                return;
+            }
+            // 아군 클릭 → 기본 상태 (selectedUnit 표시)
+            inspectedUnit = unit.side == PlayerSide.Player ? null : unit;
         }
 
         /// <summary>마우스 클릭 위치에서 셀 기준 8방향 스냅 각도 계산</summary>
@@ -526,6 +723,7 @@ namespace Crux.Core
         private void ExecuteFire(GridTankUnit attacker, GridTankUnit target)
         {
             attacker.ConsumeFireAP();
+            attacker.ConsumeMainGunRound();
 
             int distance = grid.GetDistance(attacker.GridPosition, target.GridPosition);
             float hitChance = CalculateHitChanceWithCover(attacker, target);
@@ -577,7 +775,8 @@ namespace Crux.Core
                         coverDmgDealt = dmg;
                         hitCoverName = targetCell.Cover.coverName;
 
-                        targetCell.Cover.TakeDamage(dmg);
+                        var coverRef = targetCell.Cover; // TakeDamage 전에 참조 보존
+                        coverRef.TakeDamage(dmg);
 
                         result = new ShotResult
                         {
@@ -589,9 +788,7 @@ namespace Crux.Core
                             hitChance = hitChance
                         };
 
-                        float coverHP = targetCell.Cover.CurrentHP;
-                        float coverMax = targetCell.Cover.maxHP;
-                        Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({targetCell.Cover.size}) HP: {coverHP:F0}/{coverMax:F0} 엄폐율: {targetCell.Cover.CoverRate:P0} 커버범위: {targetCell.Cover.CoverArc:F0}°");
+                        Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({coverRef.size}) HP: {coverRef.CurrentHP:F0}/{coverRef.maxHP:F0} 엄폐율: {coverRef.CoverRate:P0} 커버범위: {coverRef.CoverArc:F0}°");
                     }
                 }
 
@@ -644,6 +841,18 @@ namespace Crux.Core
                            && attackerCell.Cover != null && !attackerCell.Cover.IsDestroyed;
             string coverName = inCover ? attackerCell.Cover.coverName : "";
 
+            // 사전 롤: 전차 피해 시에만 (엄폐 피격이 아닌 경우)
+            Unit.DamageOutcome mainOutcome = default;
+            if (!hitCover && result.hit && result.damageDealt > 0)
+            {
+                mainOutcome = target.PreRollDamage(new DamageInfo
+                {
+                    damage = result.damageDealt,
+                    outcome = result.outcome,
+                    hitZone = result.hitZone
+                });
+            }
+
             FireActionContext.SetAction(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
@@ -664,6 +873,7 @@ namespace Crux.Core
                 weaponType = WeaponType.MainGun,
                 ammoData = attacker.currentAmmo,
                 result = result,
+                mainOutcome = mainOutcome,
                 targetUnitIndex = targetIndex,
                 targetSide = target.side,
                 attackerHullSprite = attackerSr != null ? attackerSr.sprite : null,
@@ -692,6 +902,7 @@ namespace Crux.Core
 
             // 기총 손상 시 버스트 감소
             int burstCount = Mathf.Max(1, mgData.burstCount - attacker.Modules.GetBurstPenalty());
+            attacker.ConsumeMGBurst(burstCount);
 
             // 버스트 발당 결과 계산
             var results = new ShotResult[burstCount];
@@ -735,6 +946,30 @@ namespace Crux.Core
             var targetSr = target.GetComponentInChildren<SpriteRenderer>();
             int targetIndex = enemyUnits.IndexOf(target);
 
+            // 기총 총 피해 집계 후 단일 사전 롤 (관통 발생 시에만 모듈/화재 롤)
+            float totalMGDamage = 0f;
+            bool anyPenetration = false;
+            HitZone mgZone = HitZone.Front;
+            foreach (var r in results)
+            {
+                if (r.hit && r.damageDealt > 0)
+                {
+                    totalMGDamage += r.damageDealt;
+                    if (r.outcome == ShotOutcome.Penetration) anyPenetration = true;
+                    mgZone = r.hitZone;
+                }
+            }
+            Unit.DamageOutcome mgOutcome = default;
+            if (totalMGDamage > 0)
+            {
+                mgOutcome = target.PreRollDamage(new DamageInfo
+                {
+                    damage = totalMGDamage,
+                    outcome = anyPenetration ? ShotOutcome.Penetration : ShotOutcome.Hit,
+                    hitZone = mgZone
+                });
+            }
+
             FireActionContext.SetAction(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
@@ -747,6 +982,7 @@ namespace Crux.Core
                 weaponType = mgData.type,
                 mgData = mgData,
                 mgResults = results,
+                mgAggregateOutcome = mgOutcome,
                 targetUnitIndex = targetIndex,
                 targetSide = target.side,
                 attackerHullSprite = attackerSr != null ? attackerSr.sprite : null,
@@ -802,6 +1038,10 @@ namespace Crux.Core
                     chance -= targetCell.Cover.CoverRate * 0.3f;
             }
 
+            // 연막 보정
+            if (targetCell != null && targetCell.HasSmoke)
+                chance -= 0.4f;
+
             return Mathf.Clamp01(chance);
         }
 
@@ -840,6 +1080,15 @@ namespace Crux.Core
                         coverHPs.Add(cell.Cover.CurrentHP);
                 }
 
+            // 연막 상태 저장
+            var smokeTurns = new List<int>();
+            for (int x = 0; x < GameConstants.GridWidth; x++)
+                for (int y = 0; y < GameConstants.GridHeight; y++)
+                {
+                    var c = grid.GetCell(new Vector2Int(x, y));
+                    smokeTurns.Add(c != null ? c.SmokeTurnsLeft : 0);
+                }
+
             BattleStateStorage.Save(new BattleSaveData
             {
                 playerState = playerUnit.SaveState(),
@@ -847,6 +1096,7 @@ namespace Crux.Core
                 turnCount = turnCount,
                 phase = currentPhase,
                 coverHPs = coverHPs.ToArray(),
+                smokeTurns = smokeTurns.ToArray(),
                 nextEnemyIndex = currentEnemyIndex
             });
         }
@@ -889,6 +1139,26 @@ namespace Crux.Core
                         }
                     }
 
+                // 연막 복원
+                if (state.smokeTurns != null)
+                {
+                    int si = 0;
+                    for (int x2 = 0; x2 < GameConstants.GridWidth; x2++)
+                        for (int y2 = 0; y2 < GameConstants.GridHeight; y2++)
+                        {
+                            if (si < state.smokeTurns.Length)
+                            {
+                                var sc = grid.GetCell(new Vector2Int(x2, y2));
+                                if (sc != null)
+                                {
+                                    sc.SmokeTurnsLeft = state.smokeTurns[si];
+                                    if (sc.HasSmoke) visualizer.ShowSmoke(sc.Position);
+                                }
+                                si++;
+                            }
+                        }
+                }
+
                 turnCount = state.turnCount;
                 currentPhase = state.phase;
 
@@ -907,29 +1177,40 @@ namespace Crux.Core
                 {
                     if (actionData.weaponType == WeaponType.MainGun)
                     {
-                        // 주포 데미지
+                        // 주포 데미지 — 사전 롤된 결과 적용
                         if (actionData.result.hit && actionData.result.damageDealt > 0)
                         {
-                            target.TakeDamage(new DamageInfo
+                            target.ApplyPrerolledDamage(new DamageInfo
                             {
                                 damage = actionData.result.damageDealt,
-                                outcome = actionData.result.outcome
-                            });
+                                outcome = actionData.result.outcome,
+                                hitZone = actionData.result.hitZone
+                            }, actionData.mainOutcome);
                         }
                     }
                     else if (actionData.mgResults != null)
                     {
-                        // 기관총 데미지 합산
+                        // 기총 총 데미지 합산 + 사전 롤된 모듈/화재/격파 적용
+                        float total = 0f;
+                        bool anyPen = false;
+                        HitZone zone = HitZone.Front;
                         foreach (var r in actionData.mgResults)
                         {
                             if (r.hit && r.damageDealt > 0)
                             {
-                                target.TakeDamage(new DamageInfo
-                                {
-                                    damage = r.damageDealt,
-                                    outcome = r.outcome
-                                });
+                                total += r.damageDealt;
+                                if (r.outcome == ShotOutcome.Penetration) anyPen = true;
+                                zone = r.hitZone;
                             }
+                        }
+                        if (total > 0)
+                        {
+                            target.ApplyPrerolledDamage(new DamageInfo
+                            {
+                                damage = total,
+                                outcome = anyPen ? ShotOutcome.Penetration : ShotOutcome.Hit,
+                                hitZone = zone
+                            }, actionData.mgAggregateOutcome);
                         }
                     }
                 }
@@ -967,6 +1248,7 @@ namespace Crux.Core
             DrawModuleStatus();
             DrawInputModeInfo();
             DrawControls();
+            DrawBanner();
             DrawGameResult();
 
             GUI.matrix = prevMatrix;
@@ -978,84 +1260,475 @@ namespace Crux.Core
 
         private void DrawTurnInfo()
         {
-            GUI.Box(new Rect(10, 10, 180, 35), "", GetBoxStyle());
-            GUI.Label(new Rect(15, 14, 170, 25),
-                $"턴 {turnCount}  |  {currentPhase}", GetLabelStyle());
+            string phaseKR = currentPhase switch
+            {
+                TurnPhase.PlayerTurn => "플레이어",
+                TurnPhase.EnemyTurn => "적 턴",
+                TurnPhase.Cinematic => "연출 중",
+                TurnPhase.GameOver => "패배",
+                TurnPhase.Victory => "승리",
+                _ => currentPhase.ToString()
+            };
+            var tstyle = new GUIStyle(GetLabelStyle());
+            tstyle.fontSize = 20;
+            tstyle.normal.textColor = Color.white;
+            GUI.Box(new Rect(10, 10, 240, 35), "", GetBoxStyle());
+            GUI.Label(new Rect(15, 14, 230, 25),
+                $"턴 {turnCount}  |  {phaseKR}", tstyle);
         }
 
         private void DrawUnitInfo()
         {
-            if (selectedUnit == null) return;
+            // 조회 대상: 적을 클릭했으면 적, 아니면 선택된 아군
+            var info = inspectedUnit != null && !inspectedUnit.IsDestroyed
+                       ? inspectedUnit : selectedUnit;
+            if (info != null)
+                DrawUnitInfoPanel(10f, 55f, info);
 
-            GUI.Box(new Rect(10, 55, 250, 88), "", GetBoxStyle());
-            var style = GetLabelStyle();
-            style.fontSize = 18;
+            // Fire 모드 호버 / WeaponSelect 모드 → 사격 프리뷰
+            GridTankUnit previewTarget = null;
+            if (inputMode == InputMode.WeaponSelect && pendingTarget != null)
+                previewTarget = pendingTarget;
+            else if (inputMode == InputMode.Fire && hoveredTarget != null)
+                previewTarget = hoveredTarget;
 
-            GUI.Label(new Rect(15, 57, 240, 18),
-                $"{selectedUnit.Data.tankName}", style);
-            GUI.Label(new Rect(15, 75, 240, 18),
-                $"HP: {selectedUnit.CurrentHP:F0}/{selectedUnit.Data.maxHP}  AP: {selectedUnit.CurrentAP}/{selectedUnit.MaxAP}", style);
-            GUI.Label(new Rect(15, 93, 240, 18),
-                $"탄종: {(selectedUnit.currentAmmo != null ? selectedUnit.currentAmmo.ammoName : "없음")}", style);
+            if (previewTarget != null)
+                DrawFireTargetPreview(previewTarget, selectedWeapon);
+        }
 
-            // 엄폐 상태 표시
-            string coverStatus = GetUnitCoverStatus(selectedUnit);
-            Color coverColor = coverStatus == "개활지" ? new Color(1f, 0.5f, 0.3f) : new Color(0.3f, 1f, 0.5f);
-            var coverStyle = new GUIStyle(style);
-            coverStyle.normal.textColor = coverColor;
-            coverStyle.fontSize = 17;
-            GUI.Label(new Rect(15, 111, 240, 18), $"상태: {coverStatus}", coverStyle);
+        /// <summary>통합 유닛 정보 패널 — 아군/적 동일 레이아웃 (조회용, 프리뷰 제외)</summary>
+        private void DrawUnitInfoPanel(float x, float y, GridTankUnit u)
+        {
+            float w = 350, h = 180;
+            GUI.Box(new Rect(x, y, w, h), "", GetBoxStyle());
 
-            // 타겟 정보
-            if (targetUnit != null && (inputMode == InputMode.Fire || inputMode == InputMode.WeaponSelect))
+            var style = new GUIStyle(GetLabelStyle());
+            style.fontSize = 17;
+
+            float lineH = 20f;
+            float cy = y + 5;
+            float cx = x + 10;
+            float innerW = w - 20;
+
+            // 1행: 이름 + 전차타입 + 위치·방향
+            string cls = GetTankClassLabel(u.Data != null ? u.Data.tankClass : TankClass.Medium);
+            string facing = GetCompassLabel(u.HullAngle);
+            string sideTag = u.side == PlayerSide.Player ? "" : "[적] ";
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"{sideTag}{u.Data?.tankName}  ({cls})", style);
+            var posStyle = new GUIStyle(style);
+            posStyle.alignment = TextAnchor.UpperRight;
+            posStyle.fontSize = 15;
+            posStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"({u.GridPosition.x},{u.GridPosition.y}) {facing}", posStyle);
+            cy += lineH;
+
+            // 2행: HP / AP
+            float hpRatio = u.Data != null && u.Data.maxHP > 0 ? u.CurrentHP / u.Data.maxHP : 0f;
+            var hpColor = hpRatio > 0.6f ? new Color(0.4f, 1f, 0.5f)
+                       : hpRatio > 0.3f ? new Color(1f, 0.9f, 0.2f)
+                                        : new Color(1f, 0.3f, 0.2f);
+            var hpStyle = new GUIStyle(style);
+            hpStyle.normal.textColor = hpColor;
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"HP {u.CurrentHP:F0}/{u.Data?.maxHP}   AP {u.CurrentAP}/{u.MaxAP}", hpStyle);
+            cy += lineH;
+
+            // 3행: 이동 거리 (셀, 패널티 반영)
+            int moveCost = u.GetMoveCostPerCell();
+            int moveCells = moveCost > 0 ? u.CurrentAP / moveCost : 0;
+            int baseMove = GameConstants.MoveCostPerCell;
+            int penalty = moveCost - baseMove;
+            string penStr = penalty > 0 ? $"-{penalty}" : "";
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"이동 {moveCells}셀 (비용 {moveCost}/셀{penStr})", style);
+            cy += lineH;
+
+            // 4행: 주포 — {caliber}mm {AmmoCode} {count}/{max}
+            int cal = u.Data != null ? u.Data.mainGunCaliber : 0;
+            string ammoCode = u.currentAmmo != null
+                ? (!string.IsNullOrEmpty(u.currentAmmo.shortCode) ? u.currentAmmo.shortCode : u.currentAmmo.ammoName)
+                : "-";
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"주포 {cal}mm  {ammoCode} {u.MainGunAmmoCount}/{u.MaxMainGunAmmo}", style);
+            cy += lineH;
+
+            // 5행: 기관총 — {caliber}mm {loaded}/{total}
+            if (u.MGAmmoTotal > 0)
             {
-                int dist = grid.GetDistance(selectedUnit.GridPosition, targetUnit.GridPosition);
-                float hitChance = CalculateHitChanceWithCover(selectedUnit, targetUnit);
+                float mgCal = coaxialMGData != null ? coaxialMGData.caliber : 7.92f;
+                GUI.Label(new Rect(cx, cy, innerW, lineH),
+                    $"MG {mgCal:0.##}mm  {u.MGAmmoLoaded}/{u.MGAmmoTotal}", style);
+            }
+            else
+            {
+                GUI.Label(new Rect(cx, cy, innerW, lineH), "MG —", style);
+            }
+            cy += lineH;
 
-                GUI.Box(new Rect(ScaledW - 260, 55, 250, 85), "", GetBoxStyle());
-                GUI.Label(new Rect(ScaledW - 255, 57, 240, 18),
-                    $"대상: {targetUnit.Data.tankName}", style);
-                GUI.Label(new Rect(ScaledW - 255, 75, 240, 18),
-                    $"거리: {dist}셀  명중률: {hitChance:P0}", style);
-
-                // 엄폐 정보
-                var tCell = grid.GetCell(targetUnit.GridPosition);
-                if (tCell != null && tCell.HasCover && tCell.Cover != null
-                    && !tCell.Cover.IsDestroyed)
+            // 6행: 엄폐 상태 (이름(크기), 방호범위 N/E, -명중보정)
+            var cell = grid.GetCell(u.GridPosition);
+            var coverStyle = new GUIStyle(style);
+            coverStyle.fontSize = 16;
+            if (cell != null && cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
+            {
+                var cov = cell.Cover;
+                string sizeLabel = cov.size switch
                 {
-                    var cover = tCell.Cover;
-                    float atkAngle = AngleUtil.FromDir(
-                        new Vector2(targetUnit.GridPosition.x - selectedUnit.GridPosition.x,
-                                    targetUnit.GridPosition.y - selectedUnit.GridPosition.y).normalized);
-                    bool covered = cover.IsCovered(tCell.CoverDirection, atkAngle);
+                    CoverSize.Small => "소",
+                    CoverSize.Medium => "중",
+                    CoverSize.Large => "대",
+                    _ => ""
+                };
+                string dirs = GetCoverDirectionLabel(cell.CoverDirection, cov.CoverArc);
+                int hitPenalty = Mathf.RoundToInt(cov.CoverRate * 30f); // 명중률 보정치 %
+                coverStyle.normal.textColor = new Color(0.3f, 1f, 0.5f);
+                GUI.Label(new Rect(cx, cy, innerW, lineH),
+                    $"엄폐 {cov.coverName}({sizeLabel}) {dirs}  명중-{hitPenalty}%", coverStyle);
+            }
+            else
+            {
+                coverStyle.normal.textColor = new Color(1f, 0.6f, 0.4f);
+                GUI.Label(new Rect(cx, cy, innerW, lineH), "엄폐 — 개활지", coverStyle);
+            }
+            cy += lineH;
 
-                    var tgtCoverStyle = new GUIStyle(style);
-                    tgtCoverStyle.fontSize = 16;
-                    tgtCoverStyle.normal.textColor = covered
-                        ? new Color(0.3f, 1f, 0.5f)   // 초록 — 엄폐 유효
-                        : new Color(1f, 0.5f, 0.3f);   // 주황 — 엄폐 무효
+            // 7행: 상태이상
+            string statusExtra = "";
+            if (u.IsOnFire) statusExtra += "[화재] ";
+            if (u.RemainingSmokeCharges > 0) statusExtra += $"연막:{u.RemainingSmokeCharges} ";
+            if (cell != null && cell.HasSmoke) statusExtra += "[연막중]";
+            if (statusExtra.Length == 0) statusExtra = "정상";
+            var stStyle = new GUIStyle(style);
+            stStyle.fontSize = 15;
+            stStyle.normal.textColor = u.IsOnFire ? new Color(1f, 0.5f, 0.2f) : new Color(0.8f, 0.85f, 0.9f);
+            GUI.Label(new Rect(cx, cy, innerW, lineH), $"상태: {statusExtra}", stStyle);
+        }
 
-                    string sizeLabel = cover.size switch
-                    {
-                        CoverSize.Small => "소형",
-                        CoverSize.Medium => "중형",
-                        CoverSize.Large => "대형",
-                        _ => ""
-                    };
+        // ===== 사격 프리뷰 =====
 
-                    GUI.Label(new Rect(ScaledW - 255, 95, 240, 16),
-                        $"엄폐: {cover.coverName} ({sizeLabel}) {(covered ? "유효" : "무효")}", tgtCoverStyle);
-                    GUI.Label(new Rect(ScaledW - 255, 111, 240, 16),
-                        $"엄폐율:{cover.CoverRate:P0} HP:{cover.CurrentHP:F0}/{cover.maxHP:F0} 범위:{cover.CoverArc:F0}°", tgtCoverStyle);
-                }
-                else
+        private struct FirePreview
+        {
+            public int distance;
+            public float baseHit;      // 거리 패널티 적용 후
+            public float coverPenalty; // 엄폐에 의한 차감
+            public float smokePenalty; // 연막에 의한 차감
+            public float finalHit;
+            public HitZone hitZone;
+            public float baseArmor;
+            public float impactAngle;
+            public float effectiveArmor;
+            public float penetration;
+            public ShotOutcome outcome;
+            public float expectedDamagePerShot; // 판정 반영 데미지 (명중 시)
+            public int shotsPerAction;           // 주포 1, 버스트 N
+            public float totalExpected;          // shotsPerAction × finalHit × damagePerShot
+            public bool coveredFromThisAngle;    // 현재 공격각에서 엄폐 유효
+            public bool isMG;
+        }
+
+        /// <summary>선택 무기 기준 사격 결과 기대값 계산</summary>
+        private FirePreview ComputeFirePreview(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
+        {
+            var p = new FirePreview();
+            p.distance = grid.GetDistance(attacker.GridPosition, target.GridPosition);
+
+            // 명중률 분해
+            float chance = CalculateHitChance(p.distance, target);
+            chance -= attacker.Modules.GetAccuracyPenalty();
+            p.baseHit = Mathf.Clamp01(chance);
+
+            // 엄폐 보정
+            var tCell = grid.GetCell(target.GridPosition);
+            p.coverPenalty = 0f;
+            if (tCell != null && tCell.HasCover && tCell.Cover != null && !tCell.Cover.IsDestroyed)
+            {
+                float atkAngle = AngleUtil.FromDir(
+                    new Vector2(target.GridPosition.x - attacker.GridPosition.x,
+                                target.GridPosition.y - attacker.GridPosition.y).normalized);
+                if (tCell.Cover.IsCovered(tCell.CoverDirection, atkAngle))
                 {
-                    var openStyle = new GUIStyle(style);
-                    openStyle.fontSize = 16;
-                    openStyle.normal.textColor = new Color(1f, 0.5f, 0.3f);
-                    GUI.Label(new Rect(ScaledW - 255, 95, 240, 16), "엄폐: 없음 (개활지)", openStyle);
+                    p.coveredFromThisAngle = true;
+                    p.coverPenalty = tCell.Cover.CoverRate * 0.3f;
                 }
             }
+
+            // 연막 보정
+            p.smokePenalty = (tCell != null && tCell.HasSmoke) ? 0.4f : 0f;
+
+            // 기총 기본 명중률 보정
+            if (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
+            {
+                p.baseHit = Mathf.Clamp01(p.baseHit + coaxialMGData.accuracyModifier
+                                         - attacker.Modules.GetMGAccuracyPenalty());
+            }
+            else if (weapon == WeaponType.MountedMG && mountedMGData != null)
+            {
+                p.baseHit = Mathf.Clamp01(p.baseHit + mountedMGData.accuracyModifier
+                                         - attacker.Modules.GetMGAccuracyPenalty());
+            }
+
+            p.finalHit = Mathf.Clamp01(p.baseHit - p.coverPenalty - p.smokePenalty);
+
+            // 피격 위치·장갑 — 현재 위치 기준
+            p.hitZone = PenetrationCalculator.DetermineHitZone(
+                attacker.transform.position, target.transform.position, target.HullAngle);
+            p.baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, p.hitZone);
+            p.impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                attacker.transform.position, target.transform.position, target.HullAngle, p.hitZone);
+            p.effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(p.baseArmor, p.impactAngle);
+
+            // 관통력 / 데미지 — 무기에 따라
+            float basePenetration;
+            float baseDamage;
+            if (weapon == WeaponType.MainGun)
+            {
+                basePenetration = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+                baseDamage = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                p.shotsPerAction = 1;
+                p.isMG = false;
+
+                // 거리 감쇠
+                if (attacker.currentAmmo != null && attacker.currentAmmo.penetrationDropPerCell > 0)
+                    basePenetration = Mathf.Max(1f, basePenetration - attacker.currentAmmo.penetrationDropPerCell * p.distance);
+            }
+            else
+            {
+                var mg = weapon == WeaponType.CoaxialMG ? coaxialMGData : mountedMGData;
+                basePenetration = mg != null ? mg.penetration : 15f;
+                baseDamage = mg != null ? mg.damagePerShot : 2f;
+                p.shotsPerAction = mg != null
+                    ? Mathf.Max(1, mg.burstCount - attacker.Modules.GetBurstPenalty())
+                    : 1;
+                p.isMG = true;
+            }
+
+            p.penetration = basePenetration;
+
+            // 판정 예측 — 확률 경계는 기대값으로 대체 (ratio 기반 결정론 표기)
+            p.outcome = PredictOutcome(basePenetration, p.effectiveArmor);
+
+            // 데미지 계산 (판정별)
+            float outcomeMult = p.outcome switch
+            {
+                ShotOutcome.Penetration => p.isMG ? 2f : 2.5f,
+                ShotOutcome.Hit => 1f,
+                ShotOutcome.Ricochet => 0.03f,
+                _ => 0f
+            };
+            p.expectedDamagePerShot = baseDamage * outcomeMult;
+            p.totalExpected = p.shotsPerAction * p.finalHit * p.expectedDamagePerShot;
+            return p;
+        }
+
+        /// <summary>결정론적 판정 예측 — JudgePenetration의 확률 구간을 단일값으로</summary>
+        private static ShotOutcome PredictOutcome(float penetration, float effectiveArmor)
+        {
+            if (effectiveArmor >= float.MaxValue) return ShotOutcome.Ricochet;
+            float ratio = penetration / effectiveArmor;
+            if (ratio > 1.2f) return ShotOutcome.Penetration;
+            if (ratio > 0.8f) return ShotOutcome.Hit;
+            return ShotOutcome.Ricochet;
+        }
+
+        /// <summary>사격 프리뷰 패널</summary>
+        private void DrawFireTargetPreview(GridTankUnit target, WeaponType weapon)
+        {
+            if (target == null || target.IsDestroyed || selectedUnit == null) return;
+
+            var p = ComputeFirePreview(selectedUnit, target, weapon);
+
+            float w = 360, h = 260;
+            float x = ScaledW - w - 10;
+            float y = 55;
+            GUI.Box(new Rect(x, y, w, h), "", GetBoxStyle());
+
+            var style = new GUIStyle(GetLabelStyle());
+            style.fontSize = 17;
+            float cx = x + 10;
+            float cy = y + 6;
+            float lineH = 20f;
+            float innerW = w - 20;
+
+            // 제목
+            var titleStyle = new GUIStyle(style);
+            titleStyle.fontSize = 19;
+            titleStyle.normal.textColor = new Color(1f, 0.9f, 0.4f);
+            string cls = GetTankClassLabel(target.Data != null ? target.Data.tankClass : TankClass.Medium);
+            GUI.Label(new Rect(cx, cy, innerW, 22),
+                $"대상: {target.Data?.tankName}  [{cls}]", titleStyle);
+            cy += 24;
+
+            // HP + 예상 결과
+            float hpRatio = target.Data != null && target.Data.maxHP > 0
+                            ? target.CurrentHP / target.Data.maxHP : 0f;
+            var hpColor = hpRatio > 0.6f ? new Color(0.4f, 1f, 0.5f)
+                       : hpRatio > 0.3f ? new Color(1f, 0.9f, 0.2f)
+                                        : new Color(1f, 0.3f, 0.2f);
+            var hpStyle = new GUIStyle(style);
+            hpStyle.normal.textColor = hpColor;
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"HP  {target.CurrentHP:F0}/{target.Data?.maxHP}", hpStyle);
+            cy += lineH;
+
+            // 구분선 — 거리·명중률
+            var sepStyle = new GUIStyle(style);
+            sepStyle.normal.textColor = new Color(0.6f, 0.6f, 0.7f);
+            GUI.Label(new Rect(cx, cy, innerW, lineH), "────────────────────────", sepStyle);
+            cy += lineH;
+
+            // 거리
+            GUI.Label(new Rect(cx, cy, innerW, lineH), $"거리  {p.distance}셀", style);
+            cy += lineH;
+
+            // 명중률 + 분해
+            var hitStyle = new GUIStyle(style);
+            hitStyle.fontSize = 18;
+            hitStyle.normal.textColor = new Color(1f, 0.95f, 0.4f);
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"명중률  {p.finalHit:P0}", hitStyle);
+            cy += lineH;
+
+            var breakStyle = new GUIStyle(style);
+            breakStyle.fontSize = 14;
+            breakStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
+            string brk = $"   기본 {p.baseHit:P0}";
+            if (p.coverPenalty > 0) brk += $"  −엄폐 {(p.coverPenalty * 100f):F0}%";
+            if (p.smokePenalty > 0) brk += $"  −연막 {(p.smokePenalty * 100f):F0}%";
+            GUI.Label(new Rect(cx, cy, innerW, 18), brk, breakStyle);
+            cy += 18;
+
+            // 피격 위치·장갑
+            string zoneLabel = p.hitZone switch
+            {
+                HitZone.Front => "전면",
+                HitZone.Side => "측면",
+                HitZone.Rear => "후면",
+                HitZone.Turret => "포탑",
+                _ => ""
+            };
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"피격  {zoneLabel}  장갑 {p.baseArmor:F0}mm (유효 {p.effectiveArmor:F0}mm)", style);
+            cy += lineH;
+
+            // 관통력 vs 장갑 + 판정
+            string outcomeLabel; Color outcomeColor;
+            switch (p.outcome)
+            {
+                case ShotOutcome.Penetration:
+                    outcomeLabel = "관통"; outcomeColor = new Color(0.4f, 1f, 0.5f); break;
+                case ShotOutcome.Hit:
+                    outcomeLabel = "명중"; outcomeColor = new Color(1f, 0.95f, 0.3f); break;
+                case ShotOutcome.Ricochet:
+                    outcomeLabel = "도탄"; outcomeColor = new Color(1f, 0.4f, 0.3f); break;
+                default:
+                    outcomeLabel = "실패"; outcomeColor = Color.gray; break;
+            }
+            var resStyle = new GUIStyle(style);
+            resStyle.normal.textColor = outcomeColor;
+            resStyle.fontSize = 18;
+            GUI.Label(new Rect(cx, cy, innerW, lineH),
+                $"관통력 {p.penetration:F0}mm  →  {outcomeLabel}", resStyle);
+            cy += lineH;
+
+            // 예상 피해
+            string dmgLine;
+            if (p.isMG)
+                dmgLine = $"예상 피해  {p.totalExpected:F0}  ({p.shotsPerAction}발 기준)";
+            else
+                dmgLine = $"예상 피해  {p.expectedDamagePerShot:F0}  (명중 시)";
+            var dmgStyle = new GUIStyle(style);
+            dmgStyle.fontSize = 18;
+            GUI.Label(new Rect(cx, cy, innerW, lineH), dmgLine, dmgStyle);
+            cy += lineH;
+
+            // 사격 후 예상 HP
+            float remainHP = Mathf.Max(0f, target.CurrentHP - p.totalExpected);
+            bool kill = remainHP <= 0f && p.finalHit > 0.01f;
+            var afterStyle = new GUIStyle(style);
+            afterStyle.fontSize = 16;
+            afterStyle.normal.textColor = kill ? new Color(1f, 0.3f, 0.3f)
+                                                : (remainHP / Mathf.Max(1f, target.Data.maxHP) < 0.5f
+                                                    ? new Color(1f, 0.7f, 0.3f)
+                                                    : new Color(0.85f, 0.85f, 0.9f));
+            string afterLine = kill
+                ? $"사격 후  {target.CurrentHP:F0} → 0  (격파)"
+                : $"사격 후  {target.CurrentHP:F0} → {remainHP:F0}";
+            GUI.Label(new Rect(cx, cy, innerW, lineH), afterLine, afterStyle);
+            cy += lineH;
+
+            // 엄폐
+            var coverStyle = new GUIStyle(style);
+            coverStyle.fontSize = 15;
+            if (p.coveredFromThisAngle)
+            {
+                var tc = grid.GetCell(target.GridPosition);
+                var cv = tc.Cover;
+                string sz = cv.size switch
+                {
+                    CoverSize.Small => "소",
+                    CoverSize.Medium => "중",
+                    CoverSize.Large => "대",
+                    _ => ""
+                };
+                string dirs = GetCoverDirectionLabel(tc.CoverDirection, cv.CoverArc);
+                coverStyle.normal.textColor = new Color(0.4f, 1f, 0.5f);
+                GUI.Label(new Rect(cx, cy, innerW, lineH),
+                    $"엄폐 {cv.coverName}({sz}) {dirs}  유효", coverStyle);
+            }
+            else
+            {
+                coverStyle.normal.textColor = new Color(0.8f, 0.8f, 0.85f);
+                GUI.Label(new Rect(cx, cy, innerW, lineH), "엄폐  현재 각도에 무효", coverStyle);
+            }
+        }
+
+        /// <summary>전차 분류 라벨</summary>
+        private static string GetTankClassLabel(TankClass cls) => cls switch
+        {
+            TankClass.Vehicle => "차량",
+            TankClass.Light => "경전차",
+            TankClass.Medium => "중형전차",
+            TankClass.Heavy => "중전차",
+            _ => ""
+        };
+
+        /// <summary>나침반 각도 → N/NE/E/SE/S/SW/W/NW</summary>
+        private static string GetCompassLabel(float compassAngle)
+        {
+            float a = ((compassAngle % 360f) + 360f) % 360f;
+            int idx = Mathf.RoundToInt(a / 45f) % 8;
+            return idx switch
+            {
+                0 => "↑N",
+                1 => "↗NE",
+                2 => "→E",
+                3 => "↘SE",
+                4 => "↓S",
+                5 => "↙SW",
+                6 => "←W",
+                7 => "↖NW",
+                _ => ""
+            };
+        }
+
+        /// <summary>엄폐 방호 범위 → 북/동/남/서 중 포함된 방향 리스트</summary>
+        private static string GetCoverDirectionLabel(float coverDir, float arc)
+        {
+            var compass = new (float deg, string name)[]
+            {
+                (0f, "북"), (90f, "동"), (180f, "남"), (270f, "서")
+            };
+            var list = new List<string>();
+            float half = arc * 0.5f;
+            foreach (var (deg, name) in compass)
+            {
+                float diff = Mathf.Abs(Mathf.DeltaAngle(deg, coverDir));
+                if (diff <= half) list.Add(name);
+            }
+            if (list.Count == 0) return "—";
+            return string.Join("/", list);
         }
 
         private void DrawInputModeInfo()
@@ -1081,21 +1754,22 @@ namespace Crux.Core
                 _ => "[대기] Q:이동  E:사격  Space:턴종료"
             };
 
-            GUI.Box(new Rect(ScaledW / 2 - 150, ScaledH - 40, 300, 30), "", GetBoxStyle());
-            var style = GetLabelStyle();
+            float iw = 360;
+            GUI.Box(new Rect(ScaledW / 2 - iw / 2, ScaledH - 42, iw, 32), "", GetBoxStyle());
+            var style = new GUIStyle(GetLabelStyle());
             style.fontSize = 17;
             style.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(ScaledW / 2 - 150, ScaledH - 40, 300, 30), modeText, style);
+            GUI.Label(new Rect(ScaledW / 2 - iw / 2, ScaledH - 42, iw, 32), modeText, style);
         }
 
         private void DrawMoveDirectionUI()
         {
             var box = GetBoxStyle();
-            var label = GetLabelStyle();
+            var label = new GUIStyle(GetLabelStyle());
             label.fontSize = 18;
             label.alignment = TextAnchor.MiddleCenter;
 
-            float panelW = 280, panelH = 90;
+            float panelW = 440, panelH = 96;
             float px = ScaledW / 2 - panelW / 2;
             float py = ScaledH / 2 + 60;
 
@@ -1116,10 +1790,13 @@ namespace Crux.Core
 
             GUI.Label(new Rect(px, py + 5, panelW, 22),
                 $"목적지: ({pendingMoveTarget.x},{pendingMoveTarget.y})  AP: {pendingMoveCost}", label);
-            GUI.Label(new Rect(px, py + 28, panelW, 22),
+            GUI.Label(new Rect(px, py + 30, panelW, 22),
                 $"방향: {dirName}  [WASD 변경]", label);
-            GUI.Label(new Rect(px, py + 55, panelW, 22),
-                "[Space] 확정  [클릭] 방향+확정  [Tab] 취소", label);
+            var hintStyle = new GUIStyle(label);
+            hintStyle.fontSize = 16;
+            hintStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
+            GUI.Label(new Rect(px, py + 60, panelW, 22),
+                "[Space] 확정   [클릭] 방향+확정   [Tab] 취소", hintStyle);
         }
 
         private void DrawWeaponSelectUI()
@@ -1127,11 +1804,8 @@ namespace Crux.Core
             var box = GetBoxStyle();
             var label = GetLabelStyle();
 
-            int dist = grid.GetDistance(selectedUnit.GridPosition, pendingTarget.GridPosition);
-            float mainHit = CalculateHitChanceWithCover(selectedUnit, pendingTarget);
-
             // 무기 선택 패널
-            float panelW = 320, panelH = 130;
+            float panelW = 420, panelH = 138;
             float px = ScaledW / 2 - panelW / 2;
             float py = ScaledH / 2 + 40;
 
@@ -1142,40 +1816,55 @@ namespace Crux.Core
             titleStyle.alignment = TextAnchor.MiddleCenter;
             GUI.Label(new Rect(px, py + 5, panelW, 22), $"무기 선택 — 대상: {pendingTarget.Data.tankName}", titleStyle);
 
-            var itemStyle = new GUIStyle(label);
-            itemStyle.fontSize = 18;
+            var normalCol = new Color(0.75f, 0.75f, 0.8f);
+            var selCol = new Color(1f, 0.95f, 0.3f);
+
+            void DrawItem(int slot, WeaponType wt, string text)
+            {
+                var st = new GUIStyle(label);
+                st.fontSize = 18;
+                st.normal.textColor = (selectedWeapon == wt) ? selCol : normalCol;
+                string mark = (selectedWeapon == wt) ? "▶ " : "  ";
+                GUI.Label(new Rect(px + 10, py + 30 + (slot - 1) * 23, panelW - 20, 20),
+                    $"{mark}[{slot}] {text}", st);
+            }
 
             // 1. 주포
-            string mainInfo = $"[1] 주포 ({selectedUnit.currentAmmo?.ammoName ?? "AP"})  명중: {mainHit:P0}  AP:{GameConstants.FireCost}";
-            GUI.Label(new Rect(px + 10, py + 32, panelW - 20, 20), mainInfo, itemStyle);
+            string mainAmmo = selectedUnit.currentAmmo != null
+                ? (!string.IsNullOrEmpty(selectedUnit.currentAmmo.shortCode)
+                    ? selectedUnit.currentAmmo.shortCode : selectedUnit.currentAmmo.ammoName)
+                : "AP";
+            int mainCal = selectedUnit.Data != null ? selectedUnit.Data.mainGunCaliber : 0;
+            DrawItem(1, WeaponType.MainGun,
+                $"주포 {mainCal}mm {mainAmmo}  AP:{GameConstants.FireCost}");
 
             // 2. 동축 기관총
             if (coaxialMGData != null)
-            {
-                float mgHit = Mathf.Clamp01(mainHit + coaxialMGData.accuracyModifier);
-                string mgInfo = $"[2] {coaxialMGData.mgName}  {coaxialMGData.burstCount}발  명중: {mgHit:P0}  AP:{coaxialMGData.apCost}";
-                GUI.Label(new Rect(px + 10, py + 55, panelW - 20, 20), mgInfo, itemStyle);
-            }
+                DrawItem(2, WeaponType.CoaxialMG,
+                    $"{coaxialMGData.mgName} {coaxialMGData.burstCount}발  AP:{coaxialMGData.apCost}");
 
             // 3. 탑재 기관총
             if (mountedMGData != null)
-            {
-                float mgHit = Mathf.Clamp01(mainHit + mountedMGData.accuracyModifier);
-                string mgInfo = $"[3] {mountedMGData.mgName}  {mountedMGData.burstCount}발  명중: {mgHit:P0}  AP:{mountedMGData.apCost}";
-                GUI.Label(new Rect(px + 10, py + 78, panelW - 20, 20), mgInfo, itemStyle);
-            }
+                DrawItem(3, WeaponType.MountedMG,
+                    $"{mountedMGData.mgName} {mountedMGData.burstCount}발  AP:{mountedMGData.apCost}");
 
-            itemStyle.fontSize = 16;
-            itemStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
-            GUI.Label(new Rect(px + 10, py + 105, panelW - 20, 18), "클릭: 주포  |  Tab: 취소", itemStyle);
+            var hintStyle = new GUIStyle(label);
+            hintStyle.fontSize = 15;
+            hintStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
+            hintStyle.alignment = TextAnchor.MiddleCenter;
+            GUI.Label(new Rect(px, py + 110, panelW, 18),
+                "1/2/3: 선택   Space/클릭: 사격   Tab: 취소", hintStyle);
         }
 
         private void DrawModuleStatus()
         {
-            if (selectedUnit == null || selectedUnit.IsDestroyed) return;
+            // 정보 패널과 동일한 유닛 기준 (적 클릭 시 적 모듈 상태)
+            var u = inspectedUnit != null && !inspectedUnit.IsDestroyed
+                    ? inspectedUnit : selectedUnit;
+            if (u == null || u.IsDestroyed) return;
 
-            var modules = selectedUnit.Modules;
-            float panelX = 10f, panelY = 148f, panelW = 250f, panelH = 58f;
+            var modules = u.Modules;
+            float panelX = 10f, panelY = 240f, panelW = 350f, panelH = 58f;
 
             GUI.Box(new Rect(panelX, panelY, panelW, panelH), "", GetBoxStyle());
 
@@ -1195,7 +1884,7 @@ namespace Crux.Core
             };
 
             float x = panelX + 5;
-            float y = panelY + 3;
+            float y2 = panelY + 3;
             int col = 0;
 
             foreach (var (type, name) in types)
@@ -1221,25 +1910,42 @@ namespace Crux.Core
                     _ => ""
                 };
 
-                GUI.Label(new Rect(x + col * 62, y, 60, 14), $"{name}{stateChar}", style);
+                GUI.Label(new Rect(x + col * 85, y2, 80, 16), $"{name}{stateChar}", style);
                 col++;
                 if (col >= 4)
                 {
                     col = 0;
-                    y += 15;
+                    y2 += 17;
                 }
             }
         }
 
+        /// <summary>모든 셀의 연막 턴 감소</summary>
+        private void TickSmoke()
+        {
+            for (int x = 0; x < GameConstants.GridWidth; x++)
+                for (int y = 0; y < GameConstants.GridHeight; y++)
+                {
+                    var cell = grid.GetCell(new Vector2Int(x, y));
+                    if (cell != null && cell.SmokeTurnsLeft > 0)
+                    {
+                        cell.SmokeTurnsLeft--;
+                        if (cell.SmokeTurnsLeft <= 0)
+                            visualizer.ClearSmoke(cell.Position);
+                    }
+                }
+        }
+
         private void DrawControls()
         {
-            var style = GetLabelStyle();
+            var style = new GUIStyle(GetLabelStyle());
             style.fontSize = 16;
             style.normal.textColor = new Color(0.7f, 0.7f, 0.7f);
 
-            GUI.Box(new Rect(10, ScaledH - 75, 250, 55), "", GetBoxStyle());
-            GUI.Label(new Rect(15, ScaledH - 73, 240, 16), "Q: 이동 | E: 사격 | Tab: 취소", style);
-            GUI.Label(new Rect(15, ScaledH - 55, 240, 16), "Space: 확정/턴종료 | 1/2/3: 무기", style);
+            GUI.Box(new Rect(10, ScaledH - 95, 340, 78), "", GetBoxStyle());
+            GUI.Label(new Rect(15, ScaledH - 92, 330, 18), "Q: 이동  |  E: 사격  |  Tab: 취소", style);
+            GUI.Label(new Rect(15, ScaledH - 73, 330, 18), "Space: 확정/턴종료  |  1/2/3: 무기", style);
+            GUI.Label(new Rect(15, ScaledH - 54, 330, 18), "C: 소화  |  V: 연막", style);
         }
 
         private void DrawGameResult()
@@ -1260,7 +1966,7 @@ namespace Crux.Core
                     ? "승리! 적 전멸!"
                     : "패배... 로시난테 파괴됨";
 
-                var bigStyle = GetLabelStyle();
+                var bigStyle = new GUIStyle(GetLabelStyle());
                 bigStyle.fontSize = 36;
                 bigStyle.alignment = TextAnchor.MiddleCenter;
 

@@ -9,6 +9,8 @@ namespace Crux.Data
         [Header("기본 정보")]
         public string ammoName;
         public AmmoType type;
+        [Tooltip("탄종 축약 표기 (예: AP, HE, HEAT)")]
+        public string shortCode = "AP";
 
         [Header("성능")]
         [Tooltip("관통력 (mm)")]

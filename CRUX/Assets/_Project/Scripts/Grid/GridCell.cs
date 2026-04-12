@@ -25,6 +25,12 @@ namespace Crux.Grid
         /// <summary>이 셀에 활성 엄폐물이 있는지</summary>
         public bool HasCover => Cover != null && !Cover.IsDestroyed;
 
+        /// <summary>연막 잔여 턴 (0=없음)</summary>
+        public int SmokeTurnsLeft { get; set; }
+
+        /// <summary>연막 활성 여부</summary>
+        public bool HasSmoke => SmokeTurnsLeft > 0;
+
         public GridCell(Vector2Int pos, CellType type = CellType.Empty)
         {
             Position = pos;

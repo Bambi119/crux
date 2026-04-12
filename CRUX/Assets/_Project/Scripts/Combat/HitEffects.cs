@@ -21,10 +21,10 @@ namespace Crux.Combat
                     SpawnRicochet(position, shellDir);
                     break;
                 case ShotOutcome.Hit:
-                    SpawnHit(position);
+                    SpawnHit(position, shellDir);
                     break;
                 case ShotOutcome.Penetration:
-                    SpawnPenetration(position);
+                    SpawnPenetration(position, shellDir);
                     break;
             }
         }
@@ -202,53 +202,153 @@ namespace Crux.Combat
             return _ricochetFrames;
         }
 
-        // ===== 피격 — 스프라이트 + 화염 + 파편 =====
-        private static void SpawnHit(Vector3 position)
+        // ===== 피격 — 착탄 방향 기반 스프라이트 + 화염 + 파편 =====
+        private static void SpawnHit(Vector3 position, Vector2 shellDir)
         {
-            // [1] 스프라이트 애니메이션 (10프레임)
+            SpawnImpact(position, shellDir, 1f);
+        }
+
+        /// <summary>피격/관통 공통 — 레퍼런스: 화구 + 방사형 불꽃줄기 + 파편 다수 + 연기</summary>
+        private static void SpawnImpact(Vector3 position, Vector2 shellDir, float intensity)
+        {
+            Vector2 splashDir = -shellDir;
+            float splashAngle = Mathf.Atan2(splashDir.y, splashDir.x) * Mathf.Rad2Deg;
+
+            // [1] 스프라이트 애니메이션
             var frames = GetHitFrames();
             if (frames != null && frames.Length > 0)
             {
-                SpriteAnimation.Play(position, frames, 0.8f,
-                    scale: 0.1f, sortingOrder: 68);
+                SpriteAnimation.Play(position, frames, 0.7f,
+                    scale: 0.12f * intensity, sortingOrder: 68, rotation: splashAngle);
             }
 
-            // [2] 섬광
-            var flash = P(position, new Color(1f, 0.9f, 0.5f, 1f), 0.3f, 70);
-            Object.Destroy(flash, 0.05f);
+            // [2] 화구(fireball) — 4단: 백열 코어 → 백노란 → 노란 → 주황
+            var core = P(position, new Color(1f, 1f, 1f, 1f), 0.4f * intensity, 72);
+            Object.Destroy(core, 0.05f);
 
-            // [3] 화염
-            var flame = P(position, new Color(1f, 0.5f, 0.15f, 0.8f), 0.25f, 67);
-            flame.AddComponent<FadeAndShrink>();
-            Object.Destroy(flame, 0.25f);
+            var glow1 = P(position, new Color(1f, 1f, 0.85f, 1f), 0.55f * intensity, 71);
+            glow1.AddComponent<FadeAndShrink>();
+            Object.Destroy(glow1, 0.12f);
 
-            // [4] 파편 (6개)
-            for (int i = 0; i < 6; i++)
+            var glow2 = P(position, new Color(1f, 0.85f, 0.3f, 0.9f), 0.7f * intensity, 70);
+            glow2.AddComponent<FadeAndShrink>();
+            Object.Destroy(glow2, 0.25f);
+
+            var outer = P(position, new Color(1f, 0.5f, 0.1f, 0.6f), 0.9f * intensity, 69);
+            outer.AddComponent<FadeAndShrink>();
+            Object.Destroy(outer, 0.4f);
+
+            // [3] 방사형 불꽃 줄기 — 선형 스프라이트가 중심에서 사방으로 뻗어나감
+            int streakCount = (int)(16 * intensity);
+            var streakSprite = GetStreakSprite();
+            for (int i = 0; i < streakCount; i++)
             {
-                Color c = i < 3
-                    ? new Color(0.4f, 0.3f, 0.22f)
-                    : new Color(1f, 0.5f, 0.15f, 0.7f);
-                var obj = P(position, c, Random.Range(0.03f, 0.07f), 63);
+                float angle = Random.Range(0f, 360f);
+                Vector2 dir = new Vector2(
+                    Mathf.Cos(angle * Mathf.Deg2Rad),
+                    Mathf.Sin(angle * Mathf.Deg2Rad));
+
+                var streak = new GameObject("Streak");
+                streak.transform.position = position;
+                streak.transform.rotation = Quaternion.Euler(0, 0, angle);
+
+                var sr = streak.AddComponent<SpriteRenderer>();
+                sr.sprite = streakSprite;
+                sr.sortingOrder = 66;
+                // 밝은 노란~백색
+                sr.color = Random.value < 0.5f
+                    ? new Color(1f, 0.95f, 0.7f, 0.9f)
+                    : new Color(1f, 0.8f, 0.3f, 0.8f);
+
+                float len = Random.Range(0.3f, 0.8f) * intensity;
+                streak.transform.localScale = new Vector3(len, 0.03f, 1f);
+
+                var rb = streak.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0f;
+                rb.linearDamping = 3f;
+                rb.linearVelocity = dir * Random.Range(8f, 20f) * intensity;
+                streak.AddComponent<FadeAndShrink>();
+                Object.Destroy(streak, Random.Range(0.1f, 0.3f));
+            }
+
+            // [4] 검은/갈색 파편 다수 — 사방으로 멀리
+            int debrisCount = (int)(30 * intensity);
+            for (int i = 0; i < debrisCount; i++)
+            {
+                float angle = Random.Range(0f, 360f);
+                Vector2 dir = new Vector2(
+                    Mathf.Cos(angle * Mathf.Deg2Rad),
+                    Mathf.Sin(angle * Mathf.Deg2Rad));
+
+                Color c;
+                if (i < debrisCount / 4)
+                    c = new Color(0.1f, 0.08f, 0.06f);       // 검은 파편
+                else if (i < debrisCount / 2)
+                    c = new Color(0.35f, 0.25f, 0.15f);      // 갈색 파편
+                else if (i < debrisCount * 3 / 4)
+                    c = new Color(0.6f, 0.5f, 0.3f);         // 밝은 파편
+                else
+                    c = new Color(1f, 0.7f, 0.2f, 0.8f);     // 불꽃 조각
+
+                float size = Random.Range(0.015f, 0.05f) * intensity;
+                var obj = P(position, c, size, 62);
                 var rb = obj.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
-                rb.linearDamping = 3.5f;
-                rb.linearVelocity = Random.insideUnitCircle * Random.Range(3f, 7f);
+                rb.linearDamping = 1.5f;
+                rb.linearVelocity = dir * Random.Range(3f, 18f) * intensity;
                 obj.AddComponent<FadeAndShrink>();
-                Object.Destroy(obj, Random.Range(0.2f, 0.45f));
+                Object.Destroy(obj, Random.Range(0.3f, 0.9f));
             }
 
-            // [5] 연기 (2개)
-            for (int i = 0; i < 2; i++)
+            // [5] 연기/먼지 구름 — 크고 어둡게
+            int dustCount = (int)(6 * intensity);
+            for (int i = 0; i < dustCount; i++)
             {
-                var smoke = P(position + (Vector3)(Random.insideUnitCircle * 0.05f),
-                    new Color(0.2f, 0.2f, 0.18f, 0.3f), Random.Range(0.1f, 0.18f), 54);
-                var rb = smoke.AddComponent<Rigidbody2D>();
+                Vector2 dustDir = Random.insideUnitCircle;
+                float dustSize = Random.Range(0.2f, 0.5f) * intensity;
+
+                Color dustColor;
+                if (i < dustCount / 3)
+                    dustColor = new Color(0.12f, 0.1f, 0.08f, 0.5f);   // 검은 연기
+                else if (i < dustCount * 2 / 3)
+                    dustColor = new Color(0.3f, 0.25f, 0.2f, 0.4f);    // 갈색 연기
+                else
+                    dustColor = new Color(0.45f, 0.4f, 0.35f, 0.3f);   // 밝은 먼지
+
+                var dust = P(position + (Vector3)(Random.insideUnitCircle * 0.2f),
+                    dustColor, dustSize, 55);
+                var rb = dust.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
-                rb.linearDamping = 1.5f;
-                rb.linearVelocity = Vector2.up * Random.Range(0.3f, 0.8f);
-                smoke.AddComponent<FadeAndShrink>();
-                Object.Destroy(smoke, Random.Range(0.4f, 0.7f));
+                rb.linearDamping = 0.8f;
+                rb.linearVelocity = dustDir * Random.Range(0.5f, 2.5f) * intensity;
+                dust.AddComponent<FadeAndShrink>();
+                Object.Destroy(dust, Random.Range(0.6f, 1.5f));
             }
+
+            // [6] 잔광(afterglow) — 서서히 사라지는 주황 원
+            var afterglow = P(position, new Color(1f, 0.4f, 0.1f, 0.4f), 0.5f * intensity, 56);
+            afterglow.AddComponent<FadeAndShrink>();
+            Object.Destroy(afterglow, 0.8f);
+        }
+
+        // 선형 불꽃 줄기 스프라이트 (가로로 긴 선)
+        private static Sprite _cachedStreak;
+        private static Sprite GetStreakSprite()
+        {
+            if (_cachedStreak != null) return _cachedStreak;
+            int w = 16, h = 2;
+            var tex = new Texture2D(w, h);
+            tex.filterMode = FilterMode.Point;
+            var px = new Color[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float t = (float)x / w;
+                    px[y * w + x] = new Color(1f, 1f, 1f, t); // 꼬리 투명 → 선두 불투명
+                }
+            tex.SetPixels(px); tex.Apply();
+            _cachedStreak = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0f, 0.5f), w);
+            return _cachedStreak;
         }
 
         private static Sprite[] GetHitFrames()
@@ -271,45 +371,10 @@ namespace Crux.Combat
             return _hitFrames;
         }
 
-        // ===== 관통 — 대화염 =====
-        private static void SpawnPenetration(Vector3 position)
+        // ===== 관통 — Hit VFX 확대 + 추가 파티클 =====
+        private static void SpawnPenetration(Vector3 position, Vector2 shellDir)
         {
-            var flash = P(position, new Color(1f, 1f, 0.9f, 1f), 0.4f, 70);
-            Object.Destroy(flash, 0.05f);
-
-            var fire1 = P(position, new Color(1f, 0.8f, 0.3f, 1f), 0.35f, 68);
-            fire1.AddComponent<FadeAndShrink>();
-            Object.Destroy(fire1, 0.15f);
-
-            var fire2 = P(position, new Color(0.8f, 0.2f, 0.05f, 0.7f), 0.25f, 66);
-            fire2.AddComponent<FadeAndShrink>();
-            Object.Destroy(fire2, 0.35f);
-
-            // 파편 (6개)
-            for (int i = 0; i < 6; i++)
-            {
-                Color c = i < 3 ? new Color(1f, 0.5f, 0.1f) : new Color(0.3f, 0.25f, 0.18f);
-                var obj = P(position, c, Random.Range(0.03f, 0.08f), 63);
-                var rb = obj.AddComponent<Rigidbody2D>();
-                rb.gravityScale = 0f;
-                rb.linearDamping = 2.5f;
-                rb.linearVelocity = Random.insideUnitCircle * Random.Range(3f, 7f);
-                obj.AddComponent<FadeAndShrink>();
-                Object.Destroy(obj, Random.Range(0.3f, 0.5f));
-            }
-
-            // 연기 (2개)
-            for (int i = 0; i < 2; i++)
-            {
-                var smoke = P(position, new Color(0.1f, 0.1f, 0.08f, 0.4f),
-                              Random.Range(0.15f, 0.25f), 53);
-                var rb = smoke.AddComponent<Rigidbody2D>();
-                rb.gravityScale = 0f;
-                rb.linearDamping = 1.5f;
-                rb.linearVelocity = Vector2.up * Random.Range(0.3f, 1f);
-                smoke.AddComponent<FadeAndShrink>();
-                Object.Destroy(smoke, Random.Range(0.5f, 1f));
-            }
+            SpawnImpact(position, shellDir, 1.6f);
         }
 
         // ===== 엄폐물 피격 — 콘크리트/돌 파편 =====

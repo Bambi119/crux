@@ -9,6 +9,8 @@ namespace Crux.Data
         [Header("기본 정보")]
         public string mgName;
         public WeaponType type = WeaponType.CoaxialMG;
+        [Tooltip("기관총 구경 (mm)")]
+        public float caliber = 7.92f;
 
         [Header("성능")]
         [Tooltip("1회 공격 시 발사 횟수 (2~12)")]

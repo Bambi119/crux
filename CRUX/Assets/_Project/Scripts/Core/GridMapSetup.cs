@@ -206,6 +206,10 @@ namespace Crux.Core
             var overlay = obj.AddComponent<UnitStatusOverlay>();
             overlay.Initialize(unit);
 
+            // 화염 오버레이
+            var fireOverlay = obj.AddComponent<FireOverlay>();
+            fireOverlay.Initialize(unit);
+
             return unit;
         }
     }

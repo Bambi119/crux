@@ -53,6 +53,11 @@ namespace Crux.Core
         public float hullAngle;
         public bool isDestroyed;
         public Unit.ModuleSaveData[] moduleSaves;
+        public bool isOnFire;
+        public int remainingSmokeCharges;
+        public int mainGunAmmoCount;
+        public int mgAmmoLoaded;
+        public int mgAmmoTotal;
     }
 
     [System.Serializable]
@@ -65,6 +70,9 @@ namespace Crux.Core
 
         // 엄폐물 HP
         public float[] coverHPs;
+
+        // 연막 셀 상태
+        public int[] smokeTurns; // 전체 셀 순회, 연막 잔여 턴
 
         // 적 턴 중 사격 시 — 다음에 행동할 적 인덱스
         public int nextEnemyIndex;
@@ -115,9 +123,11 @@ namespace Crux.Core
 
         // 사전 계산된 결과 (주포용)
         public ShotResult result;
+        public Unit.DamageOutcome mainOutcome; // 주포 데미지 사전 롤 (격파/화재/모듈/유폭)
 
         // 기관총 결과 (버스트)
         public ShotResult[] mgResults;
+        public Unit.DamageOutcome mgAggregateOutcome; // 기총 전체 사전 롤 (격파/화재/모듈/유폭)
 
         // 대상 유닛 참조 (씬 복귀 후 데미지 적용)
         // 주의: 씬 전환 시 GameObject는 파괴되므로 인덱스로 참조

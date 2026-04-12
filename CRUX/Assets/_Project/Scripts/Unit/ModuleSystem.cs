@@ -97,6 +97,20 @@ namespace Crux.Unit
         public float currentHP;
     }
 
+    /// <summary>사격 결과 후 상태이상/모듈/격파 사전 결정값</summary>
+    [System.Serializable]
+    public struct DamageOutcome
+    {
+        public bool killed;              // HP 0이 됨 (피해로 인한 격파)
+        public bool ammoExploded;        // 탄약고 유폭 → 격파 보장
+        public bool fireStarted;         // 화재 발생
+        public bool moduleHit;           // 모듈 피격 발생
+        public ModuleType damagedModule; // 피격된 모듈
+        public ModuleState newState;     // 새 상태 (롤 결과)
+        public float moduleDamageDealt;  // 적용될 모듈 데미지
+        public bool stateChanged;        // 상태 변화 여부 (표시용)
+    }
+
     /// <summary>모듈 매니저 — 전차 유닛에 부착, 패널티 계산 API 제공</summary>
     public class ModuleManager
     {
@@ -117,40 +131,66 @@ namespace Crux.Unit
             modules[ModuleType.TurretRing]       = new TankModule(ModuleType.TurretRing, hp.turretRing);
         }
 
-        public TankModule Get(ModuleType type) => modules.TryGetValue(type, out var m) ? m : null;
+        private static readonly TankModule _dummyModule = new TankModule(ModuleType.Engine, 100f);
+
+        public TankModule Get(ModuleType type) => modules.TryGetValue(type, out var m) ? m : _dummyModule;
 
         // ===== 모듈 피격 — HitZone 기반 확률 분배 =====
 
-        /// <summary>HitZone에 따라 가중 랜덤으로 모듈 선택 후 데미지 적용. 유폭이면 true 반환</summary>
+        /// <summary>HitZone에 따라 가중 랜덤으로 모듈 선택 후 데미지 적용. 유폭이면 true 반환 (즉시 적용)</summary>
         public bool DamageRandomModule(float damage, HitZone zone, string unitName)
         {
+            var outcome = RollModuleHit(damage, zone);
+            ApplyModuleHit(outcome, unitName);
+            return outcome.ammoExploded;
+        }
+
+        /// <summary>모듈 피격 사전 롤 — 실제 데미지는 적용하지 않음, 상태 예측만 계산</summary>
+        public DamageOutcome RollModuleHit(float damage, HitZone zone)
+        {
+            var result = new DamageOutcome { moduleHit = true, moduleDamageDealt = damage };
             var weights = GetModuleWeights(zone);
             var target = WeightedRandom(weights);
 
             var module = modules[target];
-            var prevState = module.state;
-            var newState = module.TakeDamage(damage);
+            result.damagedModule = target;
 
-            if (prevState != newState)
+            // 현재 HP 기준으로 새 상태 예측 (실제 적용 없이)
+            float predictedHP = module.currentHP - damage;
+            ModuleState predicted = module.state;
+            if (module.state != ModuleState.Destroyed)
             {
-                string stateStr = newState switch
+                if (predictedHP <= 0) predicted = ModuleState.Destroyed;
+                else if (module.maxHP > 0)
                 {
-                    ModuleState.Damaged => "손상",
-                    ModuleState.Broken => "고장",
-                    ModuleState.Destroyed => "완파",
-                    _ => ""
-                };
-                Debug.Log($"[CRUX] {unitName} [{GetModuleName(target)}] {stateStr}! (HP: {module.currentHP:F0}/{module.maxHP:F0})");
+                    float ratio = predictedHP / module.maxHP;
+                    if (ratio <= 0.25f) predicted = ModuleState.Broken;
+                    else if (ratio <= 0.5f) predicted = ModuleState.Damaged;
+                }
             }
+            result.newState = predicted;
+            result.stateChanged = predicted != module.state;
 
-            // 탄약고 완파 → 유폭
-            if (target == ModuleType.AmmoRack && newState == ModuleState.Destroyed)
+            // 탄약고 완파 → 유폭 예약
+            if (target == ModuleType.AmmoRack && predicted == ModuleState.Destroyed)
+                result.ammoExploded = true;
+
+            return result;
+        }
+
+        /// <summary>사전 롤된 모듈 피격 적용</summary>
+        public void ApplyModuleHit(DamageOutcome outcome, string unitName)
+        {
+            if (!outcome.moduleHit) return;
+            var module = modules[outcome.damagedModule];
+            module.TakeDamage(outcome.moduleDamageDealt);
+            if (outcome.stateChanged)
             {
-                Debug.Log($"[CRUX] {unitName} 탄약고 유폭!!");
-                return true;
+                string stateStr = GetStateName(outcome.newState);
+                Debug.Log($"[CRUX] {unitName} [{GetModuleName(outcome.damagedModule)}] {stateStr}! (HP: {module.currentHP:F0}/{module.maxHP:F0})");
             }
-
-            return false;
+            if (outcome.ammoExploded)
+                Debug.Log($"[CRUX] {unitName} 탄약고 유폭!!");
         }
 
         private Dictionary<ModuleType, float> GetModuleWeights(HitZone zone)
