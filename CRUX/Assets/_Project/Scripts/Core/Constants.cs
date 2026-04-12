@@ -21,13 +21,34 @@ namespace Crux.Core
             float rad = compass * Mathf.Deg2Rad;
             return new Vector2(Mathf.Sin(rad), Mathf.Cos(rad));
         }
+
+        /// <summary>임의 나침반 각도를 가장 가까운 60° 배수로 스냅</summary>
+        public static float SnapTo60(float compass)
+        {
+            float a = ((compass % 360f) + 360f) % 360f;
+            int idx = Mathf.RoundToInt(a / 60f) % 6;
+            return idx * 60f;
+        }
     }
 
     /// <summary>진영</summary>
     public enum PlayerSide { Player, Enemy }
 
-    /// <summary>피격 부위</summary>
-    public enum HitZone { Front, Side, Rear, Turret }
+    /// <summary>피격 부위 — 차체 6섹터 + 포탑</summary>
+    /// <remarks>
+    /// Front = 0° ± 30°, FrontRight = 60° ± 30°, RearRight = 120° ± 30°,
+    /// Rear = 180° ± 30°, RearLeft = 240° ± 30°, FrontLeft = 300° ± 30°
+    /// </remarks>
+    public enum HitZone
+    {
+        Front,      // 전면
+        FrontRight, // 우전
+        RearRight,  // 우후
+        Rear,       // 후면
+        RearLeft,   // 좌후
+        FrontLeft,  // 좌전
+        Turret      // 포탑 (별도 판정)
+    }
 
     /// <summary>탄종</summary>
     public enum AmmoType { AP, HE, HEAT, APCR }

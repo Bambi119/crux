@@ -3,7 +3,7 @@ using Crux.Core;
 
 namespace Crux.Grid
 {
-    /// <summary>그리드 셀 하나의 데이터</summary>
+    /// <summary>그리드 셀 하나의 데이터 (육각 — odd-q offset)</summary>
     public class GridCell
     {
         public Vector2Int Position { get; private set; }
@@ -15,9 +15,6 @@ namespace Crux.Grid
 
         /// <summary>이 셀의 엄폐물 (없으면 null)</summary>
         public GridCoverObject Cover { get; set; }
-
-        /// <summary>엄폐물 방호 방향 (나침반 각도, 이 방향에서 오는 공격을 막음)</summary>
-        public float CoverDirection { get; set; }
 
         /// <summary>엄폐물이 있어도 통행 가능 — 유닛이 올라가서 엄폐 효과를 받음</summary>
         public bool IsWalkable => Type != CellType.Impassable && Occupant == null;

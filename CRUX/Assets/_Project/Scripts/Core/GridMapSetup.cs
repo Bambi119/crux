@@ -4,6 +4,7 @@ using Crux.Core;
 using Crux.Grid;
 using Crux.Unit;
 using Crux.Data;
+// HexFacet은 Crux.Grid에 정의됨
 
 namespace Crux.Core
 {
@@ -93,19 +94,19 @@ namespace Crux.Core
 
         private void SpawnCovers()
         {
-            // 엄폐물 배치 데이터: (위치, 이름, 크기, HP, 엄폐율, 커버범위, 방호방향)
-            // coverDir: 이 방향에서 오는 공격을 막음 (나침반: 0°=북)
-            var coverDefs = new (Vector2Int pos, string name, CoverSize size, float hp, float rate, float arc, float coverDir)[]
+            // 엄폐물 배치 데이터: (위치, 이름, 크기, HP, 엄폐율, 방호면)
+            // facets: 막아주는 변의 비트 플래그 (그 방향에서 오는 공격을 막음)
+            var coverDefs = new (Vector2Int pos, string name, CoverSize size, float hp, float rate, HexFacet facets)[]
             {
-                // 전장 전방(북쪽) — 플레이어 진영 앞 엄폐물, 북쪽에서 오는 공격을 막음
-                (new(3, 3), "잔해 더미",   CoverSize.Small,  40f,  0.4f,  90f,  0f),
-                (new(5, 3), "잔해 더미",   CoverSize.Small,  40f,  0.4f,  90f,  0f),
-                // 전장 중간
-                (new(1, 5), "콘크리트 벽", CoverSize.Medium, 80f,  0.65f, 135f, 0f),
-                (new(6, 5), "콘크리트 벽", CoverSize.Medium, 80f,  0.65f, 135f, 0f),
-                // 적 진영 앞 — 남쪽에서 오는 공격을 막음
-                (new(3, 6), "강화 장벽",   CoverSize.Large,  120f, 0.9f,  180f, 180f),
-                (new(5, 6), "강화 장벽",   CoverSize.Large,  120f, 0.9f,  180f, 180f),
+                // 플레이어 진영 앞 (전방 3행 부근) — 북쪽에서 오는 공격 차단
+                (new(3, 3), "잔해 더미",   CoverSize.Small,  40f,  0.4f,  HexFacet.N),
+                (new(5, 3), "잔해 더미",   CoverSize.Small,  40f,  0.4f,  HexFacet.N),
+                // 전장 중간 — 북쪽 + 대각 2면 (넓은 방호)
+                (new(1, 5), "콘크리트 벽", CoverSize.Medium, 80f,  0.65f, HexFacet.N | HexFacet.NE | HexFacet.NW),
+                (new(6, 5), "콘크리트 벽", CoverSize.Medium, 80f,  0.65f, HexFacet.N | HexFacet.NE | HexFacet.NW),
+                // 적 진영 앞 (6행) — 남쪽에서 오는 공격(플레이어 쪽)을 차단, 3면
+                (new(3, 6), "강화 장벽",   CoverSize.Large,  120f, 0.9f,  HexFacet.S | HexFacet.SE | HexFacet.SW),
+                (new(5, 6), "강화 장벽",   CoverSize.Large,  120f, 0.9f,  HexFacet.S | HexFacet.SE | HexFacet.SW),
             };
 
             foreach (var def in coverDefs)
@@ -114,24 +115,20 @@ namespace Crux.Core
                 obj.transform.position = grid.GridToWorld(def.pos);
 
                 var sr = obj.AddComponent<SpriteRenderer>();
-                // 테두리 스타일 타일 — 방호 방향에 벽 장식
-                sr.sprite = TankSpriteGenerator.CreateCoverTile(def.size, def.coverDir);
+                sr.sprite = TankSpriteGenerator.CreateCoverTile(def.size, def.facets);
                 sr.sortingOrder = 2;
                 obj.transform.localScale = Vector3.one * GameConstants.CellSize;
 
-                // GridCoverObject 부착
                 var coverObj = obj.AddComponent<GridCoverObject>();
-                coverObj.Initialize(def.name, def.size, def.hp, def.rate, def.arc, sr.sprite);
+                coverObj.Initialize(def.name, def.size, def.hp, def.rate, def.facets, sr.sprite);
 
                 var cell = grid.GetCell(def.pos);
                 if (cell != null)
                 {
                     cell.Type = CellType.Cover;
                     cell.Cover = coverObj;
-                    cell.CoverDirection = def.coverDir;
                 }
 
-                // 파괴 시 셀 상태 변경
                 var capturedPos = def.pos;
                 coverObj.OnDestroyed += (destroyed) =>
                 {

@@ -561,14 +561,16 @@ namespace Crux.Cinematic
             if (attackerTurret != null)
                 attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(myAngle));
 
-            // 대상 엄폐물
+            // 대상 엄폐물 — 공격자 방향을 향하는 1면 방호 표시 (시각용)
             if (data.targetInCover || data.targetCoverHit)
             {
                 var coverObj = new GameObject("TargetCoverVisual");
                 coverObj.transform.position = enemyPos;
                 var cvSr = coverObj.AddComponent<SpriteRenderer>();
-                float incDir = AngleUtil.FromDir(((Vector2)(tankStart - enemyPos)).normalized);
-                cvSr.sprite = TankSpriteGenerator.CreateCoverTile(data.targetCoverSize, incDir);
+                // 공격이 오는 방향(공격자→대상 반대)에 가장 가까운 HexDir를 방호면으로
+                var incomingDir = Crux.Grid.HexCoord.NearestDir(((Vector2)(tankStart - enemyPos)).normalized);
+                var facetFlag = (Crux.Grid.HexFacet)(1 << (int)incomingDir);
+                cvSr.sprite = TankSpriteGenerator.CreateCoverTile(data.targetCoverSize, facetFlag);
                 cvSr.sortingOrder = 3;
                 coverObj.transform.localScale = Vector3.one * 1.5f;
             }

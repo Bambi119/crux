@@ -7,31 +7,40 @@ namespace Crux.Combat
     /// <summary>관통/도탄 판정 — 순수 로직 (MonoBehaviour 비의존)</summary>
     public static class PenetrationCalculator
     {
-        /// <summary>피격 부위 판별 (공격자 위치, 대상 위치, 대상 차체 각도)</summary>
+        /// <summary>피격 부위 판별 — 차체 6섹터 (60° 단위)</summary>
+        /// <remarks>
+        /// 공격이 "오는" 방향(공격자→대상)을 차체 로컬 각도로 변환:
+        /// 전면 0° 기준 ±30°, 60° 단위로 6구역.
+        /// </remarks>
         public static HitZone DetermineHitZone(Vector2 attackerPos, Vector2 targetPos, float targetHullAngle)
         {
-            Vector2 attackDir = (targetPos - attackerPos).normalized;
-            float attackAngle = AngleUtil.FromDir(attackDir);
+            // 공격이 들어오는 방향 = 대상 → 공격자
+            Vector2 incoming = (attackerPos - targetPos).normalized;
+            float incomingAngle = AngleUtil.FromDir(incoming);
 
-            // 공격 방향과 차체 전면 방향의 각도 차
-            float angleDiff = Mathf.Abs(Mathf.DeltaAngle(attackAngle, targetHullAngle + 180f));
+            // 차체 전면 기준 상대 각도 (0°=정면, +CW)
+            float rel = Mathf.DeltaAngle(targetHullAngle, incomingAngle);
+            // [-180, 180] → [0, 360)
+            if (rel < 0) rel += 360f;
 
-            if (angleDiff <= 45f) return HitZone.Front;
-            if (angleDiff >= 135f) return HitZone.Rear;
-            return HitZone.Side;
+            // 60° 단위 섹터 (0° ± 30° = Front, 60° ± 30° = FrontRight, ...)
+            int sector = Mathf.FloorToInt((rel + 30f) / 60f) % 6;
+            return sector switch
+            {
+                0 => HitZone.Front,
+                1 => HitZone.FrontRight,
+                2 => HitZone.RearRight,
+                3 => HitZone.Rear,
+                4 => HitZone.RearLeft,
+                5 => HitZone.FrontLeft,
+                _ => HitZone.Front
+            };
         }
 
-        /// <summary>피격 부위의 기본 장갑 두께 반환</summary>
+        /// <summary>피격 부위의 기본 장갑 두께 반환 — 6섹터 지원</summary>
         public static float GetBaseArmor(ArmorProfile armor, HitZone zone)
         {
-            return zone switch
-            {
-                HitZone.Front => armor.front,
-                HitZone.Side => armor.side,
-                HitZone.Rear => armor.rear,
-                HitZone.Turret => armor.turret,
-                _ => armor.front
-            };
+            return armor.GetArmor(zone);
         }
 
         /// <summary>입사각 계산 (포탄 방향 vs 장갑면 법선)</summary>
@@ -41,19 +50,22 @@ namespace Crux.Combat
             return Mathf.Acos(Mathf.Abs(dot)) * Mathf.Rad2Deg;
         }
 
-        /// <summary>피격 부위의 장갑면 법선 벡터 (나침반 각도 기준)</summary>
+        /// <summary>피격 부위의 장갑면 법선 벡터 — 6섹터별 60° 단위 회전</summary>
         public static Vector2 GetArmorNormal(float targetHullAngle, HitZone zone)
         {
-            // 차체 전면 법선 = 차체 전방 방향
-            Vector2 forward = AngleUtil.ToDir(targetHullAngle);
-            return zone switch
+            // 차체 전면 = 0°, 각 섹터 중심이 60° 간격
+            float sectorOffset = zone switch
             {
-                HitZone.Front => forward,
-                HitZone.Rear => -forward,
-                HitZone.Side => new Vector2(-forward.y, forward.x), // 우측면 법선
-                HitZone.Turret => forward,
-                _ => forward
+                HitZone.Front => 0f,
+                HitZone.FrontRight => 60f,
+                HitZone.RearRight => 120f,
+                HitZone.Rear => 180f,
+                HitZone.RearLeft => 240f,
+                HitZone.FrontLeft => 300f,
+                HitZone.Turret => 0f,
+                _ => 0f
             };
+            return AngleUtil.ToDir(targetHullAngle + sectorOffset);
         }
 
         /// <summary>공격자/대상 위치와 대상 차체 각도로 실제 입사각 계산</summary>

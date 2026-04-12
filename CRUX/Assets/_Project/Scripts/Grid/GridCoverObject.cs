@@ -4,7 +4,7 @@ using Crux.Combat;
 
 namespace Crux.Grid
 {
-    /// <summary>엄폐물 — 엄폐율/내구력/커버 범위, 파괴 시 파편화</summary>
+    /// <summary>엄폐물 — 6면 방호 슬롯, 내구력, 파괴 시 파편화</summary>
     public class GridCoverObject : MonoBehaviour
     {
         [Header("설정")]
@@ -12,7 +12,9 @@ namespace Crux.Grid
         public CoverSize size = CoverSize.Medium;
         public float maxHP = 80f;
         public float maxCoverRate = 0.65f;
-        public float maxCoverArc = 135f; // 커버 범위 (도)
+
+        /// <summary>완전 상태(HP 100%)에서 방호하는 방향 슬롯 (비트 플래그)</summary>
+        public HexFacet protectedFacets = HexFacet.None;
 
         private float currentHP;
         private SpriteRenderer sr;
@@ -22,6 +24,7 @@ namespace Crux.Grid
         // ===== 프로퍼티 =====
         public float CurrentHP => currentHP;
         public bool IsDestroyed => isDestroyed;
+        public float HPRatio => isDestroyed ? 0f : currentHP / maxHP;
 
         /// <summary>현재 엄폐율 — HP에 비례하여 감소</summary>
         public float CoverRate
@@ -29,38 +32,47 @@ namespace Crux.Grid
             get
             {
                 if (isDestroyed) return 0f;
-                float hpRatio = currentHP / maxHP;
-                return maxCoverRate * hpRatio;
+                return maxCoverRate * HPRatio;
             }
         }
 
-        /// <summary>현재 커버 범위 (도) — HP 50% 이하에서 감소 시작, 최소 45°</summary>
-        public float CoverArc
+        /// <summary>현재 유효 방호면 — HP 비율에 따라 슬롯이 순차 소실</summary>
+        /// <remarks>
+        /// HP 100~66%: 원본 전체 슬롯
+        /// HP 66~33%: 슬롯 1개 제거 (가장 마지막 비트부터)
+        /// HP 33~0%:  슬롯 2개 제거
+        /// </remarks>
+        public HexFacet CurrentFacets
         {
             get
             {
-                if (isDestroyed) return 0f;
-                float hpRatio = currentHP / maxHP;
-                if (hpRatio >= 0.5f) return maxCoverArc;
-                // 50%→0%: maxCoverArc → 45°
-                float t = hpRatio / 0.5f; // 0~1
-                return Mathf.Lerp(45f, maxCoverArc, t);
+                if (isDestroyed) return HexFacet.None;
+                float ratio = HPRatio;
+                int drop = ratio > 2f / 3f ? 0 : ratio > 1f / 3f ? 1 : 2;
+                if (drop == 0) return protectedFacets;
+
+                // 비트 제거 — 가장 낮은 비트부터 제거 (N, NE, SE, S, SW, NW 순)
+                int bits = (int)protectedFacets;
+                for (int i = 0; i < drop && bits != 0; i++)
+                {
+                    // 가장 낮은 set bit 하나 제거
+                    bits &= bits - 1;
+                }
+                return (HexFacet)bits;
             }
         }
 
-        /// <summary>HP 비율</summary>
-        public float HPRatio => isDestroyed ? 0f : currentHP / maxHP;
-
         public System.Action<GridCoverObject> OnDestroyed;
 
-        public void Initialize(string name, CoverSize coverSize, float hp, float coverRate, float arc, Sprite sprite)
+        public void Initialize(string name, CoverSize coverSize, float hp, float coverRate,
+                                HexFacet facets, Sprite sprite)
         {
             coverName = name;
             size = coverSize;
             maxHP = hp;
             currentHP = hp;
             maxCoverRate = coverRate;
-            maxCoverArc = arc;
+            protectedFacets = facets;
             intactSprite = sprite;
 
             sr = GetComponent<SpriteRenderer>();
@@ -68,20 +80,18 @@ namespace Crux.Grid
                 sr.sprite = sprite;
         }
 
-        /// <summary>사격 방향이 커버 범위 안에 있는지 판정</summary>
-        /// <param name="coverDirection">유닛→엄폐물 방향 (나침반 각도)</param>
-        /// <param name="attackAngle">공격자→대상 방향 (나침반 각도)</param>
-        public bool IsCovered(float coverDirection, float attackAngle)
+        /// <summary>공격 방향이 현재 방호면 슬롯에 포함되는지 판정</summary>
+        /// <param name="attackDir">공격자→대상 방향을 6방향으로 스냅한 HexDir</param>
+        public bool IsCovered(HexCoord.HexDir attackDir)
         {
             if (isDestroyed) return false;
-
-            // attackAngle = 공격자→대상 방향
-            // 공격이 "오는" 방향 = attackAngle + 180° (반대)
-            // 엄폐물이 이 방향에 있으면 막아줌
-            float incomingAngle = attackAngle + 180f;
-            float diff = Mathf.DeltaAngle(incomingAngle, coverDirection);
-            return Mathf.Abs(diff) <= CoverArc * 0.5f;
+            // 공격이 "오는" 방향 = attackDir의 반대
+            var incoming = OppositeDir(attackDir);
+            return CurrentFacets.Contains(incoming);
         }
+
+        public static HexCoord.HexDir OppositeDir(HexCoord.HexDir dir) =>
+            (HexCoord.HexDir)(((int)dir + 3) % HexCoord.DirCount);
 
         /// <summary>엄폐물이 피격당함 — 데미지 적용</summary>
         public void TakeDamage(float damage)
@@ -97,21 +107,17 @@ namespace Crux.Grid
 
                 if (ratio > 0.5f)
                 {
-                    // 정상 — 약간 어두워짐
                     sr.color = Color.Lerp(new Color(0.7f, 0.65f, 0.55f), Color.white, (ratio - 0.5f) * 2f);
                 }
                 else if (ratio > 0.25f)
                 {
-                    // 균열 — 갈색 톤
                     sr.color = Color.Lerp(new Color(0.5f, 0.4f, 0.3f), new Color(0.7f, 0.65f, 0.55f), (ratio - 0.25f) * 4f);
                 }
                 else
                 {
-                    // 심한 파손 — 어두운 갈색
                     sr.color = Color.Lerp(new Color(0.3f, 0.25f, 0.2f), new Color(0.5f, 0.4f, 0.3f), ratio * 4f);
                 }
 
-                // 크기 감소 (기본 스케일 기준)
                 float baseScale = size switch
                 {
                     CoverSize.Small => 0.5f,
@@ -130,24 +136,16 @@ namespace Crux.Grid
             }
         }
 
-        /// <summary>엄폐물 파괴</summary>
         private void Destroy()
         {
             isDestroyed = true;
-
-            // 파편 이펙트
             SpawnDebris();
-
-            // 스프라이트를 파편 이미지로 변경
             if (sr != null)
             {
                 sr.color = new Color(0.3f, 0.25f, 0.2f, 0.4f);
                 transform.localScale = Vector3.one * 0.3f;
             }
-
-            // 셀 타입 변경 (통과 가능)
             OnDestroyed?.Invoke(this);
-
             Debug.Log($"[CRUX] {coverName} ({size}) 파괴!");
         }
 

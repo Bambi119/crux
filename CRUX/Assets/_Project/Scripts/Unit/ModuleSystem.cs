@@ -211,17 +211,48 @@ namespace Crux.Unit
                     w[ModuleType.CaterpillarRight] = eq;
                     break;
 
-                case HitZone.Side:
-                    // TODO: 좌/우 판정 (현재는 랜덤)
-                    bool leftSide = Random.value < 0.5f;
-                    w[leftSide ? ModuleType.CaterpillarLeft : ModuleType.CaterpillarRight] = 30f;
-                    w[ModuleType.Engine] = 20f;
+                case HitZone.FrontLeft:
+                    w[ModuleType.CaterpillarLeft] = 30f;
+                    w[ModuleType.Barrel] = 15f;
+                    w[ModuleType.Loader] = 15f;
+                    w[ModuleType.TurretRing] = 10f;
+                    w[ModuleType.Engine] = eq;
+                    w[ModuleType.MachineGun] = eq;
+                    w[ModuleType.AmmoRack] = eq;
+                    w[ModuleType.CaterpillarRight] = eq;
+                    break;
+
+                case HitZone.FrontRight:
+                    w[ModuleType.CaterpillarRight] = 30f;
+                    w[ModuleType.Barrel] = 15f;
+                    w[ModuleType.MachineGun] = 15f;
+                    w[ModuleType.TurretRing] = 10f;
+                    w[ModuleType.Engine] = eq;
+                    w[ModuleType.Loader] = eq;
+                    w[ModuleType.AmmoRack] = eq;
+                    w[ModuleType.CaterpillarLeft] = eq;
+                    break;
+
+                case HitZone.RearLeft:
+                    w[ModuleType.CaterpillarLeft] = 25f;
+                    w[ModuleType.Engine] = 25f;
                     w[ModuleType.AmmoRack] = 15f;
+                    w[ModuleType.Loader] = 10f;
+                    w[ModuleType.CaterpillarRight] = eq;
                     w[ModuleType.Barrel] = eq;
                     w[ModuleType.MachineGun] = eq;
+                    w[ModuleType.TurretRing] = eq;
+                    break;
+
+                case HitZone.RearRight:
+                    w[ModuleType.CaterpillarRight] = 25f;
+                    w[ModuleType.Engine] = 25f;
+                    w[ModuleType.AmmoRack] = 15f;
+                    w[ModuleType.MachineGun] = 10f;
+                    w[ModuleType.CaterpillarLeft] = eq;
+                    w[ModuleType.Barrel] = eq;
                     w[ModuleType.Loader] = eq;
                     w[ModuleType.TurretRing] = eq;
-                    w[leftSide ? ModuleType.CaterpillarRight : ModuleType.CaterpillarLeft] = eq;
                     break;
 
                 case HitZone.Rear:
@@ -240,7 +271,6 @@ namespace Crux.Unit
                     w[ModuleType.TurretRing] = 30f;
                     w[ModuleType.MachineGun] = 20f;
                     w[ModuleType.Loader] = 20f;
-                    // 차체 모듈은 터렛 피격 시 피해 없음
                     break;
 
                 default:

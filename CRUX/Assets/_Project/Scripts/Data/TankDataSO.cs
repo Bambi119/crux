@@ -62,10 +62,39 @@ namespace Crux.Data
     [System.Serializable]
     public struct ArmorProfile
     {
+        [Tooltip("전면 (0°)")]
         public float front;
+        [Tooltip("측면 평균 (FrontL/R, RearL/R 기본값) — 세분화 필요 시 아래 4개 필드 사용")]
         public float side;
+        [Tooltip("후면 (180°)")]
         public float rear;
+        [Tooltip("포탑")]
         public float turret;
+
+        [Header("6섹터 세분화 (선택 — 0이면 side/front 값 사용)")]
+        public float frontLeft;
+        public float frontRight;
+        public float rearLeft;
+        public float rearRight;
+
+        /// <summary>섹터별 장갑 값 조회 — 세분화 미설정 시 기본값(front/side/rear)으로 폴백</summary>
+        public float GetArmor(Crux.Core.HitZone zone)
+        {
+            float fb = front > 0 ? front : 80f;
+            float sb = side > 0 ? side : 40f;
+            float rb = rear > 0 ? rear : 30f;
+            return zone switch
+            {
+                Crux.Core.HitZone.Front => fb,
+                Crux.Core.HitZone.FrontLeft => frontLeft > 0 ? frontLeft : (fb + sb) * 0.5f,
+                Crux.Core.HitZone.FrontRight => frontRight > 0 ? frontRight : (fb + sb) * 0.5f,
+                Crux.Core.HitZone.RearLeft => rearLeft > 0 ? rearLeft : (rb + sb) * 0.5f,
+                Crux.Core.HitZone.RearRight => rearRight > 0 ? rearRight : (rb + sb) * 0.5f,
+                Crux.Core.HitZone.Rear => rb,
+                Crux.Core.HitZone.Turret => turret > 0 ? turret : 60f,
+                _ => sb
+            };
+        }
     }
 
     [System.Serializable]

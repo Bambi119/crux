@@ -245,11 +245,10 @@ namespace Crux.Core
                 if (cell != null && cell.HasCover && cell.Cover != null
                     && !cell.Cover.IsDestroyed)
                 {
-                    visualizer.ShowCoverArc(
+                    visualizer.ShowCoverFacets(
                         selectedUnit.GridPosition,
-                        cell.CoverDirection,
-                        cell.Cover.CoverArc,
-                        new Color(0.2f, 0.8f, 0.4f, 0.5f)); // 초록
+                        cell.Cover.CurrentFacets,
+                        new Color(0.2f, 0.8f, 0.4f, 0.8f));
                 }
             }
         }
@@ -417,32 +416,18 @@ namespace Crux.Core
                 return; // 무기 선택 중 다른 입력 차단
             }
 
-            // ===== 방향 선택 모드 =====
+            // ===== 방향 선택 모드 (6방향) =====
             if (inputMode == InputMode.MoveDirectionSelect)
             {
-                // WASD / 화살표: 방향 선택 (나침반: 0=북)
-                if (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow))
-                    pendingFacingAngle = 0f;
-                if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow))
-                    pendingFacingAngle = 90f;
-                if (Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow))
-                    pendingFacingAngle = 180f;
-                if (Input.GetKeyDown(KeyCode.A) || Input.GetKeyDown(KeyCode.LeftArrow))
-                    pendingFacingAngle = 270f;
-
-                // 대각선 (WASD 조합)
-                if (Input.GetKey(KeyCode.W) && Input.GetKeyDown(KeyCode.D)
-                    || Input.GetKey(KeyCode.UpArrow) && Input.GetKeyDown(KeyCode.RightArrow))
-                    pendingFacingAngle = 45f;
-                if (Input.GetKey(KeyCode.W) && Input.GetKeyDown(KeyCode.A)
-                    || Input.GetKey(KeyCode.UpArrow) && Input.GetKeyDown(KeyCode.LeftArrow))
-                    pendingFacingAngle = 315f;
-                if (Input.GetKey(KeyCode.S) && Input.GetKeyDown(KeyCode.D)
-                    || Input.GetKey(KeyCode.DownArrow) && Input.GetKeyDown(KeyCode.RightArrow))
-                    pendingFacingAngle = 135f;
-                if (Input.GetKey(KeyCode.S) && Input.GetKeyDown(KeyCode.A)
-                    || Input.GetKey(KeyCode.DownArrow) && Input.GetKeyDown(KeyCode.LeftArrow))
-                    pendingFacingAngle = 225f;
+                // 6방향 육각 매핑 (QWE 상단 + ASD 하단, 2행 키보드 레이아웃)
+                //   Q = NW (300°)   W = N  (0°)    E = NE (60°)
+                //   A = SW (240°)   S = S  (180°)  D = SE (120°)
+                if (Input.GetKeyDown(KeyCode.Q)) pendingFacingAngle = 300f;   // NW
+                if (Input.GetKeyDown(KeyCode.W)) pendingFacingAngle = 0f;     // N
+                if (Input.GetKeyDown(KeyCode.E)) pendingFacingAngle = 60f;    // NE
+                if (Input.GetKeyDown(KeyCode.A)) pendingFacingAngle = 240f;   // SW
+                if (Input.GetKeyDown(KeyCode.S)) pendingFacingAngle = 180f;   // S
+                if (Input.GetKeyDown(KeyCode.D)) pendingFacingAngle = 120f;   // SE
 
                 // Space / Enter: 방향 확정
                 if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))
@@ -453,7 +438,7 @@ namespace Crux.Core
                     return;
                 }
 
-                // 좌클릭: 클릭 방향으로 즉시 확정
+                // 좌클릭: 클릭 방향을 가장 가까운 6방향으로 스냅
                 if (Input.GetMouseButtonDown(0))
                 {
                     pendingFacingAngle = GetSnappedDirectionFromMouse(pendingMoveTarget);
@@ -665,7 +650,7 @@ namespace Crux.Core
             inspectedUnit = unit.side == PlayerSide.Player ? null : unit;
         }
 
-        /// <summary>마우스 클릭 위치에서 셀 기준 8방향 스냅 각도 계산</summary>
+        /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
         private float GetSnappedDirectionFromMouse(Vector2Int targetCell)
         {
             var clickWorld = mainCam.ScreenToWorldPoint(Input.mousePosition);
@@ -673,17 +658,11 @@ namespace Crux.Core
             var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
 
             if (diff.sqrMagnitude < 0.01f)
-                return pendingFacingAngle; // 셀 중심 클릭 시 현재 방향 유지
+                return pendingFacingAngle;
 
-            // atan2 → 나침반 각도 (0=북, 90=동)
-            float rad = Mathf.Atan2(diff.x, diff.y); // x,y 순서 → 북=0
-            float deg = rad * Mathf.Rad2Deg;
+            float deg = AngleUtil.FromDir(diff);
             if (deg < 0) deg += 360f;
-
-            // 45도 단위 스냅
-            float snapped = Mathf.Round(deg / 45f) * 45f;
-            if (snapped >= 360f) snapped = 0f;
-            return snapped;
+            return AngleUtil.SnapTo60(deg);
         }
 
         private void TryMoveToCell(Vector2Int pos)
@@ -735,11 +714,9 @@ namespace Crux.Core
             float coverDmgDealt = 0f;
             string hitCoverName = "";
 
-            // 대상 엄폐 여부 — 방향 기반 판정
+            // 대상 엄폐 여부 — 6방향 슬롯 판정
             var targetCellForCover = grid.GetCell(target.GridPosition);
-            float attackAngle = AngleUtil.FromDir(
-                new Vector2(target.GridPosition.x - attacker.GridPosition.x,
-                            target.GridPosition.y - attacker.GridPosition.y).normalized);
+            var attackHexDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
 
             bool targetInCover = false;
             string targetCoverNameForVisual = "";
@@ -748,9 +725,7 @@ namespace Crux.Core
                 && targetCellForCover.Cover != null
                 && !targetCellForCover.Cover.IsDestroyed)
             {
-                // 방향 판정: 공격 방향이 커버 범위 내인지
-                float coverDir = targetCellForCover.CoverDirection;
-                targetInCover = targetCellForCover.Cover.IsCovered(coverDir, attackAngle);
+                targetInCover = targetCellForCover.Cover.IsCovered(attackHexDir);
                 if (targetInCover)
                     targetCoverNameForVisual = targetCellForCover.Cover.coverName;
             }
@@ -788,7 +763,7 @@ namespace Crux.Core
                             hitChance = hitChance
                         };
 
-                        Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({coverRef.size}) HP: {coverRef.CurrentHP:F0}/{coverRef.maxHP:F0} 엄폐율: {coverRef.CoverRate:P0} 커버범위: {coverRef.CoverArc:F0}°");
+                        Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({coverRef.size}) HP: {coverRef.CurrentHP:F0}/{coverRef.maxHP:F0} 엄폐율: {coverRef.CoverRate:P0} 방호면: {coverRef.CurrentFacets}");
                     }
                 }
 
@@ -1024,17 +999,13 @@ namespace Crux.Core
             // 포신 손상 패널티
             chance -= attacker.Modules.GetAccuracyPenalty();
 
-            // 방향 기반 엄폐 보정
+            // 6방향 슬롯 엄폐 보정
             var targetCell = grid.GetCell(target.GridPosition);
             if (targetCell != null && targetCell.HasCover && targetCell.Cover != null
                 && !targetCell.Cover.IsDestroyed)
             {
-                float atkAngle = AngleUtil.FromDir(
-                    new Vector2(target.GridPosition.x - attacker.GridPosition.x,
-                                target.GridPosition.y - attacker.GridPosition.y).normalized);
-                float coverDir = targetCell.CoverDirection;
-
-                if (targetCell.Cover.IsCovered(coverDir, atkAngle))
+                var atkDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
+                if (targetCell.Cover.IsCovered(atkDir))
                     chance -= targetCell.Cover.CoverRate * 0.3f;
             }
 
@@ -1381,7 +1352,7 @@ namespace Crux.Core
                     CoverSize.Large => "대",
                     _ => ""
                 };
-                string dirs = GetCoverDirectionLabel(cell.CoverDirection, cov.CoverArc);
+                string dirs = GetFacetLabel(cov.CurrentFacets);
                 int hitPenalty = Mathf.RoundToInt(cov.CoverRate * 30f); // 명중률 보정치 %
                 coverStyle.normal.textColor = new Color(0.3f, 1f, 0.5f);
                 GUI.Label(new Rect(cx, cy, innerW, lineH),
@@ -1444,10 +1415,8 @@ namespace Crux.Core
             p.coverPenalty = 0f;
             if (tCell != null && tCell.HasCover && tCell.Cover != null && !tCell.Cover.IsDestroyed)
             {
-                float atkAngle = AngleUtil.FromDir(
-                    new Vector2(target.GridPosition.x - attacker.GridPosition.x,
-                                target.GridPosition.y - attacker.GridPosition.y).normalized);
-                if (tCell.Cover.IsCovered(tCell.CoverDirection, atkAngle))
+                var atkDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
+                if (tCell.Cover.IsCovered(atkDir))
                 {
                     p.coveredFromThisAngle = true;
                     p.coverPenalty = tCell.Cover.CoverRate * 0.3f;
@@ -1599,12 +1568,15 @@ namespace Crux.Core
             GUI.Label(new Rect(cx, cy, innerW, 18), brk, breakStyle);
             cy += 18;
 
-            // 피격 위치·장갑
+            // 피격 위치·장갑 (6섹터)
             string zoneLabel = p.hitZone switch
             {
                 HitZone.Front => "전면",
-                HitZone.Side => "측면",
+                HitZone.FrontRight => "우전",
+                HitZone.RearRight => "우후",
                 HitZone.Rear => "후면",
+                HitZone.RearLeft => "좌후",
+                HitZone.FrontLeft => "좌전",
                 HitZone.Turret => "포탑",
                 _ => ""
             };
@@ -1672,7 +1644,7 @@ namespace Crux.Core
                     CoverSize.Large => "대",
                     _ => ""
                 };
-                string dirs = GetCoverDirectionLabel(tc.CoverDirection, cv.CoverArc);
+                string dirs = GetFacetLabel(cv.CurrentFacets);
                 coverStyle.normal.textColor = new Color(0.4f, 1f, 0.5f);
                 GUI.Label(new Rect(cx, cy, innerW, lineH),
                     $"엄폐 {cv.coverName}({sz}) {dirs}  유효", coverStyle);
@@ -1713,21 +1685,13 @@ namespace Crux.Core
             };
         }
 
-        /// <summary>엄폐 방호 범위 → 북/동/남/서 중 포함된 방향 리스트</summary>
-        private static string GetCoverDirectionLabel(float coverDir, float arc)
+        /// <summary>6면 방호 플래그 → "북/북동/남동" 식 라벨</summary>
+        private static string GetFacetLabel(HexFacet facets)
         {
-            var compass = new (float deg, string name)[]
-            {
-                (0f, "북"), (90f, "동"), (180f, "남"), (270f, "서")
-            };
+            if (facets == HexFacet.None) return "—";
             var list = new List<string>();
-            float half = arc * 0.5f;
-            foreach (var (deg, name) in compass)
-            {
-                float diff = Mathf.Abs(Mathf.DeltaAngle(deg, coverDir));
-                if (diff <= half) list.Add(name);
-            }
-            if (list.Count == 0) return "—";
+            foreach (var d in facets.Enumerate())
+                list.Add(HexCoord.DirLabel(d));
             return string.Join("/", list);
         }
 
@@ -1775,23 +1739,22 @@ namespace Crux.Core
 
             GUI.Box(new Rect(px, py, panelW, panelH), "", box);
 
+            // 6방향 라벨 (60° 단위, QWE/ASD 매핑)
             string dirName = pendingFacingAngle switch
             {
-                0f => "↑ 북",
-                45f => "↗ 북동",
-                90f => "→ 동",
-                135f => "↘ 남동",
-                180f => "↓ 남",
-                225f => "↙ 남서",
-                270f => "← 서",
-                315f => "↖ 북서",
+                0f => "↑ 북 (W)",
+                60f => "↗ 북동 (E)",
+                120f => "↘ 남동 (D)",
+                180f => "↓ 남 (S)",
+                240f => "↙ 남서 (A)",
+                300f => "↖ 북서 (Q)",
                 _ => $"{pendingFacingAngle:F0}°"
             };
 
             GUI.Label(new Rect(px, py + 5, panelW, 22),
                 $"목적지: ({pendingMoveTarget.x},{pendingMoveTarget.y})  AP: {pendingMoveCost}", label);
             GUI.Label(new Rect(px, py + 30, panelW, 22),
-                $"방향: {dirName}  [WASD 변경]", label);
+                $"방향: {dirName}", label);
             var hintStyle = new GUIStyle(label);
             hintStyle.fontSize = 16;
             hintStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);

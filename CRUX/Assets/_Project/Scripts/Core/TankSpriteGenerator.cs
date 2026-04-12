@@ -331,30 +331,42 @@ namespace Crux.Core
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 12);
         }
 
-        // ===== 전술맵 타일 =====
+        // ===== 전술맵 타일 (육각) =====
 
-        /// <summary>바닥 타일 (16x16) — 격자 무늬 + 지형 색상</summary>
+        /// <summary>육각 바닥 타일 (flat-top, 32x32) — 내부 채움 + 테두리</summary>
         public static Sprite CreateFloorTile()
         {
-            int s = 16;
+            int s = 32;
             var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
             var px = new Color[s * s];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
 
-            Color floor = new Color(0.18f, 0.2f, 0.16f);       // 어두운 녹갈색
-            Color floorAlt = new Color(0.16f, 0.18f, 0.14f);   // 약간 다른 톤
-            Color edge = new Color(0.12f, 0.13f, 0.11f);       // 격자 테두리
+            Color floor = new Color(0.18f, 0.2f, 0.16f);
+            Color floorAlt = new Color(0.16f, 0.18f, 0.14f);
+            Color edge = new Color(0.35f, 0.36f, 0.32f);
+
+            float cx = (s - 1) * 0.5f;
+            float cy = (s - 1) * 0.5f;
+            // flat-top hex: 가로 반지름 = s/2, 세로 반지름 = s * sqrt(3)/4
+            float rx = s * 0.5f;
+            float ry = s * 0.433f; // sqrt(3)/4 ≈ 0.433
 
             for (int y = 0; y < s; y++)
             {
                 for (int x = 0; x < s; x++)
                 {
-                    if (x == 0 || y == 0)
-                        px[y * s + x] = edge;
-                    else if ((x + y) % 2 == 0)
-                        px[y * s + x] = floor;
-                    else
-                        px[y * s + x] = floorAlt;
+                    // 정규화 좌표
+                    float dx = Mathf.Abs(x - cx) / rx;
+                    float dy = Mathf.Abs(y - cy) / ry;
+                    // flat-top hex inside test: dx <= 1 && dy <= 1 && (2*dx + dy) <= 2
+                    bool inside = dx <= 1f && dy <= 1f && (2f * dx + dy) <= 2f;
+                    if (!inside) continue;
+
+                    // 테두리: 경계 근처
+                    bool isEdge = dx > 0.92f || dy > 0.92f || (2f * dx + dy) > 1.85f;
+                    if (isEdge) px[y * s + x] = edge;
+                    else px[y * s + x] = ((x + y) % 2 == 0) ? floor : floorAlt;
                 }
             }
 
@@ -362,93 +374,102 @@ namespace Crux.Core
             return Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
         }
 
-        /// <summary>엄폐물 테두리 타일 — 방호 방향 쪽에 벽 장식
-        /// coverDir: 나침반 각도 (0=북에서 오는 공격을 막음 → 북쪽 테두리에 벽)
-        /// size: Small/Medium/Large</summary>
-        public static Sprite CreateCoverTile(CoverSize size, float coverDir)
+        /// <summary>육각 엄폐물 타일 — 방호 방향 변(들)에 두꺼운 테두리</summary>
+        /// <remarks>HexFacet 플래그로 지정된 변에만 벽이 그려짐. 플랫탑 hex 6변:
+        /// N(상), NE(우상), SE(우하), S(하), SW(좌하), NW(좌상)</remarks>
+        public static Sprite CreateCoverTile(CoverSize size, Crux.Grid.HexFacet facets)
         {
-            int s = 16;
+            int s = 32;
             var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
             var px = new Color[s * s];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
 
-            // 바닥 기본 (약간 밝은 톤 — 엄폐 셀 표시)
+            // 바닥
             Color floor = new Color(0.2f, 0.22f, 0.18f);
-            for (int i = 0; i < px.Length; i++) px[i] = floor;
+            Color edge = new Color(0.35f, 0.36f, 0.32f);
 
-            // 벽 색상 — 크기별
+            // 벽 색상/두께
             Color wall = size switch
             {
-                CoverSize.Small  => new Color(0.5f, 0.45f, 0.35f),
-                CoverSize.Medium => new Color(0.45f, 0.4f, 0.35f),
-                CoverSize.Large  => new Color(0.38f, 0.35f, 0.3f),
-                _ => new Color(0.45f, 0.4f, 0.35f)
+                CoverSize.Small  => new Color(0.55f, 0.5f, 0.4f),
+                CoverSize.Medium => new Color(0.48f, 0.43f, 0.37f),
+                CoverSize.Large  => new Color(0.4f, 0.36f, 0.32f),
+                _ => new Color(0.48f, 0.43f, 0.37f)
             };
-            Color wallDark = wall * 0.7f; wallDark.a = 1f;
-            Color crack = wall * 0.55f; crack.a = 1f;
+            Color wallDark = wall * 0.65f; wallDark.a = 1f;
 
-            // 벽 두께 — 크기별
-            int thickness = size switch
+            float wallThickness = size switch
             {
-                CoverSize.Small => 2,
-                CoverSize.Medium => 3,
-                CoverSize.Large => 4,
-                _ => 3
+                CoverSize.Small => 0.12f,
+                CoverSize.Medium => 0.18f,
+                CoverSize.Large => 0.24f,
+                _ => 0.18f
             };
 
-            // 방호 방향 → 벽을 그릴 변(들)
-            // coverDir=0° → 북쪽 변, 90° → 동쪽 변, 180° → 남쪽 변, 270° → 서쪽 변
-            // Large(180°)는 전체 둘레의 절반을 커버하므로 3변
-            float halfArc = size switch
-            {
-                CoverSize.Small => 45f,
-                CoverSize.Medium => 67.5f,
-                CoverSize.Large => 90f,
-                _ => 67.5f
-            };
+            float cx = (s - 1) * 0.5f;
+            float cy = (s - 1) * 0.5f;
+            float rx = s * 0.5f;
+            float ry = s * 0.433f;
 
-            bool drawNorth = Mathf.Abs(Mathf.DeltaAngle(coverDir, 0f)) <= halfArc;
-            bool drawEast  = Mathf.Abs(Mathf.DeltaAngle(coverDir, 90f)) <= halfArc;
-            bool drawSouth = Mathf.Abs(Mathf.DeltaAngle(coverDir, 180f)) <= halfArc;
-            bool drawWest  = Mathf.Abs(Mathf.DeltaAngle(coverDir, 270f)) <= halfArc;
-
-            // 벽 그리기
+            // 각 픽셀에 대해: 1) hex 내부인가 2) 가장 가까운 변이 어느 facet인가
             for (int y = 0; y < s; y++)
             {
                 for (int x = 0; x < s; x++)
                 {
-                    bool isWall = false;
+                    float nx = (x - cx) / rx;
+                    float ny = (y - cy) / ry;
+                    float adx = Mathf.Abs(nx);
+                    float ady = Mathf.Abs(ny);
+                    bool inside = adx <= 1f && ady <= 1f && (2f * adx + ady) <= 2f;
+                    if (!inside) continue;
 
-                    if (drawNorth && y >= s - thickness)            isWall = true;
-                    if (drawSouth && y < thickness)                 isWall = true;
-                    if (drawEast && x >= s - thickness)             isWall = true;
-                    if (drawWest && x < thickness)                  isWall = true;
+                    // 내부 기본 색
+                    px[y * s + x] = floor;
 
-                    if (isWall)
+                    // 각 변까지의 거리 계산 (플랫탑 hex 6변의 법선 방향 dot)
+                    // 변 법선 나침반: N=0°, NE=60°, SE=120°, S=180°, SW=240°, NW=300°
+                    float px_world = (x - cx) / rx; // 정규화된 x (-1~1)
+                    float py_world = (y - cy) / ry; // 정규화된 y (-1~1)
+                    // y가 Unity 기준(+y=위)과 일치하려면 반전 필요 — 텍스처 y=0은 하단
+                    // 여기서는 +y가 위라고 가정 (텍스처 위쪽 = 북쪽)
+
+                    // 중심에서 외곽까지 비율 (hex 내부에서 0~1)
+                    // 각 facet까지 거리를 구하고 가장 가까운 것이 내가 속한 변
+                    float closest = float.MaxValue;
+                    int closestFacet = -1;
+                    for (int f = 0; f < 6; f++)
                     {
-                        Color c = wall;
-                        // 균열 패턴
-                        if ((x + y) % 7 == 0) c = crack;
-                        // 내측 그림자
-                        if (drawNorth && y == s - thickness) c = wallDark;
-                        if (drawSouth && y == thickness - 1) c = wallDark;
-                        if (drawEast && x == s - thickness) c = wallDark;
-                        if (drawWest && x == thickness - 1) c = wallDark;
-
-                        px[y * s + x] = c;
+                        float compassDeg = f * 60f;
+                        float rad = compassDeg * Mathf.Deg2Rad;
+                        // facet 법선 방향 (월드)
+                        float nFx = Mathf.Sin(rad);
+                        float nFy = Mathf.Cos(rad);
+                        // 해당 변까지 거리 = 1 - dot(px, n_facet)
+                        float dot = px_world * nFx + py_world * nFy;
+                        float distToEdge = 1f - dot;
+                        if (distToEdge < closest)
+                        {
+                            closest = distToEdge;
+                            closestFacet = f;
+                        }
                     }
-                }
-            }
 
-            // 모서리 강화 (벽이 만나는 곳)
-            for (int i = 0; i < thickness; i++)
-            {
-                for (int j = 0; j < thickness; j++)
-                {
-                    if (drawNorth && drawWest) px[(s - 1 - i) * s + j] = wallDark;
-                    if (drawNorth && drawEast) px[(s - 1 - i) * s + (s - 1 - j)] = wallDark;
-                    if (drawSouth && drawWest) px[i * s + j] = wallDark;
-                    if (drawSouth && drawEast) px[i * s + (s - 1 - j)] = wallDark;
+                    // 이 픽셀이 속한 변이 방호면이면 벽 색상
+                    if (closestFacet >= 0)
+                    {
+                        var facetFlag = (Crux.Grid.HexFacet)(1 << closestFacet);
+                        if ((facets & facetFlag) != 0 && closest <= wallThickness)
+                        {
+                            // 외곽 쪽은 진한 벽, 안쪽은 밝은 벽
+                            px[y * s + x] = (closest <= wallThickness * 0.5f) ? wallDark : wall;
+                        }
+                    }
+
+                    // 최외곽 테두리 — 약한 edge
+                    bool atBoundary = adx > 0.92f || ady > 0.92f || (2f * adx + ady) > 1.85f;
+                    if (atBoundary && px[y * s + x] == floor)
+                        px[y * s + x] = edge;
                 }
             }
 

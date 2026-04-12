@@ -4,14 +4,14 @@ using Crux.Core;
 
 namespace Crux.Grid
 {
-    /// <summary>그리드 시각화 — 셀 하이라이트, 이동 범위, 사거리, 엄폐 범위</summary>
+    /// <summary>육각 그리드 시각화 — 셀 하이라이트, 이동 범위, 사거리, 엄폐 방호면</summary>
     public class GridVisualizer : MonoBehaviour
     {
         private GridManager grid;
         private List<GameObject> highlights = new();
         private List<GameObject> coverArcs = new();
 
-        private static Sprite _cachedSquare;
+        private static Sprite _cachedHexMask;
 
         public void Initialize(GridManager grid)
         {
@@ -26,16 +26,15 @@ namespace Crux.Grid
                 CreateHighlight(pos, new Color(0.2f, 0.5f, 1f, 0.3f));
         }
 
-        /// <summary>사격 가능 범위 표시 (빨간색)</summary>
+        /// <summary>사격 가능 범위 표시 (빨간색) — 적 셀만</summary>
         public void ShowFireRange(Vector2Int center, int range)
         {
             ClearHighlights();
-            for (int x = -range; x <= range; x++)
+            for (int x = 0; x < grid.Width; x++)
             {
-                for (int y = -range; y <= range; y++)
+                for (int y = 0; y < grid.Height; y++)
                 {
-                    var pos = center + new Vector2Int(x, y);
-                    if (!grid.IsInBounds(pos)) continue;
+                    var pos = new Vector2Int(x, y);
                     if (grid.GetDistance(center, pos) > range) continue;
 
                     var cell = grid.GetCell(pos);
@@ -49,7 +48,6 @@ namespace Crux.Grid
             }
         }
 
-        /// <summary>선택된 셀 강조 (노란색)</summary>
         public void ShowSelected(Vector2Int pos)
         {
             CreateHighlight(pos, new Color(1f, 1f, 0.3f, 0.5f));
@@ -60,58 +58,92 @@ namespace Crux.Grid
             CreateHighlight(pos, new Color(color.r, color.g, color.b, 0.5f));
         }
 
-        /// <summary>유닛의 엄폐 커버 범위를 부채꼴로 표시</summary>
-        public void ShowCoverArc(Vector2Int unitPos, float coverDirection, float coverArc, Color color)
+        /// <summary>유닛의 엄폐 방호면을 변 위의 두꺼운 선으로 표시</summary>
+        public void ShowCoverFacets(Vector2Int unitPos, HexFacet facets, Color color)
         {
             ClearCoverArcs();
+            if (facets == HexFacet.None) return;
 
-            var worldPos = grid.GridToWorld(unitPos);
-            int segments = 12;
-            float halfArc = coverArc * 0.5f;
-            float radius = 0.9f;
+            foreach (var dir in facets.Enumerate())
+            {
+                var edgeObj = CreateFacetEdge(unitPos, dir, color);
+                if (edgeObj != null) coverArcs.Add(edgeObj);
+            }
+        }
 
-            // 부채꼴을 삼각형 메시로 생성
-            var arcObj = new GameObject("CoverArc");
-            arcObj.transform.position = worldPos;
-            arcObj.transform.SetParent(transform);
+        /// <summary>특정 변에 두꺼운 선 세그먼트 생성</summary>
+        private GameObject CreateFacetEdge(Vector2Int unitPos, HexCoord.HexDir dir, Color color)
+        {
+            // 변의 양 끝점 계산
+            var corners = HexCoord.Corners(unitPos, GameConstants.CellSize);
+            // 플랫탑 hex의 변 i는 corners[i]와 corners[(i+1)%6] 사이
+            // 단, corners 배열 순서와 HexDir 순서 매핑이 필요
+            // Corners는 각도 0°부터 60° 단위 (CCW). flat-top 기준:
+            //   corner 0: 0° (오른쪽), corner 1: 60° (우상), corner 2: 120° (좌상),
+            //   corner 3: 180° (왼쪽), corner 4: 240° (좌하), corner 5: 300° (우하)
+            // 변 0 = c0~c1 = 우상변 ≈ NE facet
+            // 변 1 = c1~c2 = 상변     ≈ N facet
+            // 변 2 = c2~c3 = 좌상변  ≈ NW facet
+            // 변 3 = c3~c4 = 좌하변  ≈ SW facet
+            // 변 4 = c4~c5 = 하변    ≈ S facet
+            // 변 5 = c5~c0 = 우하변  ≈ SE facet
+            int edgeIndex = dir switch
+            {
+                HexCoord.HexDir.NE => 0,
+                HexCoord.HexDir.N => 1,
+                HexCoord.HexDir.NW => 2,
+                HexCoord.HexDir.SW => 3,
+                HexCoord.HexDir.S => 4,
+                HexCoord.HexDir.SE => 5,
+                _ => 0
+            };
+
+            Vector3 a = corners[edgeIndex];
+            Vector3 b = corners[(edgeIndex + 1) % 6];
+            Vector3 mid = (a + b) * 0.5f;
+            Vector3 delta = b - a;
+
+            var edgeObj = new GameObject($"Facet_{dir}");
+            edgeObj.transform.position = mid;
+            edgeObj.transform.SetParent(transform);
 
             var mesh = new Mesh();
-            var vertices = new Vector3[segments + 2];
-            var triangles = new int[segments * 3];
-            var colors = new Color[segments + 2];
+            // 변 방향 단위 벡터
+            Vector2 edgeDir = new Vector2(delta.x, delta.y).normalized;
+            // 수직 (셀 중심에서 바깥으로 향함)
+            Vector3 centerW = HexCoord.OffsetToWorld(unitPos, GameConstants.CellSize);
+            Vector2 outward = ((Vector2)(mid - centerW)).normalized;
 
-            vertices[0] = Vector3.zero; // 중심
-            colors[0] = new Color(color.r, color.g, color.b, color.a * 0.6f);
+            float edgeLen = delta.magnitude;
+            float halfW = edgeLen * 0.5f;
+            float thick = 0.08f;
 
-            for (int i = 0; i <= segments; i++)
+            Vector3 e = new Vector3(edgeDir.x, edgeDir.y, 0) * halfW;
+            Vector3 o = new Vector3(outward.x, outward.y, 0) * thick;
+
+            var verts = new Vector3[4]
             {
-                float angle = coverDirection - halfArc + (coverArc * i / segments);
-                float rad = angle * Mathf.Deg2Rad;
-                // 나침반 → x,y
-                vertices[i + 1] = new Vector3(Mathf.Sin(rad), Mathf.Cos(rad), 0) * radius;
-                colors[i + 1] = new Color(color.r, color.g, color.b, color.a * 0.15f);
-            }
+                -e - o,  // 0: 시작, 안쪽
+                -e + o,  // 1: 시작, 바깥
+                 e + o,  // 2: 끝, 바깥
+                 e - o,  // 3: 끝, 안쪽
+            };
+            var tris = new int[] { 0, 1, 2, 0, 2, 3 };
+            var colors = new Color[] { color, color, color, color };
 
-            for (int i = 0; i < segments; i++)
-            {
-                triangles[i * 3] = 0;
-                triangles[i * 3 + 1] = i + 1;
-                triangles[i * 3 + 2] = i + 2;
-            }
-
-            mesh.vertices = vertices;
-            mesh.triangles = triangles;
+            mesh.vertices = verts;
+            mesh.triangles = tris;
             mesh.colors = colors;
             mesh.RecalculateNormals();
 
-            var mf = arcObj.AddComponent<MeshFilter>();
+            var mf = edgeObj.AddComponent<MeshFilter>();
             mf.mesh = mesh;
 
-            var mr = arcObj.AddComponent<MeshRenderer>();
+            var mr = edgeObj.AddComponent<MeshRenderer>();
             mr.material = new Material(Shader.Find("Sprites/Default"));
             mr.sortingOrder = 1;
 
-            coverArcs.Add(arcObj);
+            return edgeObj;
         }
 
         public void ClearCoverArcs()
@@ -124,7 +156,6 @@ namespace Crux.Grid
         // 연막 오버레이
         private Dictionary<Vector2Int, GameObject> smokeOverlays = new();
 
-        /// <summary>셀에 연막 오버레이 표시</summary>
         public void ShowSmoke(Vector2Int pos)
         {
             if (smokeOverlays.ContainsKey(pos)) return;
@@ -134,15 +165,14 @@ namespace Crux.Grid
             obj.transform.SetParent(transform);
 
             var sr = obj.AddComponent<SpriteRenderer>();
-            sr.sprite = GetSquareSprite();
+            sr.sprite = GetHexMaskSprite();
             sr.color = new Color(0.6f, 0.6f, 0.55f, 0.45f);
             sr.sortingOrder = 5;
-            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 0.95f;
+            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.9f;
 
             smokeOverlays[pos] = obj;
         }
 
-        /// <summary>셀의 연막 제거</summary>
         public void ClearSmoke(Vector2Int pos)
         {
             if (smokeOverlays.TryGetValue(pos, out var obj))
@@ -167,26 +197,46 @@ namespace Crux.Grid
             obj.transform.SetParent(transform);
 
             var sr = obj.AddComponent<SpriteRenderer>();
-            sr.sprite = GetSquareSprite();
+            sr.sprite = GetHexMaskSprite();
             sr.color = color;
             sr.sortingOrder = -1;
-            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 0.9f;
+            // Hex 바닥 타일이 32x32 (pixel per unit = 32), 한 셀 폭 = 1 cellSize
+            // 플랫탑 육각 가로 = 2*size, 그래서 scale = cellSize
+            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.85f;
 
             highlights.Add(obj);
         }
 
-        private static Sprite GetSquareSprite()
+        /// <summary>육각 마스크 스프라이트 (채워진 플랫탑 hex)</summary>
+        private static Sprite GetHexMaskSprite()
         {
-            if (_cachedSquare != null) return _cachedSquare;
+            if (_cachedHexMask != null) return _cachedHexMask;
 
-            var tex = new Texture2D(4, 4);
-            var pixels = new Color[16];
-            for (int i = 0; i < 16; i++) pixels[i] = Color.white;
-            tex.SetPixels(pixels);
-            tex.Apply();
+            int s = 32;
+            var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
-            _cachedSquare = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4);
-            return _cachedSquare;
+            var px = new Color[s * s];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
+
+            float cx = (s - 1) * 0.5f;
+            float cy = (s - 1) * 0.5f;
+            float rx = s * 0.5f;
+            float ry = s * 0.433f;
+
+            for (int y = 0; y < s; y++)
+            {
+                for (int x = 0; x < s; x++)
+                {
+                    float dx = Mathf.Abs(x - cx) / rx;
+                    float dy = Mathf.Abs(y - cy) / ry;
+                    if (dx <= 1f && dy <= 1f && (2f * dx + dy) <= 2f)
+                        px[y * s + x] = Color.white;
+                }
+            }
+
+            tex.SetPixels(px); tex.Apply();
+            _cachedHexMask = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
+            return _cachedHexMask;
         }
     }
 }
