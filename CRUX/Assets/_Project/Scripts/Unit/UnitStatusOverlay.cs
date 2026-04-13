@@ -11,11 +11,14 @@ namespace Crux.Unit
         private List<GameObject> icons = new();
         private ModuleState[] lastStates;
 
-        // 아이콘 설정
-        private const float iconSize = 0.18f;
-        private const float iconSpacing = 0.22f;
-        private const float yOffset = 0.65f;
+        // 아이콘 설정 — 다크 디스크 배경 + 상태색 링 + 심볼 3레이어 구조
+        private const float iconSize = 0.32f;
+        private const float iconSpacing = 0.42f;
+        private const float yOffset = 0.85f;
         private const int sortOrder = 20;
+        // 배경(Fill/Ring) 레이어 스케일 — 심볼보다 살짝 크게 해서 테두리 여백 확보
+        private const float backingScale = 1.2f;
+        private static readonly Color backingFillColor = new Color(0.08f, 0.08f, 0.1f, 0.92f);
 
         private static readonly ModuleType[] displayOrder =
         {
@@ -79,33 +82,48 @@ namespace Crux.Unit
             for (int i = 0; i < damaged.Count; i++)
             {
                 var (type, state) = damaged[i];
+                var stateColor = GetStateColor(state);
 
                 var iconObj = new GameObject($"StatusIcon_{type}");
                 iconObj.transform.SetParent(unit.transform);
                 iconObj.transform.localPosition = new Vector3(startX + i * iconSpacing, yOffset, 0);
                 iconObj.transform.localScale = Vector3.one * iconSize;
 
-                var sr = iconObj.AddComponent<SpriteRenderer>();
-                sr.sprite = GetModuleSprite(type);
-                sr.sortingOrder = sortOrder;
-                sr.color = GetStateColor(state);
+                // 1) 배경 디스크 — 어두운 원판으로 전차 색과 무관하게 대비 확보
+                SpawnLayer(iconObj, "Fill", GetBackingFillSprite(),
+                    backingFillColor, sortOrder - 1, backingScale);
 
-                // 완파 표시: X 마크 오버레이
+                // 2) 상태색 링 — Damaged/Broken/Destroyed 색상 구분
+                SpawnLayer(iconObj, "Ring", GetBackingRingSprite(),
+                    stateColor, sortOrder, backingScale);
+
+                // 3) 심볼 — 모듈 종류 아이콘
+                SpawnLayer(iconObj, "Symbol", GetModuleSprite(type),
+                    stateColor, sortOrder + 1, 1f);
+
+                // 4) 완파 표시 — X 마크
                 if (state == ModuleState.Destroyed)
                 {
-                    var xObj = new GameObject("XMark");
-                    xObj.transform.SetParent(iconObj.transform);
-                    xObj.transform.localPosition = Vector3.zero;
-                    xObj.transform.localScale = Vector3.one * 1.2f;
-
-                    var xSr = xObj.AddComponent<SpriteRenderer>();
-                    xSr.sprite = GetXSprite();
-                    xSr.sortingOrder = sortOrder + 1;
-                    xSr.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+                    SpawnLayer(iconObj, "XMark", GetXSprite(),
+                        new Color(0.08f, 0.08f, 0.08f, 0.95f), sortOrder + 2, 1f);
                 }
 
                 icons.Add(iconObj);
             }
+        }
+
+        /// <summary>아이콘 자식 레이어 공통 스폰</summary>
+        private void SpawnLayer(GameObject parent, string name, Sprite sprite,
+                                 Color color, int order, float scale)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent.transform);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localScale = Vector3.one * scale;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.color = color;
+            sr.sortingOrder = order;
         }
 
         private void ClearIcons()
@@ -117,9 +135,9 @@ namespace Crux.Unit
 
         private Color GetStateColor(ModuleState state) => state switch
         {
-            ModuleState.Damaged   => new Color(1f, 0.85f, 0.15f),      // 노란색
-            ModuleState.Broken    => new Color(1f, 0.25f, 0.15f),      // 빨간색
-            ModuleState.Destroyed => new Color(0.45f, 0.4f, 0.35f),    // 회색
+            ModuleState.Damaged   => new Color(1f, 0.92f, 0.25f),      // 진한 노랑
+            ModuleState.Broken    => new Color(1f, 0.38f, 0.18f),      // 진한 주홍
+            ModuleState.Destroyed => new Color(0.65f, 0.6f, 0.55f),    // 밝은 회색
             _ => Color.white
         };
 
@@ -127,6 +145,59 @@ namespace Crux.Unit
 
         private static Dictionary<ModuleType, Sprite> _spriteCache = new();
         private static Sprite _xSprite;
+        private static Sprite _backingFillSprite;
+        private static Sprite _backingRingSprite;
+
+        /// <summary>배경 디스크 Fill — 16×16 흰색 원판 (SR.color로 틴팅)</summary>
+        private Sprite GetBackingFillSprite()
+        {
+            if (_backingFillSprite != null) return _backingFillSprite;
+            int s = 16;
+            var tex = new Texture2D(s, s);
+            tex.filterMode = FilterMode.Point;
+            var px = new Color[s * s];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
+
+            float cx = (s - 1) * 0.5f;
+            float cy = (s - 1) * 0.5f;
+            const float r = 7.2f;
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+                if (d <= r) px[y * s + x] = Color.white;
+            }
+
+            tex.SetPixels(px); tex.Apply();
+            _backingFillSprite = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
+            return _backingFillSprite;
+        }
+
+        /// <summary>배경 디스크 Ring — 16×16 흰색 외곽 링 (SR.color로 상태색 틴팅)</summary>
+        private Sprite GetBackingRingSprite()
+        {
+            if (_backingRingSprite != null) return _backingRingSprite;
+            int s = 16;
+            var tex = new Texture2D(s, s);
+            tex.filterMode = FilterMode.Point;
+            var px = new Color[s * s];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
+
+            float cx = (s - 1) * 0.5f;
+            float cy = (s - 1) * 0.5f;
+            const float rOuter = 7.6f;
+            const float rInner = 5.6f;
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+                if (d <= rOuter && d >= rInner) px[y * s + x] = Color.white;
+            }
+
+            tex.SetPixels(px); tex.Apply();
+            _backingRingSprite = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
+            return _backingRingSprite;
+        }
 
         private Sprite GetModuleSprite(ModuleType type)
         {
