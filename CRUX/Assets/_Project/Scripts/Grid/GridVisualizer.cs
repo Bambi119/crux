@@ -168,7 +168,7 @@ namespace Crux.Grid
             sr.sprite = GetHexMaskSprite();
             sr.color = new Color(0.6f, 0.6f, 0.55f, 0.45f);
             sr.sortingOrder = 5;
-            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.9f;
+            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.95f;
 
             smokeOverlays[pos] = obj;
         }
@@ -200,9 +200,8 @@ namespace Crux.Grid
             sr.sprite = GetHexMaskSprite();
             sr.color = color;
             sr.sortingOrder = -1;
-            // Hex 바닥 타일이 32x32 (pixel per unit = 32), 한 셀 폭 = 1 cellSize
-            // 플랫탑 육각 가로 = 2*size, 그래서 scale = cellSize
-            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.85f;
+            // Hex 스프라이트(반지름 0.5) → CellSize * 2 로 스케일링, 살짝 margin
+            obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.9f;
 
             highlights.Add(obj);
         }

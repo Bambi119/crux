@@ -20,6 +20,7 @@ namespace Crux.Grid
         private SpriteRenderer sr;
         private Sprite intactSprite;
         private bool isDestroyed;
+        private Vector3 baseScale = Vector3.one; // Initialize 시점의 스폰 스케일 — 피해 시 기준
 
         // ===== 프로퍼티 =====
         public float CurrentHP => currentHP;
@@ -64,6 +65,9 @@ namespace Crux.Grid
 
         public System.Action<GridCoverObject> OnDestroyed;
 
+        /// <summary>방호면 최대 개수 — 4면 이상은 연출 분기(측면/전·후진/후진 전개)에서 기형 케이스 유발</summary>
+        public const int MaxProtectedFacets = 3;
+
         public void Initialize(string name, CoverSize coverSize, float hp, float coverRate,
                                 HexFacet facets, Sprite sprite)
         {
@@ -72,8 +76,11 @@ namespace Crux.Grid
             maxHP = hp;
             currentHP = hp;
             maxCoverRate = coverRate;
-            protectedFacets = facets;
+            protectedFacets = ClampFacets(facets, name);
             intactSprite = sprite;
+
+            // 스폰 시점의 스케일을 기준값으로 저장 — 이후 TakeDamage에서 이 값을 기준으로 축소
+            baseScale = transform.localScale;
 
             sr = GetComponent<SpriteRenderer>();
             if (sr != null)
@@ -92,6 +99,28 @@ namespace Crux.Grid
 
         public static HexCoord.HexDir OppositeDir(HexCoord.HexDir dir) =>
             (HexCoord.HexDir)(((int)dir + 3) % HexCoord.DirCount);
+
+        /// <summary>방호면을 3면 이하로 절단 — 초과 시 경고 로그 + 앞쪽 비트부터 3개만 유지</summary>
+        private static HexFacet ClampFacets(HexFacet facets, string debugName)
+        {
+            if (facets.Count() <= MaxProtectedFacets) return facets;
+
+            Debug.LogWarning($"[CRUX] Cover '{debugName}' protectedFacets={facets} has more than {MaxProtectedFacets} facets — truncating. Cinematic rules assume max 3.");
+
+            int kept = 0;
+            int bits = (int)facets;
+            int result = 0;
+            for (int i = 0; i < HexCoord.DirCount && kept < MaxProtectedFacets; i++)
+            {
+                int mask = 1 << i;
+                if ((bits & mask) != 0)
+                {
+                    result |= mask;
+                    kept++;
+                }
+            }
+            return (HexFacet)result;
+        }
 
         /// <summary>엄폐물이 피격당함 — 데미지 적용</summary>
         public void TakeDamage(float damage)
@@ -118,15 +147,9 @@ namespace Crux.Grid
                     sr.color = Color.Lerp(new Color(0.3f, 0.25f, 0.2f), new Color(0.5f, 0.4f, 0.3f), ratio * 4f);
                 }
 
-                float baseScale = size switch
-                {
-                    CoverSize.Small => 0.5f,
-                    CoverSize.Medium => 0.8f,
-                    CoverSize.Large => 1.1f,
-                    _ => 0.8f
-                };
+                // HP에 따른 시각 축소 — 스폰 스케일을 기준으로 60~100% 범위에서 감소
                 float scaleRatio = 0.6f + 0.4f * ratio;
-                transform.localScale = Vector3.one * baseScale * scaleRatio;
+                transform.localScale = baseScale * scaleRatio;
             }
 
             if (currentHP <= 0)
@@ -143,7 +166,8 @@ namespace Crux.Grid
             if (sr != null)
             {
                 sr.color = new Color(0.3f, 0.25f, 0.2f, 0.4f);
-                transform.localScale = Vector3.one * 0.3f;
+                // 파괴 시 스폰 스케일의 30%로 축소
+                transform.localScale = baseScale * 0.3f;
             }
             OnDestroyed?.Invoke(this);
             Debug.Log($"[CRUX] {coverName} ({size}) 파괴!");

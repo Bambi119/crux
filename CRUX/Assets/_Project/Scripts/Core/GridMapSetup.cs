@@ -60,7 +60,9 @@ namespace Crux.Core
                     var sr = obj.AddComponent<SpriteRenderer>();
                     sr.sprite = floorSprite;
                     sr.sortingOrder = -2;
-                    obj.transform.localScale = Vector3.one * GameConstants.CellSize;
+                    // Hex 스프라이트는 반지름 0.5 기준 1 unit 폭으로 생성됨.
+                    // 실제 hex 반지름 = CellSize 이므로 2배 스케일 필요.
+                    obj.transform.localScale = Vector3.one * GameConstants.CellSize * 2f;
                 }
             }
         }
@@ -117,7 +119,7 @@ namespace Crux.Core
                 var sr = obj.AddComponent<SpriteRenderer>();
                 sr.sprite = TankSpriteGenerator.CreateCoverTile(def.size, def.facets);
                 sr.sortingOrder = 2;
-                obj.transform.localScale = Vector3.one * GameConstants.CellSize;
+                obj.transform.localScale = Vector3.one * GameConstants.CellSize * 2f;
 
                 var coverObj = obj.AddComponent<GridCoverObject>();
                 coverObj.Initialize(def.name, def.size, def.hp, def.rate, def.facets, sr.sprite);

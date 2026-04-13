@@ -297,7 +297,7 @@ namespace Crux.Core
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 24);
         }
 
-        /// <summary>엄폐물 스프라이트 (12x12) — 연출 씬용 (기존 호환)</summary>
+        /// <summary>엄폐물 스프라이트 (12x12) — 기존 호환 (간단한 벽)</summary>
         public static Sprite CreateCover()
         {
             int size = 12;
@@ -329,6 +329,106 @@ namespace Crux.Core
             tex.SetPixels(pixels);
             tex.Apply();
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 12);
+        }
+
+        /// <summary>연출 씬 전용 엄폐 벽 스프라이트 — 크기별 벽/잔해/바리케이드</summary>
+        /// <remarks>
+        /// 직사각형 콘크리트·잔해 벽 비주얼. Fire Action Scene에서
+        /// 전차와 적 사이에 놓이는 엄폐 형상 표현용.
+        /// 소형: 낮은 잔해 더미, 중형: 콘크리트 벽, 대형: 두꺼운 장벽
+        /// </remarks>
+        public static Sprite CreateCinematicCover(CoverSize size)
+        {
+            // 벽의 픽셀 치수 (ppu 32 → 1 unit)
+            int w, h;
+            switch (size)
+            {
+                case CoverSize.Small:  w = 40; h = 14; break;   // 잔해 더미 — 낮고 가로로 넓음
+                case CoverSize.Medium: w = 48; h = 22; break;   // 콘크리트 벽
+                case CoverSize.Large:  w = 56; h = 32; break;   // 강화 장벽 — 두껍고 높음
+                default:               w = 48; h = 22; break;
+            }
+
+            // 가운데 정렬을 위해 스프라이트 캔버스는 너비·높이 2의 배수로
+            var tex = new Texture2D(w, h);
+            tex.filterMode = FilterMode.Point;
+            var px = new Color[w * h];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
+
+            // 색 팔레트 — 크기별 톤
+            Color wallBase, wallDark, wallLight, crackCol;
+            switch (size)
+            {
+                case CoverSize.Small:
+                    wallBase = new Color(0.55f, 0.48f, 0.38f);  // 흙/잔해 갈색
+                    wallDark = new Color(0.32f, 0.28f, 0.22f);
+                    wallLight = new Color(0.68f, 0.6f, 0.48f);
+                    crackCol = new Color(0.22f, 0.18f, 0.14f);
+                    break;
+                case CoverSize.Large:
+                    wallBase = new Color(0.42f, 0.42f, 0.42f);  // 짙은 콘크리트
+                    wallDark = new Color(0.22f, 0.22f, 0.22f);
+                    wallLight = new Color(0.58f, 0.58f, 0.58f);
+                    crackCol = new Color(0.14f, 0.14f, 0.15f);
+                    break;
+                default: // Medium
+                    wallBase = new Color(0.5f, 0.48f, 0.42f);   // 회갈색 콘크리트
+                    wallDark = new Color(0.28f, 0.26f, 0.22f);
+                    wallLight = new Color(0.65f, 0.62f, 0.54f);
+                    crackCol = new Color(0.18f, 0.16f, 0.14f);
+                    break;
+            }
+
+            // 벽 본체 — 위쪽 1픽셀, 아래쪽 1픽셀, 좌우 1픽셀 제외한 영역
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    // 외곽 1픽셀 그림자
+                    bool outer = (x == 0 || x == w - 1 || y == 0);
+                    bool bottomShadow = (y == 0); // 바닥 그림자
+                    bool topHighlight = (y == h - 1 && x > 0 && x < w - 1);
+
+                    if (outer)
+                    {
+                        if (bottomShadow) px[y * w + x] = new Color(0, 0, 0, 0.35f);
+                        continue;
+                    }
+
+                    Color c = wallBase;
+
+                    // 상단 하이라이트
+                    if (topHighlight) c = wallLight;
+                    // 최상단 두 줄은 살짝 밝게
+                    else if (y == h - 2) c = Color.Lerp(wallBase, wallLight, 0.5f);
+                    // 바닥 쪽 어둡게
+                    else if (y <= 2) c = wallDark;
+                    else if (y <= 4) c = Color.Lerp(wallDark, wallBase, 0.5f);
+
+                    // 균열·변형 패턴
+                    int seed = (x * 13 + y * 7) % 17;
+                    if (seed == 0) c = crackCol;
+                    else if (seed == 3) c = wallDark;
+
+                    // 대형 엄폐물은 수직 이음선 추가
+                    if (size == CoverSize.Large && (x == w / 3 || x == 2 * w / 3) && y < h - 2 && y > 1)
+                        c = wallDark;
+
+                    // 소형은 위쪽이 우둘투둘 — 꼭대기 랜덤 결손
+                    if (size == CoverSize.Small && y >= h - 2)
+                    {
+                        int bump = (x * 11) % 7;
+                        if (bump < 2) c = Color.clear;
+                    }
+
+                    px[y * w + x] = c;
+                }
+            }
+
+            tex.SetPixels(px);
+            tex.Apply();
+            // pivot: 중앙 — 회전 시 좌우 대칭 유지
+            return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 32);
         }
 
         // ===== 전술맵 타일 (육각) =====
@@ -379,7 +479,7 @@ namespace Crux.Core
         /// N(상), NE(우상), SE(우하), S(하), SW(좌하), NW(좌상)</remarks>
         public static Sprite CreateCoverTile(CoverSize size, Crux.Grid.HexFacet facets)
         {
-            int s = 32;
+            int s = 48;
             var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
             var px = new Color[s * s];
@@ -387,89 +487,85 @@ namespace Crux.Core
 
             // 바닥
             Color floor = new Color(0.2f, 0.22f, 0.18f);
-            Color edge = new Color(0.35f, 0.36f, 0.32f);
+            Color edgeCol = new Color(0.35f, 0.36f, 0.32f);
 
-            // 벽 색상/두께
+            // 벽 색상/두께 (픽셀 단위)
             Color wall = size switch
             {
-                CoverSize.Small  => new Color(0.55f, 0.5f, 0.4f),
-                CoverSize.Medium => new Color(0.48f, 0.43f, 0.37f),
-                CoverSize.Large  => new Color(0.4f, 0.36f, 0.32f),
-                _ => new Color(0.48f, 0.43f, 0.37f)
+                CoverSize.Small  => new Color(0.65f, 0.58f, 0.42f),
+                CoverSize.Medium => new Color(0.55f, 0.48f, 0.38f),
+                CoverSize.Large  => new Color(0.45f, 0.4f, 0.32f),
+                _ => new Color(0.55f, 0.48f, 0.38f)
             };
-            Color wallDark = wall * 0.65f; wallDark.a = 1f;
+            Color wallDark = wall * 0.6f; wallDark.a = 1f;
+            Color wallLight = Color.Lerp(wall, Color.white, 0.25f); wallLight.a = 1f;
+            Color crack = wallDark * 0.7f; crack.a = 1f;
 
-            float wallThickness = size switch
-            {
-                CoverSize.Small => 0.12f,
-                CoverSize.Medium => 0.18f,
-                CoverSize.Large => 0.24f,
-                _ => 0.18f
-            };
-
+            // 육각 기하 — 픽셀 공간
             float cx = (s - 1) * 0.5f;
             float cy = (s - 1) * 0.5f;
-            float rx = s * 0.5f;
-            float ry = s * 0.433f;
+            float radius = s * 0.5f - 1f;                    // 반지름 (픽셀)
+            float apothem = radius * Mathf.Sqrt(3f) * 0.5f;  // 중심→변 수직거리
 
-            // 각 픽셀에 대해: 1) hex 내부인가 2) 가장 가까운 변이 어느 facet인가
+            // 벽 두께 — 반지름 대비 비율 × 픽셀 단위
+            float wallPx = size switch
+            {
+                CoverSize.Small  => radius * 0.20f,
+                CoverSize.Medium => radius * 0.28f,
+                CoverSize.Large  => radius * 0.36f,
+                _ => radius * 0.28f
+            };
+
             for (int y = 0; y < s; y++)
             {
                 for (int x = 0; x < s; x++)
                 {
-                    float nx = (x - cx) / rx;
-                    float ny = (y - cy) / ry;
-                    float adx = Mathf.Abs(nx);
-                    float ady = Mathf.Abs(ny);
-                    bool inside = adx <= 1f && ady <= 1f && (2f * adx + ady) <= 2f;
-                    if (!inside) continue;
+                    float dx = x - cx;
+                    float dy = y - cy;
 
-                    // 내부 기본 색
-                    px[y * s + x] = floor;
-
-                    // 각 변까지의 거리 계산 (플랫탑 hex 6변의 법선 방향 dot)
-                    // 변 법선 나침반: N=0°, NE=60°, SE=120°, S=180°, SW=240°, NW=300°
-                    float px_world = (x - cx) / rx; // 정규화된 x (-1~1)
-                    float py_world = (y - cy) / ry; // 정규화된 y (-1~1)
-                    // y가 Unity 기준(+y=위)과 일치하려면 반전 필요 — 텍스처 y=0은 하단
-                    // 여기서는 +y가 위라고 가정 (텍스처 위쪽 = 북쪽)
-
-                    // 중심에서 외곽까지 비율 (hex 내부에서 0~1)
-                    // 각 facet까지 거리를 구하고 가장 가까운 것이 내가 속한 변
-                    float closest = float.MaxValue;
+                    // 6변에 대한 부호 거리: apothem - dot(p, n_facet)
+                    // 0 = 변 위, 양수 = 내부, 음수 = 외부
+                    float minDist = float.MaxValue;
                     int closestFacet = -1;
                     for (int f = 0; f < 6; f++)
                     {
                         float compassDeg = f * 60f;
                         float rad = compassDeg * Mathf.Deg2Rad;
-                        // facet 법선 방향 (월드)
-                        float nFx = Mathf.Sin(rad);
-                        float nFy = Mathf.Cos(rad);
-                        // 해당 변까지 거리 = 1 - dot(px, n_facet)
-                        float dot = px_world * nFx + py_world * nFy;
-                        float distToEdge = 1f - dot;
-                        if (distToEdge < closest)
+                        float nFx = Mathf.Sin(rad); // compass → world x
+                        float nFy = Mathf.Cos(rad); // compass → world y
+                        float signed = apothem - (dx * nFx + dy * nFy);
+                        if (signed < minDist)
                         {
-                            closest = distToEdge;
+                            minDist = signed;
                             closestFacet = f;
                         }
                     }
 
-                    // 이 픽셀이 속한 변이 방호면이면 벽 색상
+                    // hex 외부 (가장 가까운 변 거리가 음수 = 그 변 너머)
+                    if (minDist < 0) continue;
+
+                    // 기본 floor
+                    px[y * s + x] = floor;
+
+                    // 방호면 벽 체크
                     if (closestFacet >= 0)
                     {
                         var facetFlag = (Crux.Grid.HexFacet)(1 << closestFacet);
-                        if ((facets & facetFlag) != 0 && closest <= wallThickness)
+                        bool isProtected = (facets & facetFlag) != 0;
+                        if (isProtected && minDist <= wallPx)
                         {
-                            // 외곽 쪽은 진한 벽, 안쪽은 밝은 벽
-                            px[y * s + x] = (closest <= wallThickness * 0.5f) ? wallDark : wall;
+                            // 변에 가까울수록(minDist 작을수록) 진함, 안쪽은 밝음
+                            float t = minDist / wallPx; // 0 = 변, 1 = 벽 안쪽 경계
+                            Color c = Color.Lerp(wallDark, wallLight, t);
+                            // 균열 패턴
+                            if ((x * 7 + y * 13) % 11 == 0) c = crack;
+                            px[y * s + x] = c;
                         }
                     }
 
-                    // 최외곽 테두리 — 약한 edge
-                    bool atBoundary = adx > 0.92f || ady > 0.92f || (2f * adx + ady) > 1.85f;
-                    if (atBoundary && px[y * s + x] == floor)
-                        px[y * s + x] = edge;
+                    // 최외곽 1픽셀 테두리 — 모든 변에 얇게
+                    if (minDist <= 1.0f && px[y * s + x] == floor)
+                        px[y * s + x] = edgeCol;
                 }
             }
 

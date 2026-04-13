@@ -108,6 +108,7 @@ namespace Crux.Core
         public bool attackerInCover;     // 공격자 엄폐 중
         public string attackerCoverName; // 엄폐물 이름
         public CoverSize attackerCoverSize; // 엄폐물 크기
+        public Grid.HexFacet attackerCoverFacets; // 공격자 엄폐물 방호면
 
         // 대상 엄폐 상태
         public bool targetInCover;       // 대상이 엄폐 중인지 (비주얼 표시용)
@@ -115,6 +116,7 @@ namespace Crux.Core
         public float coverDamageDealt;   // 엄폐물에 입힌 데미지
         public string targetCoverName;   // 피격된 엄폐물 이름
         public CoverSize targetCoverSize; // 대상 엄폐물 크기
+        public Grid.HexFacet targetCoverFacets; // 대상 엄폐물 방호면
 
         // 무기
         public WeaponType weaponType;

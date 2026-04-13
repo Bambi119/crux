@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using Crux.Core;
 using Crux.Combat;
+using Crux.Grid;
 using Crux.Unit;
 
 namespace Crux.Cinematic
@@ -86,16 +87,10 @@ namespace Crux.Cinematic
                 yield break;
             }
 
-            // ===== 주포 시퀀스 — 엄폐/개활지 분기 =====
-
-            if (data.attackerInCover)
-            {
-                yield return PlayCoverFireSequence(attackerPos, targetPos, fireDir, attackerAngle);
-            }
-            else
-            {
-                yield return PlayOpenFireSequence(attackerPos, targetPos, fireDir, attackerAngle);
-            }
+            // ===== 주포 시퀀스 =====
+            // 공격자 엄폐 연출은 폐기 — 항상 기본 사격 연출 사용
+            // (엄폐 효과는 판정/UI로 표현하고, 연출은 추후 스킬 시스템에서 차별화)
+            yield return PlayOpenFireSequence(attackerPos, targetPos, fireDir, attackerAngle);
 
             // 포탑이 향하는 방향 = 포탄이 나가는 방향 (직선 정렬)
             Vector3 turretPos = attackerTurret != null ? attackerTurret.position : attackerObj.transform.position;
@@ -395,147 +390,6 @@ namespace Crux.Cinematic
             }
         }
 
-        // ===== 엄폐 상태 사격 연출 =====
-        // 엄폐물 뒤 → 측면으로 빠져나와 → 포탑 회전 → 사격
-        private IEnumerator PlayCoverFireSequence(Vector3 basePos, Vector3 targetPos,
-                                                    Vector2 fireDir, float attackerAngle)
-        {
-            // 전술맵의 실제 차체 방향 사용 (나침반: 0°=북)
-            float myAngle = data.attackerHullAngle;
-            Vector2 hullDir = AngleUtil.ToDir(myAngle);
-
-            // 차체 방향에 수직인 벡터 (엄폐물 벽 방향)
-            Vector2 wallDir = new Vector2(-hullDir.y, hullDir.x);
-
-            // 적 위치 — fireDir 방향 멀리 배치 (측면 전개 후 각도 왜곡 최소화)
-            Vector3 enemyPos = (Vector3)(fireDir * 8f);
-            float enemyAngle = data.targetHullAngle;
-
-            // 엄폐물 위치 (전방 2.5유닛)
-            Vector3 coverPos = -(Vector3)(hullDir * 2.5f);
-
-            // 측면 방향 결정: wallDir 중 적에 가까운 쪽 선택
-            Vector2 toEnemy = ((Vector2)(enemyPos - coverPos)).normalized;
-            float sideSign = Vector2.Dot(wallDir, toEnemy) >= 0 ? 1f : -1f;
-            Vector2 peekSide = wallDir * sideSign;
-
-            // 전차 시작: 엄폐물 뒤
-            Vector3 tankStart = coverPos - (Vector3)(hullDir * 2.5f);
-            // peek 위치: 엄폐물 옆 (측면으로 빠져나옴)
-            Vector3 peekPos = coverPos + (Vector3)(peekSide * 1.8f) - (Vector3)(hullDir * 0.3f);
-
-            // 엄폐물 크기별 스케일
-            float coverScale = data.attackerCoverSize switch
-            {
-                CoverSize.Small  => 1.0f,
-                CoverSize.Medium => 1.5f,
-                CoverSize.Large  => 2.0f,
-                _ => 1.5f
-            };
-
-            // 배치
-            attackerObj.transform.position = tankStart;
-            attackerObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(myAngle));
-
-            targetObj.transform.position = enemyPos;
-            targetObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(enemyAngle));
-
-            if (attackerTurret != null)
-                attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(myAngle));
-
-            // 엄폐물 배치 — 차체 전방에 수직으로 세운 벽
-            var coverObj = new GameObject("CoverVisual");
-            coverObj.transform.position = coverPos;
-            var coverSr = coverObj.AddComponent<SpriteRenderer>();
-            coverSr.sprite = TankSpriteGenerator.CreateCover();
-            coverSr.sortingOrder = 4;
-            coverSr.color = data.attackerCoverSize switch
-            {
-                CoverSize.Small  => new Color(0.7f, 0.65f, 0.55f),
-                CoverSize.Medium => new Color(0.55f, 0.5f, 0.45f),
-                CoverSize.Large  => new Color(0.4f, 0.38f, 0.35f),
-                _ => new Color(0.6f, 0.55f, 0.5f)
-            };
-            float wallAngle = AngleUtil.FromDir(wallDir);
-            coverObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(wallAngle));
-            coverObj.transform.localScale = new Vector3(coverScale, 0.5f, 1f);
-
-            // [1] 배치 완료 — 표시
-            attackerObj.SetActive(true);
-            targetObj.SetActive(true);
-
-            cam.orthographicSize = 2f;
-            cam.transform.position = new Vector3(tankStart.x, tankStart.y, -10f);
-            ShowNarrative("엄폐 사격", new Color(0.3f, 1f, 0.5f));
-            subText = data.attackerCoverName ?? "엄폐물";
-
-            yield return new WaitForSeconds(0.5f);
-
-            // [2] 측면으로 이동 — 전개 방향으로 차체 회전하며 이동
-            ShowNarrative("측면 전개!", Color.white);
-
-            Vector3 camStart = new Vector3(tankStart.x, tankStart.y, -10f);
-            Vector3 camEnd = new Vector3(peekPos.x, peekPos.y, -10f);
-
-            // 이동 방향 각도 계산
-            Vector2 moveDir = ((Vector2)(peekPos - tankStart)).normalized;
-            float moveDirAngle = AngleUtil.FromDir(moveDir);
-
-            float moveTime = 0.6f;
-            float mt = 0;
-            float currentAngle = myAngle;
-            while (mt < 1f)
-            {
-                mt += Time.deltaTime / moveTime;
-                float t = Mathf.SmoothStep(0, 1, Mathf.Clamp01(mt));
-
-                // 위치 이동
-                attackerObj.transform.position = Vector3.Lerp(tankStart, peekPos, t);
-                cam.transform.position = Vector3.Lerp(camStart, camEnd, t);
-
-                // 차체를 이동 방향으로 회전
-                currentAngle = Mathf.LerpAngle(myAngle, moveDirAngle, Mathf.Clamp01(t * 1.5f));
-                attackerObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(currentAngle));
-                if (attackerTurret != null)
-                    attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(currentAngle));
-
-                yield return null;
-            }
-            attackerObj.transform.position = peekPos;
-
-            yield return new WaitForSeconds(0.15f);
-
-            // [3] 포탑 회전 — peekPos에서 enemyPos로 정확히 조준
-            Vector2 aimDir = ((Vector2)(enemyPos - peekPos)).normalized;
-            float aimAngle = AngleUtil.FromDir(aimDir);
-
-            if (attackerTurret != null)
-            {
-                float startAngle = currentAngle; // 측면 전개 후 차체 각도에서 시작
-                float elapsed = 0f;
-                float rotDuration = 0.4f;
-
-                ShowNarrative("조준...", new Color(1f, 0.9f, 0.5f));
-
-                while (elapsed < rotDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float angle = Mathf.LerpAngle(startAngle, aimAngle, elapsed / rotDuration);
-                    attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(angle));
-
-                    cam.orthographicSize = Mathf.Lerp(2f, 4f, elapsed / rotDuration);
-                    Vector3 midCam = (peekPos + enemyPos) * 0.5f;
-                    cam.transform.position = Vector3.Lerp(cam.transform.position,
-                        new Vector3(midCam.x, midCam.y, -10f), 5f * Time.deltaTime);
-
-                    yield return null;
-                }
-                attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(aimAngle));
-            }
-
-            yield return new WaitForSeconds(0.1f);
-        }
-
         // ===== 개활지 사격 연출 =====
         // 공격자: hullDir 반대에서 출발 → 전진 → 정지 → 포탑 조준 → 사격
         private IEnumerator PlayOpenFireSequence(Vector3 basePos, Vector3 unusedTargetPos,
@@ -548,8 +402,14 @@ namespace Crux.Cinematic
             Vector3 tankStart = -(Vector3)(hullDir * 4f);
             Vector3 tankStop = -(Vector3)(hullDir * 1.5f);
 
-            // 적: fireDir 전방에 배치, 전술맵 차체 방향 유지
-            Vector3 enemyPos = (Vector3)(fireDir * 5f);
+            // 적: 실제 전술맵 거리에 맞춰 배치 (근접전은 가깝게, 원거리는 멀게)
+            // 기존 5u 고정은 원거리 사격에서도 적이 전차 바로 앞에 있는 것처럼 보이는 문제 있음
+            float gridDist = Vector2.Distance(
+                (Vector2)data.attackerWorldPos, (Vector2)data.targetWorldPos);
+            // 최소 6u — 아주 가까운 거리도 연출이 너무 꽉 차지 않도록
+            // 최대 13u — 아주 먼 거리도 카메라 한 화면에 공격자/대상 모두 프레이밍 가능
+            float cinematicDist = Mathf.Clamp(gridDist, 6f, 13f);
+            Vector3 enemyPos = (Vector3)(fireDir * cinematicDist);
             float enemyAngle = data.targetHullAngle;
 
             attackerObj.transform.position = tankStart;
@@ -561,18 +421,54 @@ namespace Crux.Cinematic
             if (attackerTurret != null)
                 attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(myAngle));
 
-            // 대상 엄폐물 — 공격자 방향을 향하는 1면 방호 표시 (시각용)
+            // 대상 엄폐물 — hex 방위 규칙 그대로, 월드 고정 렌더
+            // targetCoverFacets의 모든 보호면을 "확대 hex"의 각 edge 중점에 배치
+            // 공격 방향에 따라 회전/위치 변하지 않음 (고정)
             if (data.targetInCover || data.targetCoverHit)
             {
-                var coverObj = new GameObject("TargetCoverVisual");
-                coverObj.transform.position = enemyPos;
-                var cvSr = coverObj.AddComponent<SpriteRenderer>();
-                // 공격이 오는 방향(공격자→대상 반대)에 가장 가까운 HexDir를 방호면으로
-                var incomingDir = Crux.Grid.HexCoord.NearestDir(((Vector2)(tankStart - enemyPos)).normalized);
-                var facetFlag = (Crux.Grid.HexFacet)(1 << (int)incomingDir);
-                cvSr.sprite = TankSpriteGenerator.CreateCoverTile(data.targetCoverSize, facetFlag);
-                cvSr.sortingOrder = 3;
-                coverObj.transform.localScale = Vector3.one * 1.5f;
+                float cellSize = GameConstants.CellSize;
+                // 연출 전용 — 실제 셀 크기보다 1.8배 확대해 벽과 전차 사이 여유 확보
+                // (전차 스프라이트가 약 1u 폭이라 기본 셀(1u)에 붙이면 벽이 전차와 겹쳐 보임)
+                const float visInflate = 1.8f;
+                float edgeLength = cellSize * visInflate;            // 확대된 변 길이
+                float edgeDist = cellSize * visInflate * Mathf.Sqrt(3f) / 2f; // 확대된 apothem
+
+                // 연출 벽 스프라이트의 월드 폭 (ppu 32 기준)
+                // Small 40px=1.25u, Medium 48px=1.5u, Large 56px=1.75u
+                float spriteWorldWidth = data.targetCoverSize switch
+                {
+                    CoverSize.Small => 40f / 32f,
+                    CoverSize.Medium => 48f / 32f,
+                    CoverSize.Large => 56f / 32f,
+                    _ => 48f / 32f
+                };
+                // 벽 길이는 확대된 변의 80% — 모서리(vertex)에 10% 여백씩 생기게 해 인접 벽 간 시각 분리
+                float xScale = (edgeLength * 0.8f) / spriteWorldWidth;
+                float yScale = data.targetCoverSize switch
+                {
+                    CoverSize.Small => 0.9f,
+                    CoverSize.Medium => 1.1f,
+                    CoverSize.Large => 1.35f,
+                    _ => 1.1f
+                };
+
+                foreach (var facet in data.targetCoverFacets.Enumerate())
+                {
+                    Vector2 edgeNormal = HexCoord.DirToWorld(facet);
+                    Vector3 wallPos = enemyPos + new Vector3(edgeNormal.x, edgeNormal.y, 0f) * edgeDist;
+                    // 벽 스프라이트의 x축 = edge 접선 (edgeNormal을 90° 회전)
+                    Vector2 tangent = new Vector2(-edgeNormal.y, edgeNormal.x);
+                    float wallRotZ = Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg;
+
+                    var wallObj = new GameObject($"TargetCoverWall_{facet}");
+                    wallObj.transform.position = wallPos;
+                    wallObj.transform.rotation = Quaternion.Euler(0, 0, wallRotZ);
+                    wallObj.transform.localScale = new Vector3(xScale, yScale, 1f);
+                    var wsr = wallObj.AddComponent<SpriteRenderer>();
+                    wsr.sprite = TankSpriteGenerator.CreateCinematicCover(data.targetCoverSize);
+                    // 전차 hull(5)/turret(6)보다 낮게 — 전차가 벽 앞에 명확히 보이도록
+                    wsr.sortingOrder = 3;
+                }
             }
 
             // [1] 표시 + 카메라 (공격자 위치에서 시작)
@@ -620,8 +516,8 @@ namespace Crux.Cinematic
                 attackerTurret.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(aimAngle));
             }
 
-            // 카메라 줌아웃
-            cam.orthographicSize = 4f;
+            // 카메라 줌아웃 — 거리에 비례해 시야 확대 (근접 3.5 ~ 원거리 7)
+            cam.orthographicSize = Mathf.Clamp(cinematicDist * 0.55f, 3.5f, 7f);
             Vector3 midCam = (tankStop + enemyPos) * 0.5f;
             cam.transform.position = new Vector3(midCam.x, midCam.y, -10f);
 

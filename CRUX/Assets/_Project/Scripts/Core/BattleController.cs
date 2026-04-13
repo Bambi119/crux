@@ -137,22 +137,26 @@ namespace Crux.Core
             foreach (var e in enemyUnits)
                 if (e != null) e.OnFireKilled += HandleFireKill;
 
-            // 카메라 — 맵 전체가 보이도록 자동 조정
+            // 카메라 — 맵 전체가 보이도록 자동 조정 (flat-top hex 실제 치수)
             if (mainCam != null)
             {
                 mainCam.orthographic = true;
-                float mapH = GameConstants.GridHeight * GameConstants.CellSize;
-                float mapW = GameConstants.GridWidth * GameConstants.CellSize;
+                // flat-top hex: width = 1.5*(w-1)*size + 2*size, height = sqrt(3)*(h-0.5)*size + sqrt(3)*size
+                float size = GameConstants.CellSize;
+                float mapW = size * (1.5f * (GameConstants.GridWidth - 1) + 2f);
+                float mapH = size * Mathf.Sqrt(3f) * (GameConstants.GridHeight + 0.5f);
                 float aspect = mainCam.aspect;
-                // 세로/가로 중 넉넉한 쪽 기준
                 float sizeByH = mapH * 0.55f;
                 float sizeByW = (mapW * 0.55f) / aspect;
                 camTargetSize = Mathf.Max(sizeByH, sizeByW);
                 camTargetSize = Mathf.Clamp(camTargetSize, camMinSize, camMaxSize);
                 mainCam.orthographicSize = camTargetSize;
 
-                float cx = (GameConstants.GridWidth - 1) * GameConstants.CellSize * 0.5f;
-                float cy = (GameConstants.GridHeight - 1) * GameConstants.CellSize * 0.5f;
+                // 맵 중심 (hex 월드 좌표 기반)
+                Vector3 bl = HexCoord.OffsetToWorld(new Vector2Int(0, 0), size);
+                Vector3 tr = HexCoord.OffsetToWorld(new Vector2Int(GameConstants.GridWidth - 1, GameConstants.GridHeight - 1), size);
+                float cx = (bl.x + tr.x) * 0.5f;
+                float cy = (bl.y + tr.y) * 0.5f;
                 camTargetPos = new Vector3(cx, cy, -10f);
                 mainCam.transform.position = camTargetPos;
             }
@@ -172,8 +176,9 @@ namespace Crux.Core
             if (currentPhase == TurnPhase.PlayerTurn)
             {
                 HandlePlayerInput();
-                UpdateCoverArcDisplay();
             }
+            // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
+            UpdateCoverArcDisplay();
             HandleCamera();
         }
 
@@ -219,9 +224,29 @@ namespace Crux.Core
         }
 
         /// <summary>플레이어 유닛의 엄폐 커버 범위 표시 (상태 변경 시만 갱신)</summary>
+        /// <remarks>
+        /// 플레이어 턴: selectedUnit(일반적으로 playerUnit)의 Select/Move 모드에서 표시
+        /// 적 턴: 선택 상태 무관하게 playerUnit의 엄폐 상태 계속 표시 (사격 사이 복귀 시 가시성)
+        /// </remarks>
         private void UpdateCoverArcDisplay()
         {
-            if (selectedUnit == null || selectedUnit.IsDestroyed)
+            // 표시 대상 유닛 결정
+            GridTankUnit target = null;
+            bool isPlayerSelectMode = false;
+            if (currentPhase == TurnPhase.PlayerTurn
+                && selectedUnit != null && !selectedUnit.IsDestroyed
+                && (inputMode == InputMode.Select || inputMode == InputMode.Move))
+            {
+                target = selectedUnit;
+                isPlayerSelectMode = true;
+            }
+            else if (playerUnit != null && !playerUnit.IsDestroyed)
+            {
+                // 적 턴이거나 공격 모드 — playerUnit 엄폐 상태 폴백 표시
+                target = playerUnit;
+            }
+
+            if (target == null)
             {
                 if (lastArcMode != InputMode.Select)
                 {
@@ -232,24 +257,21 @@ namespace Crux.Core
             }
 
             // 위치나 모드가 바뀌었을 때만 갱신
-            if (lastArcPos == selectedUnit.GridPosition && lastArcMode == inputMode) return;
-            lastArcPos = selectedUnit.GridPosition;
-            lastArcMode = inputMode;
+            var currentMode = isPlayerSelectMode ? inputMode : InputMode.Select;
+            if (lastArcPos == target.GridPosition && lastArcMode == currentMode) return;
+            lastArcPos = target.GridPosition;
+            lastArcMode = currentMode;
 
             visualizer.ClearCoverArcs();
 
-            // Select 모드에서 아군 엄폐 표시
-            if (inputMode == InputMode.Select || inputMode == InputMode.Move)
+            var cell = grid.GetCell(target.GridPosition);
+            if (cell != null && cell.HasCover && cell.Cover != null
+                && !cell.Cover.IsDestroyed)
             {
-                var cell = grid.GetCell(selectedUnit.GridPosition);
-                if (cell != null && cell.HasCover && cell.Cover != null
-                    && !cell.Cover.IsDestroyed)
-                {
-                    visualizer.ShowCoverFacets(
-                        selectedUnit.GridPosition,
-                        cell.Cover.CurrentFacets,
-                        new Color(0.2f, 0.8f, 0.4f, 0.8f));
-                }
+                visualizer.ShowCoverFacets(
+                    target.GridPosition,
+                    cell.Cover.CurrentFacets,
+                    new Color(0.2f, 0.8f, 0.4f, 0.8f));
             }
         }
 
@@ -262,9 +284,25 @@ namespace Crux.Core
             selectedUnit = null;
             targetUnit = null;
 
+            // 사전 스윕: 턴 시작 효과(화재 등) 처리 → 격파 유닛 제거 후 행동 부여
+            StartCoroutine(BeginPlayerTurnRoutine());
+        }
+
+        /// <summary>플레이어 턴 시작 루틴 — 상태 효과 처리 우선</summary>
+        private IEnumerator BeginPlayerTurnRoutine()
+        {
+            // 플레이어 화재 등 턴 시작 효과 처리
             if (playerUnit != null && !playerUnit.IsDestroyed)
             {
                 playerUnit.OnTurnStart();
+                if (playerUnit.IsDestroyed)
+                {
+                    // 화재 전소 — 배너/폭발이 HandleFireKill에서 처리됨
+                    // 게임오버 화면 표시를 위해 대기
+                    yield return new WaitForSeconds(1.5f);
+                    turnCount++;
+                    yield break; // DrawGameResult가 감지
+                }
                 selectedUnit = playerUnit;
             }
 
@@ -280,7 +318,28 @@ namespace Crux.Core
             currentPhase = TurnPhase.EnemyTurn;
             visualizer.ClearHighlights();
             Debug.Log("[CRUX] === 적 턴 ===");
-            StartCoroutine(ProcessEnemyTurn());
+            StartCoroutine(BeginEnemyTurnRoutine());
+        }
+
+        /// <summary>적 턴 시작 루틴 — 사전 스윕으로 상태 효과 처리 후 행동 루프</summary>
+        private IEnumerator BeginEnemyTurnRoutine()
+        {
+            // 사전 스윕: 모든 적 유닛에 턴 시작 효과(화재) 적용
+            // 이 단계에서 격파되는 유닛은 HandleFireKill 이벤트로 처리됨
+            foreach (var enemy in enemyUnits)
+            {
+                if (enemy == null || enemy.IsDestroyed) continue;
+                enemy.OnTurnStart();
+                if (enemy.IsDestroyed)
+                {
+                    // 폭발/배너 가시 시간 확보
+                    yield return new WaitForSeconds(1.3f);
+                }
+            }
+            yield return new WaitForSeconds(0.2f);
+
+            // 메인 행동 루프 — 생존 유닛만 순차 진행
+            yield return ProcessEnemyTurn(0);
         }
 
         private IEnumerator ProcessEnemyTurn(int startIndex = 0)
@@ -290,9 +349,8 @@ namespace Crux.Core
                 var enemy = enemyUnits[i];
                 if (enemy == null || enemy.IsDestroyed) continue;
 
-                // 복귀 시에는 OnTurnStart 중복 호출 방지 (이미 저장된 AP 사용)
-                if (startIndex == 0)
-                    enemy.OnTurnStart();
+                // OnTurnStart는 BeginEnemyTurnRoutine 사전 스윕에서 처리됨
+                // 연출 씬 복귀 시에도 중복 호출 안됨
 
                 if (playerUnit == null || playerUnit.IsDestroyed) continue;
 
@@ -837,11 +895,13 @@ namespace Crux.Core
                 attackerInCover = inCover,
                 attackerCoverName = coverName,
                 attackerCoverSize = inCover ? attackerCell.Cover.size : CoverSize.Medium,
+                attackerCoverFacets = inCover ? attackerCell.Cover.CurrentFacets : HexFacet.None,
                 targetInCover = targetInCover,
                 targetCoverHit = hitCover,
                 coverDamageDealt = coverDmgDealt,
                 targetCoverName = hitCover ? hitCoverName : targetCoverNameForVisual,
                 targetCoverSize = targetInCover ? targetCellForCover.Cover.size : CoverSize.Medium,
+                targetCoverFacets = targetInCover ? targetCellForCover.Cover.CurrentFacets : HexFacet.None,
                 targetWorldPos = target.transform.position,
                 targetHullAngle = target.HullAngle,
                 targetName = target.Data.tankName,
