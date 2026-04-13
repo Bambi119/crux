@@ -26,7 +26,7 @@ namespace Crux.Grid
                 CreateHighlight(pos, new Color(0.2f, 0.5f, 1f, 0.3f));
         }
 
-        /// <summary>사격 가능 범위 표시 (빨간색) — 적 셀만</summary>
+        /// <summary>사격 가능 범위 표시 (빨간색) — 살아있는 적 셀만</summary>
         public void ShowFireRange(Vector2Int center, int range)
         {
             ClearHighlights();
@@ -38,12 +38,15 @@ namespace Crux.Grid
                     if (grid.GetDistance(center, pos) > range) continue;
 
                     var cell = grid.GetCell(pos);
-                    if (cell != null && cell.Occupant != null)
-                    {
-                        var side = cell.Occupant.GetComponent<SideIdentifier>();
-                        if (side != null && side.Side == PlayerSide.Enemy)
-                            CreateHighlight(pos, new Color(1f, 0.2f, 0.2f, 0.4f));
-                    }
+                    if (cell == null || cell.Occupant == null) continue;
+
+                    // 격파 유닛은 제외 — Occupant 정리 누락 대비 안전장치
+                    var unit = cell.Occupant.GetComponent<Crux.Unit.GridTankUnit>();
+                    if (unit == null || unit.IsDestroyed) continue;
+
+                    var side = cell.Occupant.GetComponent<SideIdentifier>();
+                    if (side != null && side.Side == PlayerSide.Enemy)
+                        CreateHighlight(pos, new Color(1f, 0.2f, 0.2f, 0.4f));
                 }
             }
         }

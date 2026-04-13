@@ -163,12 +163,9 @@ namespace Crux.Grid
         {
             isDestroyed = true;
             SpawnDebris();
-            if (sr != null)
-            {
-                sr.color = new Color(0.3f, 0.25f, 0.2f, 0.4f);
-                // 파괴 시 스폰 스케일의 30%로 축소
-                transform.localScale = baseScale * 0.3f;
-            }
+            // 본체 스프라이트는 완전히 숨김 — 파괴 연출은 SpawnDebris 파티클이 담당.
+            // (이전: 0.3배 축소 + 알파 0.4 → 작은 갈색 잔류물이 셀 가독성을 해침)
+            if (sr != null) sr.enabled = false;
             OnDestroyed?.Invoke(this);
             Debug.Log($"[CRUX] {coverName} ({size}) 파괴!");
         }

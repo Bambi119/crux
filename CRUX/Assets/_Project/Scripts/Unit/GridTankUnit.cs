@@ -40,6 +40,7 @@ namespace Crux.Unit
 
         // 컴포넌트
         private SpriteRenderer hullRenderer;
+        private Color baseHullColor = Color.white; // Initialize 시점의 원본 색 (HP별 암전 기준)
         private GridManager grid;
 
         // ===== 회전 유틸 =====
@@ -92,6 +93,8 @@ namespace Crux.Unit
         /// <summary>저장된 상태로 복원</summary>
         public void RestoreState(GridManager grid, UnitSaveData state)
         {
+            this.grid = grid; // ClearCellOccupancy 등에서 사용되도록 보장
+
             var oldCell = grid.GetCell(gridPosition);
             if (oldCell != null && oldCell.Occupant == gameObject)
                 oldCell.Occupant = null;
@@ -101,8 +104,13 @@ namespace Crux.Unit
             currentAP = state.currentAP;
             hullAngle = state.hullAngle;
 
-            var newCell = grid.GetCell(gridPosition);
-            if (newCell != null) newCell.Occupant = gameObject;
+            // 격파 유닛은 셀을 점유해서는 안 됨 — 점유 시 ShowFireRange/TrySelectTarget이
+            // 죽은 유닛을 살아있는 것으로 오인. SetActive(false) 만으로는 부족.
+            if (!state.isDestroyed)
+            {
+                var newCell = grid.GetCell(gridPosition);
+                if (newCell != null) newCell.Occupant = gameObject;
+            }
 
             transform.position = grid.GridToWorld(gridPosition);
             transform.rotation = CompassToRotation(hullAngle);
@@ -152,6 +160,7 @@ namespace Crux.Unit
             if (cell != null) cell.Occupant = gameObject;
 
             hullRenderer = GetComponentInChildren<SpriteRenderer>();
+            if (hullRenderer != null) baseHullColor = hullRenderer.color;
             UpdateVisual();
         }
 
@@ -180,6 +189,7 @@ namespace Crux.Unit
                     if (currentHP <= 0)
                     {
                         currentHP = 0;
+                        ClearCellOccupancy();
                         OnFireKilled?.Invoke(this);
                         OnDeath?.Invoke(this);
                         UpdateVisual();
@@ -479,10 +489,22 @@ namespace Crux.Unit
             if (outcome.ammoExploded || outcome.killed || currentHP <= 0)
             {
                 currentHP = 0;
+                ClearCellOccupancy();
                 OnDeath?.Invoke(this);
             }
 
             UpdateVisual();
+        }
+
+        /// <summary>현재 점유 셀에서 자기 자신을 제거 — 사망 시 호출 필수</summary>
+        /// <remarks>이 처리가 누락되면 죽은 유닛이 셀을 영구 점유해
+        /// ShowFireRange/AI/pathfinding이 죽은 유닛을 살아있는 것으로 오인함.</remarks>
+        private void ClearCellOccupancy()
+        {
+            if (grid == null) return;
+            var cell = grid.GetCell(gridPosition);
+            if (cell != null && cell.Occupant == gameObject)
+                cell.Occupant = null;
         }
 
         // ===== 시각 =====
@@ -492,12 +514,14 @@ namespace Crux.Unit
             if (hullRenderer != null)
             {
                 float hpRatio = currentHP / (tankData != null ? tankData.maxHP : 100);
-                float brightness = Mathf.Lerp(0.3f, 1f, hpRatio);
-                var baseColor = hullRenderer.color;
+                float brightness = Mathf.Lerp(0.3f, 1f, Mathf.Clamp01(hpRatio));
+                // 항상 baseHullColor를 기준으로 곱셈 — 절대로 hullRenderer.color를 읽지 않는다
+                // (읽으면 호출마다 곱셈이 누적되어 스프라이트가 점점 검게 변함)
                 hullRenderer.color = new Color(
-                    baseColor.r * brightness,
-                    baseColor.g * brightness,
-                    baseColor.b * brightness
+                    baseHullColor.r * brightness,
+                    baseHullColor.g * brightness,
+                    baseHullColor.b * brightness,
+                    baseHullColor.a
                 );
             }
         }

@@ -747,7 +747,7 @@ namespace Crux.Core
             if (cell == null || cell.Occupant == null) return;
 
             var target = cell.Occupant.GetComponent<GridTankUnit>();
-            if (target == null || target.side == PlayerSide.Player) return;
+            if (target == null || target.IsDestroyed || target.side == PlayerSide.Player) return;
 
             targetUnit = target;
             pendingTarget = target;
