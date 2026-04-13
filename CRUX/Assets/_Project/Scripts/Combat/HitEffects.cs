@@ -10,23 +10,33 @@ namespace Crux.Combat
         private static Sprite[] _ricochetFrames;
         private static Sprite[] _hitFrames;
 
-        public static void Spawn(Vector3 position, ShotOutcome outcome, Vector2 shellDir)
+        /// <summary>피격 이펙트 진입점</summary>
+        /// <param name="caliberScale">무기 구경 스케일 — 1.0=주포 표준, 0.4=기관총, 1.5=대구경</param>
+        public static void Spawn(Vector3 position, ShotOutcome outcome, Vector2 shellDir, float caliberScale = 1f)
         {
+            caliberScale = Mathf.Clamp(caliberScale, 0.3f, 2.5f);
             switch (outcome)
             {
                 case ShotOutcome.Miss:
                     SpawnMiss(position);
                     break;
                 case ShotOutcome.Ricochet:
-                    SpawnRicochet(position, shellDir);
+                    SpawnRicochet(position, shellDir, caliberScale);
                     break;
                 case ShotOutcome.Hit:
-                    SpawnHit(position, shellDir);
+                    SpawnImpact(position, shellDir, 1f, caliberScale);
                     break;
                 case ShotOutcome.Penetration:
-                    SpawnPenetration(position, shellDir);
+                    SpawnImpact(position, shellDir, 1.6f, caliberScale);
                     break;
             }
+        }
+
+        /// <summary>주포 ammo damage → 구경 스케일 추정 (HitEffects.Spawn 호출용)</summary>
+        public static float CaliberScaleFromAmmoDamage(float damage)
+        {
+            // 주포 표준 30 데미지 = 1.0, 작은 구경 0.6, 대구경 1.6 부근
+            return Mathf.Clamp(damage / 30f, 0.5f, 1.8f);
         }
 
         /// <summary>전차 파괴 폭발</summary>
@@ -78,7 +88,7 @@ namespace Crux.Combat
         }
 
         // ===== 도탄 — 스프라이트 + 금속 불꽃 파편 + 파티클 =====
-        private static void SpawnRicochet(Vector3 position, Vector2 shellDir)
+        private static void SpawnRicochet(Vector3 position, Vector2 shellDir, float caliberScale = 1f)
         {
             // [1] 스프라이트 애니메이션
             var frames = GetRicochetFrames();
@@ -99,9 +109,39 @@ namespace Crux.Combat
             // [3] 도탄 방향 계산
             Vector2 ricochetDir = Vector2.Reflect(shellDir,
                                     (Random.insideUnitCircle + Vector2.up).normalized);
+            float ricochetAngleDeg = Mathf.Atan2(ricochetDir.y, ricochetDir.x) * Mathf.Rad2Deg;
 
-            // [4] 1차 스파크 — 빠르고 밝은 불꽃 (14개, 넓게 확산)
-            for (int i = 0; i < 14; i++)
+            // [3.5] 방향성 불꽃 줄기 — 도탄 방향 위주로 좁게 분사 (얇고 빠름)
+            int streakCountR = Mathf.RoundToInt(12 * caliberScale);
+            var streakSpriteR = GetStreakSprite();
+            for (int i = 0; i < streakCountR; i++)
+            {
+                float a = ricochetAngleDeg + Random.Range(-45f, 45f);
+                Vector2 d = new Vector2(Mathf.Cos(a * Mathf.Deg2Rad), Mathf.Sin(a * Mathf.Deg2Rad));
+
+                var streak = new GameObject("RicoStreak");
+                streak.transform.position = position;
+                streak.transform.rotation = Quaternion.Euler(0, 0, a);
+                var sr = streak.AddComponent<SpriteRenderer>();
+                sr.sprite = streakSpriteR;
+                // 도탄 섬광/플래시(70~71) 위에 렌더
+                sr.sortingOrder = 73;
+                sr.color = Random.value < 0.5f
+                    ? new Color(1f, 0.95f, 0.6f, 0.95f)   // 백황
+                    : new Color(1f, 0.7f, 0.2f, 0.85f);    // 주황
+                float len = Random.Range(0.18f, 0.45f) * caliberScale;
+                streak.transform.localScale = new Vector3(len, 0.05f, 1f);
+                var rb = streak.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0f;
+                rb.linearDamping = 3f;
+                rb.linearVelocity = d * Random.Range(10f, 22f);
+                streak.AddComponent<FadeAndShrink>();
+                Object.Destroy(streak, Random.Range(0.1f, 0.25f));
+            }
+
+            // [4] 1차 스파크 — 빠르고 밝은 불꽃 (구경 비례 확장, 넓게 확산)
+            int sparkCount = Mathf.RoundToInt(14 * caliberScale);
+            for (int i = 0; i < sparkCount; i++)
             {
                 float spreadAngle = Mathf.Atan2(ricochetDir.y, ricochetDir.x) * Mathf.Rad2Deg;
                 spreadAngle += Random.Range(-70f, 70f);
@@ -109,13 +149,15 @@ namespace Crux.Combat
                     Mathf.Cos(spreadAngle * Mathf.Deg2Rad),
                     Mathf.Sin(spreadAngle * Mathf.Deg2Rad));
 
-                Color c = i < 5
-                    ? new Color(1f, 1f, 0.7f)      // 백열
-                    : i < 9
-                        ? new Color(1f, 0.85f, 0.3f)  // 밝은 노란
-                        : new Color(1f, 0.55f, 0.1f);  // 주황
+                // 색 분포: 35% 백열, 30% 노란, 35% 주황 (개수 변동에 무관)
+                float colorRoll = (float)i / sparkCount;
+                Color c = colorRoll < 0.35f
+                    ? new Color(1f, 1f, 0.7f)
+                    : colorRoll < 0.65f
+                        ? new Color(1f, 0.85f, 0.3f)
+                        : new Color(1f, 0.55f, 0.1f);
 
-                float size = Random.Range(0.03f, 0.09f);
+                float size = Random.Range(0.025f, 0.07f);
                 var spark = P(position, c, size, 67);
                 var rb = spark.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
@@ -202,15 +244,13 @@ namespace Crux.Combat
             return _ricochetFrames;
         }
 
-        // ===== 피격 — 착탄 방향 기반 스프라이트 + 화염 + 파편 =====
-        private static void SpawnHit(Vector3 position, Vector2 shellDir)
+        /// <summary>피격/관통 공통 — 화구 + 방사형 불꽃줄기 + 파편 + 연기</summary>
+        /// <param name="intensity">결과별 강도 (Hit=1, Penetration=1.6)</param>
+        /// <param name="caliberScale">무기 구경 (1=주포 표준, 0.4=MG)</param>
+        private static void SpawnImpact(Vector3 position, Vector2 shellDir, float intensity, float caliberScale = 1f)
         {
-            SpawnImpact(position, shellDir, 1f);
-        }
-
-        /// <summary>피격/관통 공통 — 레퍼런스: 화구 + 방사형 불꽃줄기 + 파편 다수 + 연기</summary>
-        private static void SpawnImpact(Vector3 position, Vector2 shellDir, float intensity)
-        {
+            // 두 스케일을 결합 — 화구·파편·연기 전체 크기에 적용
+            float effectScale = intensity * caliberScale;
             Vector2 splashDir = -shellDir;
             float splashAngle = Mathf.Atan2(splashDir.y, splashDir.x) * Mathf.Rad2Deg;
 
@@ -219,27 +259,28 @@ namespace Crux.Combat
             if (frames != null && frames.Length > 0)
             {
                 SpriteAnimation.Play(position, frames, 0.7f,
-                    scale: 0.12f * intensity, sortingOrder: 68, rotation: splashAngle);
+                    scale: 0.12f * effectScale, sortingOrder: 68, rotation: splashAngle);
             }
 
             // [2] 화구(fireball) — 4단: 백열 코어 → 백노란 → 노란 → 주황
-            var core = P(position, new Color(1f, 1f, 1f, 1f), 0.4f * intensity, 72);
+            var core = P(position, new Color(1f, 1f, 1f, 1f), 0.4f * effectScale, 72);
             Object.Destroy(core, 0.05f);
 
-            var glow1 = P(position, new Color(1f, 1f, 0.85f, 1f), 0.55f * intensity, 71);
+            var glow1 = P(position, new Color(1f, 1f, 0.85f, 1f), 0.55f * effectScale, 71);
             glow1.AddComponent<FadeAndShrink>();
             Object.Destroy(glow1, 0.12f);
 
-            var glow2 = P(position, new Color(1f, 0.85f, 0.3f, 0.9f), 0.7f * intensity, 70);
+            var glow2 = P(position, new Color(1f, 0.85f, 0.3f, 0.9f), 0.7f * effectScale, 70);
             glow2.AddComponent<FadeAndShrink>();
             Object.Destroy(glow2, 0.25f);
 
-            var outer = P(position, new Color(1f, 0.5f, 0.1f, 0.6f), 0.9f * intensity, 69);
+            var outer = P(position, new Color(1f, 0.5f, 0.1f, 0.6f), 0.9f * effectScale, 69);
             outer.AddComponent<FadeAndShrink>();
             Object.Destroy(outer, 0.4f);
 
-            // [3] 방사형 불꽃 줄기 — 선형 스프라이트가 중심에서 사방으로 뻗어나감
-            int streakCount = (int)(16 * intensity);
+            // [3] 방사형 불꽃 줄기 — 얇고 많은 직선 스프라이트가 사방으로 뻗어나감
+            // 두께 0.015 (이전 0.03의 절반), 개수 28 baseline (이전 16)
+            int streakCount = Mathf.RoundToInt(28 * effectScale);
             var streakSprite = GetStreakSprite();
             for (int i = 0; i < streakCount; i++)
             {
@@ -254,25 +295,31 @@ namespace Crux.Combat
 
                 var sr = streak.AddComponent<SpriteRenderer>();
                 sr.sprite = streakSprite;
-                sr.sortingOrder = 66;
-                // 밝은 노란~백색
-                sr.color = Random.value < 0.5f
-                    ? new Color(1f, 0.95f, 0.7f, 0.9f)
-                    : new Color(1f, 0.8f, 0.3f, 0.8f);
+                // 화구 글로우(69~72) 위에 렌더 — 아니면 중심 근처 줄기가 가려짐
+                sr.sortingOrder = 73;
+                // 밝은 노란~백색 (살짝 더 다양한 톤)
+                float roll = Random.value;
+                sr.color = roll < 0.4f
+                    ? new Color(1f, 0.97f, 0.75f, 0.95f)
+                    : roll < 0.75f
+                        ? new Color(1f, 0.85f, 0.35f, 0.85f)
+                        : new Color(1f, 0.6f, 0.15f, 0.75f);
 
-                float len = Random.Range(0.3f, 0.8f) * intensity;
-                streak.transform.localScale = new Vector3(len, 0.03f, 1f);
+                float len = Random.Range(0.25f, 0.9f) * effectScale;
+                // 두께 0.06 — sprite Y(0.125)와 곱해 0.0075 world 단위, 대략 1~1.5 px
+                // 그 이하로 가면 서브픽셀로 안 보임 (0.015 테스트에서 확인)
+                streak.transform.localScale = new Vector3(len, 0.06f, 1f);
 
                 var rb = streak.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
-                rb.linearDamping = 3f;
-                rb.linearVelocity = dir * Random.Range(8f, 20f) * intensity;
+                rb.linearDamping = 2f; // 감쇠 완화 — 줄기가 더 멀리 뻗음
+                rb.linearVelocity = dir * Random.Range(10f, 24f) * intensity;
                 streak.AddComponent<FadeAndShrink>();
-                Object.Destroy(streak, Random.Range(0.1f, 0.3f));
+                Object.Destroy(streak, Random.Range(0.12f, 0.35f));
             }
 
             // [4] 검은/갈색 파편 다수 — 사방으로 멀리
-            int debrisCount = (int)(30 * intensity);
+            int debrisCount = Mathf.RoundToInt(30 * effectScale);
             for (int i = 0; i < debrisCount; i++)
             {
                 float angle = Random.Range(0f, 360f);
@@ -290,7 +337,7 @@ namespace Crux.Combat
                 else
                     c = new Color(1f, 0.7f, 0.2f, 0.8f);     // 불꽃 조각
 
-                float size = Random.Range(0.015f, 0.05f) * intensity;
+                float size = Random.Range(0.015f, 0.05f) * effectScale;
                 var obj = P(position, c, size, 62);
                 var rb = obj.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
@@ -301,11 +348,11 @@ namespace Crux.Combat
             }
 
             // [5] 연기/먼지 구름 — 크고 어둡게
-            int dustCount = (int)(6 * intensity);
+            int dustCount = Mathf.RoundToInt(6 * effectScale);
             for (int i = 0; i < dustCount; i++)
             {
                 Vector2 dustDir = Random.insideUnitCircle;
-                float dustSize = Random.Range(0.2f, 0.5f) * intensity;
+                float dustSize = Random.Range(0.2f, 0.5f) * effectScale;
 
                 Color dustColor;
                 if (i < dustCount / 3)
@@ -326,7 +373,7 @@ namespace Crux.Combat
             }
 
             // [6] 잔광(afterglow) — 서서히 사라지는 주황 원
-            var afterglow = P(position, new Color(1f, 0.4f, 0.1f, 0.4f), 0.5f * intensity, 56);
+            var afterglow = P(position, new Color(1f, 0.4f, 0.1f, 0.4f), 0.5f * effectScale, 56);
             afterglow.AddComponent<FadeAndShrink>();
             Object.Destroy(afterglow, 0.8f);
         }
@@ -369,12 +416,6 @@ namespace Crux.Combat
             }
 
             return _hitFrames;
-        }
-
-        // ===== 관통 — Hit VFX 확대 + 추가 파티클 =====
-        private static void SpawnPenetration(Vector3 position, Vector2 shellDir)
-        {
-            SpawnImpact(position, shellDir, 1.6f);
         }
 
         // ===== 엄폐물 피격 — 콘크리트/돌 파편 =====

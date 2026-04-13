@@ -173,8 +173,11 @@ namespace Crux.Cinematic
             }
             else
             {
-                // 기존 전차 착탄 로직
-                HitEffects.Spawn(impactPos, data.result.outcome, currentFireDir);
+                // 기존 전차 착탄 로직 — ammo 데미지로 구경 스케일 도출
+                float caliberScale = data.ammoData != null
+                    ? HitEffects.CaliberScaleFromAmmoDamage(data.ammoData.damage)
+                    : 1f;
+                HitEffects.Spawn(impactPos, data.result.outcome, currentFireDir, caliberScale);
 
                 if (data.result.hit && data.result.damageDealt > 0)
                     DamagePopup.Spawn(impactPos, data.result.damageDealt, data.result.outcome);
@@ -732,7 +735,8 @@ namespace Crux.Cinematic
                         case ShotOutcome.Penetration:
                             penCount++;
                             SpawnSmallHit(shotTarget);
-                            HitEffects.Spawn(shotTarget, ShotOutcome.Hit, fireDir);
+                            // MG는 작은 구경 — caliberScale 0.4
+                            HitEffects.Spawn(shotTarget, ShotOutcome.Hit, fireDir, 0.4f);
                             DamagePopup.SpawnSmall(shotTarget, shotResult.damageDealt, true);
                             StartCoroutine(CameraShake(0.05f, 0.04f));
                             break;
