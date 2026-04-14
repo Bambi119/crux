@@ -201,6 +201,13 @@ namespace Crux.Core
             var unit = obj.AddComponent<GridTankUnit>();
             unit.Initialize(grid, pos, data, ammo, side);
 
+            // 적 유닛에만 AI 컨트롤러 부착 — P2 기본 Role=Medium
+            if (side == PlayerSide.Enemy)
+            {
+                var ai = obj.AddComponent<Crux.AI.EnemyAIController>();
+                ai.Role = Crux.AI.AIRole.Medium;
+            }
+
             // 모듈 상태 오버레이
             var overlay = obj.AddComponent<UnitStatusOverlay>();
             overlay.Initialize(unit);

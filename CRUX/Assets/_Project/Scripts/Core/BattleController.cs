@@ -368,6 +368,10 @@ namespace Crux.Core
 
         private IEnumerator ProcessEnemyTurn(int startIndex = 0)
         {
+            // foes 리스트 (적 입장에서는 플레이어 측) — 매 턴 동일하지만 일관성 위해 로컬로
+            var foes = new List<GridTankUnit>();
+            if (playerUnit != null) foes.Add(playerUnit);
+
             for (int i = startIndex; i < enemyUnits.Count; i++)
             {
                 var enemy = enemyUnits[i];
@@ -378,79 +382,45 @@ namespace Crux.Core
 
                 if (playerUnit == null || playerUnit.IsDestroyed) continue;
 
-                // 항상 플레이어를 향하도록
-                enemy.FaceToward(playerUnit.GridPosition);
-
-                // 사거리 확인
-                int dist = grid.GetDistance(enemy.GridPosition, playerUnit.GridPosition);
-
-                if (dist <= GameConstants.MaxFireRange && enemy.CanFire())
+                // ===== AI 결정 위임 =====
+                var ai = enemy.GetComponent<Crux.AI.EnemyAIController>();
+                Crux.AI.AIDecision decision;
+                if (ai != null)
                 {
-                    // 다음 적 인덱스 기록 후 사격 → 연출 씬
-                    currentEnemyIndex = i + 1;
-                    ExecuteFire(enemy, playerUnit);
-                    yield break; // 씬 전환됨
+                    decision = ai.Decide(grid, enemyUnits, foes);
+                    Debug.Log($"[AI] {enemy.Data?.tankName} state={decision.state} score={decision.score:F2} " +
+                              $"move={(decision.moveTo.HasValue ? decision.moveTo.Value.ToString() : "none")} " +
+                              $"fire={(decision.fireTarget != null ? decision.fireTarget.Data?.tankName : "none")}");
                 }
-                else if (enemy.CanMove())
+                else
                 {
-                    // 플레이어 방향으로 이동 — 엄폐물 셀 우선, 사거리 내 정지
-                    var reachable = grid.GetReachableCells(enemy.GridPosition, enemy.CurrentAP);
-                    Vector2Int bestPos = enemy.GridPosition;
-                    float bestScore = float.MinValue;
+                    // Fallback: AI 컨트롤러 없으면 대기만
+                    decision = Crux.AI.AIDecision.Wait(Crux.AI.AIState.Engage);
+                }
 
-                    foreach (var pos in reachable)
-                    {
-                        float d = grid.GetDistance(pos, playerUnit.GridPosition);
-
-                        // 사거리 안이면 더 이상 접근하지 않음
-                        if (d > GameConstants.MaxFireRange) continue;
-
-                        // 점수: 가까울수록 +, 엄폐물 있으면 보너스
-                        float score = -d;
-                        var cell = grid.GetCell(pos);
-                        if (cell != null && cell.HasCover)
-                            score += 3f; // 엄폐물 보너스
-
-                        if (score > bestScore)
-                        {
-                            bestScore = score;
-                            bestPos = pos;
-                        }
-                    }
-
-                    // 사거리 내 셀이 없으면 가장 가까운 셀로
-                    if (bestPos == enemy.GridPosition)
-                    {
-                        float bestDist = dist;
-                        foreach (var pos in reachable)
-                        {
-                            float d = grid.GetDistance(pos, playerUnit.GridPosition);
-                            if (d < bestDist)
-                            {
-                                bestDist = d;
-                                bestPos = pos;
-                            }
-                        }
-                    }
-
-                    if (bestPos != enemy.GridPosition)
-                    {
-                        enemy.MoveTo(bestPos);
-                        // 이동 완료 대기
-                        while (enemy.IsMoving)
-                            yield return null;
-                    }
+                // ===== 이동 실행 =====
+                if (decision.moveTo.HasValue && decision.moveTo.Value != enemy.GridPosition && enemy.CanMove())
+                {
+                    enemy.FaceToward(decision.moveTo.Value);
+                    enemy.MoveTo(decision.moveTo.Value);
+                    while (enemy.IsMoving)
+                        yield return null;
 
                     // 오버워치 반격으로 이동 중 격파됐다면 이 적 행동은 종결
                     if (enemy.IsDestroyed) continue;
+                }
 
-                    // 이동 후 사격 가능하면 사격
-                    dist = grid.GetDistance(enemy.GridPosition, playerUnit.GridPosition);
-                    if (dist <= GameConstants.MaxFireRange && enemy.CanFire())
+                // ===== 사격 실행 =====
+                if (decision.fireTarget != null && !decision.fireTarget.IsDestroyed && enemy.CanFire())
+                {
+                    int distAfter = grid.GetDistance(enemy.GridPosition, decision.fireTarget.GridPosition);
+                    if (distAfter <= GameConstants.MaxFireRange
+                        && grid.HasLOS(enemy.GridPosition, decision.fireTarget.GridPosition))
                     {
+                        enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
-                        ExecuteFire(enemy, playerUnit);
-                        yield break;
+                        ExecuteFire(enemy, decision.fireTarget);
+                        yield break; // 씬 전환됨
                     }
                 }
 

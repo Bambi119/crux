@@ -1,0 +1,77 @@
+using System.Collections.Generic;
+
+namespace Crux.AI
+{
+    /// <summary>AI 역할 — Role별로 State 전이와 가중치 테이블이 달라짐</summary>
+    public enum AIRole
+    {
+        Vehicle,   // 차량 (Scout Flanker)
+        Light,     // 경전차 (Fast Striker)
+        Medium,    // 중형 전차 (Balanced Opportunist) — P2 첫 구현
+        Heavy,     // 중전차 (Anvil)
+        Drone,     // 자폭 드론 (Suicide Runner)
+        Infantry   // 보병 (Module Hunter)
+    }
+
+    /// <summary>AI State — Role × 상황 → 이 턴의 의도</summary>
+    public enum AIState
+    {
+        Engage,      // 사격 준비/실행 — P2 첫 구현
+        Flank,       // 우회 기동
+        Reposition,  // 불리한 위치 이탈
+        Retreat,     // 저HP 후퇴
+        Guard,       // 정지 방어
+        Suppress,    // 플랭커 견제
+        Charge,      // 직진 돌진 (드론)
+        Ambush,      // 매복 (구축전차)
+        ModuleHunt,  // 모듈 파괴 (보병)
+        Bombard      // 간접 사격 (자주포)
+    }
+
+    /// <summary>Role+State별 팩터 가중치 — 정적 테이블 (P3에서 SO로 이관 가능)</summary>
+    public static class AIWeights
+    {
+        /// <summary>스코어 팩터 가중치 벡터</summary>
+        public struct Weights
+        {
+            public float dist;         // 거리 (음수=접근, 양수=회피)
+            public float cover;        // 엄폐
+            public float flank;        // 측/후면 공격각
+            public float exposure;     // 노출도 (항상 음수로 불리)
+            public float kcs;          // Kill Confidence Score
+            public float concealment;  // 은엄폐
+            public float elev;         // 고도차
+            public float facingHold;   // 전면 유지 (구축전차)
+            public float modulePriority; // 모듈 우선도 (보병)
+            public float proxAlly;     // 아군 근접 (팩 vs 분산)
+        }
+
+        private static readonly Dictionary<(AIRole, AIState), Weights> table = new()
+        {
+            // P2 첫 구현: Medium/Engage — 기존 행동(사거리 내 사격, 엄폐 가산 이동)과 동치
+            {
+                (AIRole.Medium, AIState.Engage), new Weights
+                {
+                    dist = -1.0f,   // 가까울수록 +
+                    cover = 2.0f,
+                    kcs = 2.5f,
+                    exposure = -1.5f,
+                    facingHold = 0f,
+                    flank = 0f,
+                    concealment = 0.5f,
+                    elev = 1.0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            // 이후 Role들은 P3에서 채워짐 — 기본 Engage 템플릿 재사용 가능
+        };
+
+        public static Weights Get(AIRole role, AIState state)
+        {
+            if (table.TryGetValue((role, state), out var w)) return w;
+            // Fallback: Medium/Engage 기본값
+            return table[(AIRole.Medium, AIState.Engage)];
+        }
+    }
+}
