@@ -73,20 +73,18 @@ namespace Crux.Core
         }
 
         /// <summary>LayoutRows → GridCell.Terrain 적용 — SpawnFloorTiles 전에 호출</summary>
+        /// <remarks>LayoutRows[0] = 그리드 y=0 = 화면 하단 = 플레이어 진영. 직접 매핑.</remarks>
         private void ApplyTerrainLayout()
         {
             int rows = LayoutRows.Length;
             int cols = LayoutRows[0].Length;
             for (int y = 0; y < rows && y < grid.Height; y++)
             {
-                // y=0을 하단 행으로 해석 → 그리드 y 좌표는 (rows - 1 - y)
-                int gridY = rows - 1 - y;
-                if (gridY >= grid.Height) continue;
                 string row = LayoutRows[y];
                 for (int x = 0; x < cols && x < grid.Width; x++)
                 {
                     char c = row[x];
-                    var cell = grid.GetCell(new Vector2Int(x, gridY));
+                    var cell = grid.GetCell(new Vector2Int(x, y));
                     if (cell == null) continue;
                     cell.Terrain = CharToTerrain(c);
 

@@ -153,13 +153,14 @@ namespace Crux.Core
                 if (e != null) e.OnMoveStepComplete += HandleEnemyMoveStep;
 
             // 카메라 — 맵 전체가 보이도록 자동 조정 (flat-top hex 실제 치수)
+            // 주의: grid.Width/Height를 참조해야 테스트 맵(12×12 등)에도 대응
             if (mainCam != null)
             {
                 mainCam.orthographic = true;
                 // flat-top hex: width = 1.5*(w-1)*size + 2*size, height = sqrt(3)*(h-0.5)*size + sqrt(3)*size
                 float size = GameConstants.CellSize;
-                float mapW = size * (1.5f * (GameConstants.GridWidth - 1) + 2f);
-                float mapH = size * Mathf.Sqrt(3f) * (GameConstants.GridHeight + 0.5f);
+                float mapW = size * (1.5f * (grid.Width - 1) + 2f);
+                float mapH = size * Mathf.Sqrt(3f) * (grid.Height + 0.5f);
                 float aspect = mainCam.aspect;
                 float sizeByH = mapH * 0.55f;
                 float sizeByW = (mapW * 0.55f) / aspect;
@@ -169,7 +170,7 @@ namespace Crux.Core
 
                 // 맵 중심 (hex 월드 좌표 기반)
                 Vector3 bl = HexCoord.OffsetToWorld(new Vector2Int(0, 0), size);
-                Vector3 tr = HexCoord.OffsetToWorld(new Vector2Int(GameConstants.GridWidth - 1, GameConstants.GridHeight - 1), size);
+                Vector3 tr = HexCoord.OffsetToWorld(new Vector2Int(grid.Width - 1, grid.Height - 1), size);
                 float cx = (bl.x + tr.x) * 0.5f;
                 float cy = (bl.y + tr.y) * 0.5f;
                 camTargetPos = new Vector3(cx, cy, -10f);
