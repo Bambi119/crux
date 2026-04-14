@@ -6,6 +6,7 @@ using Crux.Grid;
 using Crux.Unit;
 using Crux.Data;
 using Crux.Combat;
+using Crux.UI;
 using TerrainData = Crux.Core.TerrainData;
 
 namespace Crux.Core
@@ -46,9 +47,8 @@ namespace Crux.Core
         // 반응 사격 연출 상태 — 적 이동 코루틴이 이 플래그를 폴링해 시퀀스 종료까지 대기
         public static bool IsReactionPlaying;
 
-        // 경고 마커 (공격자 머리 위 "!") — OnGUI에서 월드→스크린 변환 후 렌더
-        private Vector3? alertWorldPos;
-        private float alertEndTime;
+        // HUD
+        private BattleHUD hud;
 
         // 시스템
         private GridManager grid;
@@ -88,19 +88,27 @@ namespace Crux.Core
         private const float camPanSpeed = 8f;
         private const int edgePanMargin = 15; // 가장자리 스크롤 픽셀 폭
 
-        // UI 스케일
-        private float uiScale = 1f;
-
-        // UI 텍스처 캐시
-        private Dictionary<Color, Texture2D> texCache = new();
-
-        // 전략맵 배너 (화재 전소 등 이벤트 알림)
-        private string bannerText;
-        private Color bannerColor;
-        private float bannerEndTime;
-
         public TurnPhase CurrentPhase => currentPhase;
         public int TurnCount => turnCount;
+
+        // HUD 접근용 getter
+        public UnityEngine.Camera MainCam => mainCam;
+        public GridManager Grid => grid;
+        public bool ShowTerrainDebug => showTerrainDebug;
+        public GridTankUnit SelectedUnit => selectedUnit;
+        public GridTankUnit InspectedUnit => inspectedUnit;
+        public GridTankUnit HoveredTarget => hoveredTarget;
+        public GridTankUnit PendingTarget => pendingTarget;
+        public Vector2Int PendingMoveTarget => pendingMoveTarget;
+        public float PendingFacingAngle => pendingFacingAngle;
+        public int PendingMoveCost => pendingMoveCost;
+        public WeaponType SelectedWeapon => selectedWeapon;
+        public InputModeEnum CurrentInputMode => (InputModeEnum)(int)inputMode;
+        public Data.MachineGunDataSO CoaxialMGData => coaxialMGData;
+        public Data.MachineGunDataSO MountedMGData => mountedMGData;
+
+        // InputMode를 외부에서 참조할 수 있게 enum으로 노출
+        public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
 
         private void Start()
         {
@@ -188,8 +196,10 @@ namespace Crux.Core
                 mainCam.transform.position = camTargetPos;
             }
 
-            // UI 스케일 — 기준 해상도 1080p
-            uiScale = Screen.height / 1080f;
+            // HUD 초기화
+            var hudObj = new GameObject("BattleHUD");
+            hud = hudObj.AddComponent<BattleHUD>();
+            hud.Initialize(this);
 
             // 플레이어 턴 시작
             StartPlayerTurn();
@@ -207,10 +217,29 @@ namespace Crux.Core
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
             HandleCamera();
+            CheckVictoryDefeat();
 
             // 지형 디버그 토글
             if (Input.GetKeyDown(KeyCode.F1))
                 showTerrainDebug = !showTerrainDebug;
+        }
+
+        /// <summary>승리/패배 판정 — 플레이어 파괴 시 패배, 전 적 파괴 시 승리</summary>
+        private void CheckVictoryDefeat()
+        {
+            if (currentPhase == TurnPhase.GameOver || currentPhase == TurnPhase.Victory) return;
+
+            if (playerUnit != null && playerUnit.IsDestroyed)
+            {
+                currentPhase = TurnPhase.GameOver;
+                return;
+            }
+
+            bool allEnemiesDead = true;
+            foreach (var e in enemyUnits)
+                if (e != null && !e.IsDestroyed) { allEnemiesDead = false; break; }
+            if (allEnemiesDead)
+                currentPhase = TurnPhase.Victory;
         }
 
         private void HandleCamera()
@@ -255,9 +284,6 @@ namespace Crux.Core
             // 부드러운 보간
             mainCam.orthographicSize = Mathf.Lerp(mainCam.orthographicSize, camTargetSize, camZoomSpeed * Time.deltaTime);
             mainCam.transform.position = Vector3.Lerp(mainCam.transform.position, camTargetPos, camZoomSpeed * Time.deltaTime);
-
-            // UI 스케일 갱신
-            uiScale = Mathf.Max(0.5f, Screen.height / 1080f);
         }
 
         /// <summary>플레이어 유닛의 엄폐 커버 범위 표시 (상태 변경 시만 갱신)</summary>
@@ -832,11 +858,10 @@ namespace Crux.Core
             IsReactionPlaying = false;
         }
 
-        /// <summary>경고 마커 예약 — OnGUI의 DrawReactionAlert에서 소비</summary>
+        /// <summary>경고 마커 예약 — BattleHUD에 위임</summary>
         private void ShowAlertAt(Vector3 worldPos, float duration)
         {
-            alertWorldPos = worldPos;
-            alertEndTime = Time.time + duration;
+            hud?.ShowAlert(worldPos, duration);
         }
 
         /// <summary>반응 사격 레이저식 트레이서 — 전체 선을 한 프레임에 그리고 즉시 페이드</summary>
@@ -881,74 +906,15 @@ namespace Crux.Core
             Destroy(obj);
         }
 
-        /// <summary>반응 사격 공격자 머리 위 "!" 마커 — OnGUI에서 월드→스크린 변환</summary>
-        private void DrawReactionAlert()
-        {
-            if (!alertWorldPos.HasValue || mainCam == null) return;
-            float remaining = alertEndTime - Time.time;
-            if (remaining <= 0f)
-            {
-                alertWorldPos = null;
-                return;
-            }
-
-            Vector3 sp = mainCam.WorldToScreenPoint(alertWorldPos.Value + Vector3.up * 0.6f);
-            if (sp.z < 0) return;
-
-            float x = sp.x / uiScale;
-            float y = (Screen.height - sp.y) / uiScale;
-
-            // 깜빡 패턴 — sin^2 펄스
-            float pulse = Mathf.Abs(Mathf.Sin(Time.time * 22f));
-            float alpha = 0.35f + 0.65f * pulse;
-
-            var s = new GUIStyle(GetLabelStyle());
-            s.fontSize = 44;
-            s.fontStyle = FontStyle.Bold;
-            s.alignment = TextAnchor.MiddleCenter;
-
-            // 검은 외곽선
-            var shadow = new GUIStyle(s);
-            shadow.normal.textColor = new Color(0f, 0f, 0f, alpha * 0.9f);
-            GUI.Label(new Rect(x - 29, y - 29, 60, 60), "!", shadow);
-            GUI.Label(new Rect(x - 31, y - 31, 60, 60), "!", shadow);
-
-            s.normal.textColor = new Color(1f, 0.3f, 0.15f, alpha);
-            GUI.Label(new Rect(x - 30, y - 30, 60, 60), "!", s);
-        }
-
         /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
-        private void ShowBanner(string text, Color color, float duration)
+        public void ShowBanner(string text, Color color, float duration)
         {
-            bannerText = text;
-            bannerColor = color;
-            bannerEndTime = Time.time + duration;
+            if (hud != null) hud.ShowBanner(text, color, duration);
         }
 
-        private void DrawBanner()
+        public void ShowAlert(Vector3 worldPos, float duration)
         {
-            if (string.IsNullOrEmpty(bannerText)) return;
-            float remaining = bannerEndTime - Time.time;
-            if (remaining <= 0)
-            {
-                bannerText = null;
-                return;
-            }
-
-            float alpha = Mathf.Clamp01(remaining / 0.6f);
-            float bw = 520, bh = 56;
-            float bx = ScaledW / 2 - bw / 2;
-            float by = 70;
-
-            var bg = new GUIStyle(GetBoxStyle());
-            bg.normal.background = GetTex(new Color(0, 0, 0, 0.75f * alpha));
-            GUI.Box(new Rect(bx, by, bw, bh), "", bg);
-
-            var s = new GUIStyle(GetLabelStyle());
-            s.fontSize = 26;
-            s.alignment = TextAnchor.MiddleCenter;
-            s.normal.textColor = new Color(bannerColor.r, bannerColor.g, bannerColor.b, alpha);
-            GUI.Label(new Rect(bx, by, bw, bh), bannerText, s);
+            if (hud != null) hud.ShowAlert(worldPos, duration);
         }
 
         /// <summary>Fire 모드: 마우스 위치의 적을 hoveredTarget에 기록</summary>
@@ -1347,7 +1313,7 @@ namespace Crux.Core
             return 0f;
         }
 
-        private float CalculateHitChance(int distance, GridTankUnit target)
+        public float CalculateHitChance(int distance, GridTankUnit target)
         {
             float chance = GameConstants.BaseAccuracy;
             chance -= distance * GameConstants.DistancePenaltyPerCell;
@@ -1601,840 +1567,8 @@ namespace Crux.Core
 
         private void OnGUI()
         {
-            // UI 스케일링 — 모든 좌표/크기에 자동 적용
-            var prevMatrix = GUI.matrix;
-            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(uiScale, uiScale, 1f));
-
-            DrawTurnInfo();
-            DrawUnitInfo();
-            DrawModuleStatus();
-            DrawInputModeInfo();
-            DrawControls();
-            DrawBanner();
-            DrawReactionAlert();
-            DrawGameResult();
-
-            if (showTerrainDebug)
-            {
-                DrawTerrainOverlay();
-                DrawTerrainHoverInfo();
-            }
-
-            GUI.matrix = prevMatrix;
+            if (hud != null) hud.Draw();
         }
-
-        // ===== 지형 디버그 오버레이 =====
-
-        private static string TerrainLetter(TerrainType t) => t switch
-        {
-            TerrainType.Road             => "로",
-            TerrainType.Mud              => "진",
-            TerrainType.Woods            => "숲",
-            TerrainType.Rubble           => "편",
-            TerrainType.Crater           => "탄",
-            TerrainType.Hill             => "언",
-            TerrainType.Building         => "건",
-            TerrainType.ElevatedBuilding => "고",
-            TerrainType.Water            => "물",
-            _ => ""
-        };
-
-        private static Color TerrainLabelColor(TerrainType t) => t switch
-        {
-            TerrainType.Road             => new Color(0.95f, 0.95f, 0.75f),
-            TerrainType.Mud              => new Color(0.95f, 0.75f, 0.45f),
-            TerrainType.Woods            => new Color(0.50f, 1.00f, 0.50f),
-            TerrainType.Rubble           => new Color(0.90f, 0.80f, 0.65f),
-            TerrainType.Crater           => new Color(1.00f, 0.80f, 0.40f),
-            TerrainType.Hill             => new Color(1.00f, 0.95f, 0.50f),
-            TerrainType.Building         => new Color(0.65f, 0.75f, 1.00f),
-            TerrainType.ElevatedBuilding => new Color(1.00f, 0.70f, 1.00f),
-            TerrainType.Water            => new Color(0.50f, 0.80f, 1.00f),
-            _ => Color.white
-        };
-
-        /// <summary>F1 토글: 각 셀에 지형 한 글자 라벨 그리기 (Open 제외)</summary>
-        private void DrawTerrainOverlay()
-        {
-            if (grid == null || mainCam == null) return;
-
-            var style = new GUIStyle();
-            style.fontSize = 13;
-            style.alignment = TextAnchor.MiddleCenter;
-            style.fontStyle = FontStyle.Bold;
-
-            for (int x = 0; x < grid.Width; x++)
-            {
-                for (int y = 0; y < grid.Height; y++)
-                {
-                    var cell = grid.GetCell(new Vector2Int(x, y));
-                    if (cell == null || cell.Terrain == TerrainType.Open) continue;
-
-                    Vector3 world = grid.GridToWorld(new Vector2Int(x, y));
-                    Vector3 screen = mainCam.WorldToScreenPoint(world);
-                    if (screen.z < 0) continue;
-
-                    float sx = screen.x / uiScale;
-                    float sy = (Screen.height - screen.y) / uiScale;
-                    var rect = new Rect(sx - 13, sy - 10, 26, 20);
-
-                    var prev = GUI.color;
-                    GUI.color = new Color(0f, 0f, 0f, 0.7f);
-                    GUI.DrawTexture(rect, Texture2D.whiteTexture);
-                    GUI.color = prev;
-
-                    style.normal.textColor = TerrainLabelColor(cell.Terrain);
-                    GUI.Label(rect, TerrainLetter(cell.Terrain), style);
-                }
-            }
-        }
-
-        /// <summary>마우스가 올라간 셀의 지형 상세 정보 박스 — 화면 상단 중앙</summary>
-        private void DrawTerrainHoverInfo()
-        {
-            if (grid == null || mainCam == null) return;
-
-            Vector3 mouseWorld = mainCam.ScreenToWorldPoint(Input.mousePosition);
-            Vector2Int cellPos = grid.WorldToGrid(mouseWorld);
-            if (!grid.IsInBounds(cellPos)) return;
-
-            var cell = grid.GetCell(cellPos);
-            if (cell == null) return;
-
-            var terrain = cell.Terrain;
-            int moveCost = TerrainData.MoveCost(terrain);
-            int elev = TerrainData.Elevation(terrain);
-            int concealment = TerrainData.Concealment(terrain);
-            float intrinsicCov = TerrainData.IntrinsicCoverRate(terrain);
-            bool groundPass = TerrainData.GroundPassable(terrain);
-            bool blocksLOS = TerrainData.BlocksLOS(terrain);
-            string moveCostStr = moveCost == int.MaxValue ? "∞" : moveCost.ToString();
-
-            float boxW = 260;
-            float boxH = 112;
-            float bx = (ScaledW - boxW) * 0.5f;
-            float by = 50;
-
-            GUI.Box(new Rect(bx, by, boxW, boxH), "", GetBoxStyle());
-
-            var title = new GUIStyle(GetLabelStyle());
-            title.fontSize = 15;
-            title.fontStyle = FontStyle.Bold;
-            title.normal.textColor = TerrainLabelColor(terrain);
-            GUI.Label(new Rect(bx + 12, by + 6, boxW - 24, 20),
-                $"{TerrainData.Label(terrain)} @ ({cellPos.x},{cellPos.y})", title);
-
-            var row = new GUIStyle(GetLabelStyle());
-            row.fontSize = 13;
-            row.normal.textColor = new Color(0.9f, 0.9f, 0.9f);
-
-            float ly = by + 28;
-            GUI.Label(new Rect(bx + 12, ly, boxW - 24, 18),
-                $"이동 {moveCostStr} AP  |  고도 {(elev >= 0 ? "+" : "")}{elev}", row);
-            ly += 17;
-            GUI.Label(new Rect(bx + 12, ly, boxW - 24, 18),
-                $"은엄폐 {concealment}%  |  지형엄폐 {intrinsicCov:P0}", row);
-            ly += 17;
-            string pass = groundPass ? "지상 통과" : "지상 차단";
-            string los = blocksLOS ? "LOS 차단" : "LOS 통과";
-            GUI.Label(new Rect(bx + 12, ly, boxW - 24, 18), $"{pass}  |  {los}", row);
-
-            ly += 17;
-            if (cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
-            {
-                var covRow = new GUIStyle(row);
-                covRow.normal.textColor = new Color(1f, 0.8f, 0.4f);
-                GUI.Label(new Rect(bx + 12, ly, boxW - 24, 18),
-                    $"엄폐물: {cell.Cover.coverName} ({cell.Cover.CoverRate:P0})", covRow);
-            }
-            else if (cell.HasSmoke)
-            {
-                var sm = new GUIStyle(row);
-                sm.normal.textColor = new Color(0.7f, 0.9f, 1f);
-                GUI.Label(new Rect(bx + 12, ly, boxW - 24, 18),
-                    $"연막 {cell.SmokeTurnsLeft}턴 잔존", sm);
-            }
-        }
-
-        /// <summary>스케일 보정된 Screen 크기 (OnGUI 내에서 사용)</summary>
-        private float ScaledW => Screen.width / uiScale;
-        private float ScaledH => Screen.height / uiScale;
-
-        private void DrawTurnInfo()
-        {
-            string phaseKR = currentPhase switch
-            {
-                TurnPhase.PlayerTurn => "플레이어",
-                TurnPhase.EnemyTurn => "적 턴",
-                TurnPhase.Cinematic => "연출 중",
-                TurnPhase.GameOver => "패배",
-                TurnPhase.Victory => "승리",
-                _ => currentPhase.ToString()
-            };
-            var tstyle = new GUIStyle(GetLabelStyle());
-            tstyle.fontSize = 20;
-            tstyle.normal.textColor = Color.white;
-            GUI.Box(new Rect(10, 10, 240, 35), "", GetBoxStyle());
-            GUI.Label(new Rect(15, 14, 230, 25),
-                $"턴 {turnCount}  |  {phaseKR}", tstyle);
-        }
-
-        private void DrawUnitInfo()
-        {
-            // 조회 대상: 적을 클릭했으면 적, 아니면 선택된 아군
-            var info = inspectedUnit != null && !inspectedUnit.IsDestroyed
-                       ? inspectedUnit : selectedUnit;
-            if (info != null)
-                DrawUnitInfoPanel(10f, 55f, info);
-
-            // Fire 모드 호버 / WeaponSelect 모드 → 사격 프리뷰
-            GridTankUnit previewTarget = null;
-            if (inputMode == InputMode.WeaponSelect && pendingTarget != null)
-                previewTarget = pendingTarget;
-            else if (inputMode == InputMode.Fire && hoveredTarget != null)
-                previewTarget = hoveredTarget;
-
-            if (previewTarget != null)
-                DrawFireTargetPreview(previewTarget, selectedWeapon);
-        }
-
-        /// <summary>통합 유닛 정보 패널 — 아군/적 동일 레이아웃 (조회용, 프리뷰 제외)</summary>
-        private void DrawUnitInfoPanel(float x, float y, GridTankUnit u)
-        {
-            float w = 350, h = 180;
-            GUI.Box(new Rect(x, y, w, h), "", GetBoxStyle());
-
-            var style = new GUIStyle(GetLabelStyle());
-            style.fontSize = 17;
-
-            float lineH = 20f;
-            float cy = y + 5;
-            float cx = x + 10;
-            float innerW = w - 20;
-
-            // 1행: 이름 + 전차타입 + 위치·방향
-            string cls = GetTankClassLabel(u.Data != null ? u.Data.tankClass : TankClass.Medium);
-            string facing = GetCompassLabel(u.HullAngle);
-            string sideTag = u.side == PlayerSide.Player ? "" : "[적] ";
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"{sideTag}{u.Data?.tankName}  ({cls})", style);
-            var posStyle = new GUIStyle(style);
-            posStyle.alignment = TextAnchor.UpperRight;
-            posStyle.fontSize = 15;
-            posStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"({u.GridPosition.x},{u.GridPosition.y}) {facing}", posStyle);
-            cy += lineH;
-
-            // 2행: HP / AP
-            float hpRatio = u.Data != null && u.Data.maxHP > 0 ? u.CurrentHP / u.Data.maxHP : 0f;
-            var hpColor = hpRatio > 0.6f ? new Color(0.4f, 1f, 0.5f)
-                       : hpRatio > 0.3f ? new Color(1f, 0.9f, 0.2f)
-                                        : new Color(1f, 0.3f, 0.2f);
-            var hpStyle = new GUIStyle(style);
-            hpStyle.normal.textColor = hpColor;
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"HP {u.CurrentHP:F0}/{u.Data?.maxHP}   AP {u.CurrentAP}/{u.MaxAP}", hpStyle);
-            cy += lineH;
-
-            // 3행: 이동 거리 (셀, 패널티 반영)
-            int moveCost = u.GetMoveCostPerCell();
-            int moveCells = moveCost > 0 ? u.CurrentAP / moveCost : 0;
-            int baseMove = GameConstants.MoveCostPerCell;
-            int penalty = moveCost - baseMove;
-            string penStr = penalty > 0 ? $"-{penalty}" : "";
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"이동 {moveCells}셀 (비용 {moveCost}/셀{penStr})", style);
-            cy += lineH;
-
-            // 4행: 주포 — {caliber}mm {AmmoCode} {count}/{max}
-            int cal = u.Data != null ? u.Data.mainGunCaliber : 0;
-            string ammoCode = u.currentAmmo != null
-                ? (!string.IsNullOrEmpty(u.currentAmmo.shortCode) ? u.currentAmmo.shortCode : u.currentAmmo.ammoName)
-                : "-";
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"주포 {cal}mm  {ammoCode} {u.MainGunAmmoCount}/{u.MaxMainGunAmmo}", style);
-            cy += lineH;
-
-            // 5행: 기관총 — {caliber}mm {loaded}/{total}
-            if (u.MGAmmoTotal > 0)
-            {
-                float mgCal = coaxialMGData != null ? coaxialMGData.caliber : 7.92f;
-                GUI.Label(new Rect(cx, cy, innerW, lineH),
-                    $"MG {mgCal:0.##}mm  {u.MGAmmoLoaded}/{u.MGAmmoTotal}", style);
-            }
-            else
-            {
-                GUI.Label(new Rect(cx, cy, innerW, lineH), "MG —", style);
-            }
-            cy += lineH;
-
-            // 6행: 엄폐 상태 (이름(크기), 방호범위 N/E, -명중보정)
-            var cell = grid.GetCell(u.GridPosition);
-            var coverStyle = new GUIStyle(style);
-            coverStyle.fontSize = 16;
-            if (cell != null && cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
-            {
-                var cov = cell.Cover;
-                string sizeLabel = cov.size switch
-                {
-                    CoverSize.Small => "소",
-                    CoverSize.Medium => "중",
-                    CoverSize.Large => "대",
-                    _ => ""
-                };
-                string dirs = GetFacetLabel(cov.CurrentFacets);
-                int hitPenalty = Mathf.RoundToInt(cov.CoverRate * 30f); // 명중률 보정치 %
-                coverStyle.normal.textColor = new Color(0.3f, 1f, 0.5f);
-                GUI.Label(new Rect(cx, cy, innerW, lineH),
-                    $"엄폐 {cov.coverName}({sizeLabel}) {dirs}  명중-{hitPenalty}%", coverStyle);
-            }
-            else
-            {
-                coverStyle.normal.textColor = new Color(1f, 0.6f, 0.4f);
-                GUI.Label(new Rect(cx, cy, innerW, lineH), "엄폐 — 개활지", coverStyle);
-            }
-            cy += lineH;
-
-            // 7행: 상태이상
-            string statusExtra = "";
-            if (u.IsOnFire) statusExtra += "[화재] ";
-            if (u.RemainingSmokeCharges > 0) statusExtra += $"연막:{u.RemainingSmokeCharges} ";
-            if (cell != null && cell.HasSmoke) statusExtra += "[연막중] ";
-            if (u.IsOverwatching) statusExtra += "[⌁반응대기]";
-            if (statusExtra.Length == 0) statusExtra = "정상";
-            var stStyle = new GUIStyle(style);
-            stStyle.fontSize = 15;
-            stStyle.normal.textColor = u.IsOnFire ? new Color(1f, 0.5f, 0.2f) : new Color(0.8f, 0.85f, 0.9f);
-            GUI.Label(new Rect(cx, cy, innerW, lineH), $"상태: {statusExtra}", stStyle);
-        }
-
-        // ===== 사격 프리뷰 =====
-
-        private struct FirePreview
-        {
-            public int distance;
-            public float baseHit;      // 거리 패널티 적용 후
-            public float coverPenalty; // 엄폐에 의한 차감
-            public float smokePenalty; // 연막에 의한 차감
-            public float finalHit;
-            public HitZone hitZone;
-            public float baseArmor;
-            public float impactAngle;
-            public float effectiveArmor;
-            public float penetration;
-            public ShotOutcome outcome;
-            public float expectedDamagePerShot; // 판정 반영 데미지 (명중 시)
-            public int shotsPerAction;           // 주포 1, 버스트 N
-            public float totalExpected;          // shotsPerAction × finalHit × damagePerShot
-            public bool coveredFromThisAngle;    // 현재 공격각에서 엄폐 유효
-            public bool isMG;
-        }
-
-        /// <summary>선택 무기 기준 사격 결과 기대값 계산</summary>
-        private FirePreview ComputeFirePreview(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
-        {
-            var p = new FirePreview();
-            p.distance = grid.GetDistance(attacker.GridPosition, target.GridPosition);
-
-            // 명중률 분해
-            float chance = CalculateHitChance(p.distance, target);
-            chance -= attacker.Modules.GetAccuracyPenalty();
-
-            // 지형 고도 차 (공격자 > 목표면 보너스)
-            var aCell = grid.GetCell(attacker.GridPosition);
-            var tCell = grid.GetCell(target.GridPosition);
-            if (aCell != null && tCell != null)
-            {
-                int elevDelta = TerrainData.Elevation(aCell.Terrain)
-                              - TerrainData.Elevation(tCell.Terrain);
-                if (elevDelta > 0) chance += elevDelta * 0.05f;
-            }
-            p.baseHit = Mathf.Clamp01(chance);
-
-            // 엄폐 보정 — 엄폐물 + 지형 고유 엄폐 합산
-            p.coverPenalty = 0f;
-            if (tCell != null && tCell.HasCover && tCell.Cover != null && !tCell.Cover.IsDestroyed)
-            {
-                var atkDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
-                if (tCell.Cover.IsCovered(atkDir))
-                {
-                    p.coveredFromThisAngle = true;
-                    p.coverPenalty = tCell.Cover.CoverRate * 0.3f;
-                }
-            }
-            if (tCell != null)
-            {
-                float intrinsic = TerrainData.IntrinsicCoverRate(tCell.Terrain);
-                if (intrinsic > 0f) p.coverPenalty += intrinsic * 0.3f;
-            }
-
-            // 은엄폐 (수풀·파편)
-            int concealmentPct = tCell != null ? TerrainData.Concealment(tCell.Terrain) : 0;
-            float concealmentPenalty = concealmentPct * 0.01f;
-
-            // 연막 보정
-            p.smokePenalty = (tCell != null && tCell.HasSmoke) ? 0.4f : 0f;
-            // 은엄폐를 연막 페널티에 합산 (별도 필드 없이 기존 구조 유지)
-            p.smokePenalty += concealmentPenalty;
-
-            // 기총 기본 명중률 보정
-            if (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
-            {
-                p.baseHit = Mathf.Clamp01(p.baseHit + coaxialMGData.accuracyModifier
-                                         - attacker.Modules.GetMGAccuracyPenalty());
-            }
-            else if (weapon == WeaponType.MountedMG && mountedMGData != null)
-            {
-                p.baseHit = Mathf.Clamp01(p.baseHit + mountedMGData.accuracyModifier
-                                         - attacker.Modules.GetMGAccuracyPenalty());
-            }
-
-            p.finalHit = Mathf.Clamp01(p.baseHit - p.coverPenalty - p.smokePenalty);
-
-            // 피격 위치·장갑 — 현재 위치 기준
-            p.hitZone = PenetrationCalculator.DetermineHitZone(
-                attacker.transform.position, target.transform.position, target.HullAngle);
-            p.baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, p.hitZone);
-            p.impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
-                attacker.transform.position, target.transform.position, target.HullAngle, p.hitZone);
-            p.effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(p.baseArmor, p.impactAngle);
-
-            // 관통력 / 데미지 — 무기에 따라
-            float basePenetration;
-            float baseDamage;
-            if (weapon == WeaponType.MainGun)
-            {
-                basePenetration = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
-                baseDamage = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
-                p.shotsPerAction = 1;
-                p.isMG = false;
-
-                // 거리 감쇠
-                if (attacker.currentAmmo != null && attacker.currentAmmo.penetrationDropPerCell > 0)
-                    basePenetration = Mathf.Max(1f, basePenetration - attacker.currentAmmo.penetrationDropPerCell * p.distance);
-            }
-            else
-            {
-                var mg = weapon == WeaponType.CoaxialMG ? coaxialMGData : mountedMGData;
-                basePenetration = mg != null ? mg.penetration : 15f;
-                baseDamage = mg != null ? mg.damagePerShot : 2f;
-                p.shotsPerAction = mg != null
-                    ? Mathf.Max(1, mg.burstCount - attacker.Modules.GetBurstPenalty())
-                    : 1;
-                p.isMG = true;
-            }
-
-            p.penetration = basePenetration;
-
-            // 판정 예측 — 확률 경계는 기대값으로 대체 (ratio 기반 결정론 표기)
-            p.outcome = PredictOutcome(basePenetration, p.effectiveArmor);
-
-            // 데미지 계산 (판정별)
-            float outcomeMult = p.outcome switch
-            {
-                ShotOutcome.Penetration => p.isMG ? 2f : 2.5f,
-                ShotOutcome.Hit => 1f,
-                ShotOutcome.Ricochet => 0.03f,
-                _ => 0f
-            };
-            p.expectedDamagePerShot = baseDamage * outcomeMult;
-            p.totalExpected = p.shotsPerAction * p.finalHit * p.expectedDamagePerShot;
-            return p;
-        }
-
-        /// <summary>결정론적 판정 예측 — JudgePenetration의 확률 구간을 단일값으로</summary>
-        private static ShotOutcome PredictOutcome(float penetration, float effectiveArmor)
-        {
-            if (effectiveArmor >= float.MaxValue) return ShotOutcome.Ricochet;
-            float ratio = penetration / effectiveArmor;
-            if (ratio > 1.2f) return ShotOutcome.Penetration;
-            if (ratio > 0.8f) return ShotOutcome.Hit;
-            return ShotOutcome.Ricochet;
-        }
-
-        /// <summary>사격 프리뷰 패널</summary>
-        private void DrawFireTargetPreview(GridTankUnit target, WeaponType weapon)
-        {
-            if (target == null || target.IsDestroyed || selectedUnit == null) return;
-
-            var p = ComputeFirePreview(selectedUnit, target, weapon);
-
-            float w = 360, h = 260;
-            float x = ScaledW - w - 10;
-            float y = 55;
-            GUI.Box(new Rect(x, y, w, h), "", GetBoxStyle());
-
-            var style = new GUIStyle(GetLabelStyle());
-            style.fontSize = 17;
-            float cx = x + 10;
-            float cy = y + 6;
-            float lineH = 20f;
-            float innerW = w - 20;
-
-            // 제목
-            var titleStyle = new GUIStyle(style);
-            titleStyle.fontSize = 19;
-            titleStyle.normal.textColor = new Color(1f, 0.9f, 0.4f);
-            string cls = GetTankClassLabel(target.Data != null ? target.Data.tankClass : TankClass.Medium);
-            GUI.Label(new Rect(cx, cy, innerW, 22),
-                $"대상: {target.Data?.tankName}  [{cls}]", titleStyle);
-            cy += 24;
-
-            // HP + 예상 결과
-            float hpRatio = target.Data != null && target.Data.maxHP > 0
-                            ? target.CurrentHP / target.Data.maxHP : 0f;
-            var hpColor = hpRatio > 0.6f ? new Color(0.4f, 1f, 0.5f)
-                       : hpRatio > 0.3f ? new Color(1f, 0.9f, 0.2f)
-                                        : new Color(1f, 0.3f, 0.2f);
-            var hpStyle = new GUIStyle(style);
-            hpStyle.normal.textColor = hpColor;
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"HP  {target.CurrentHP:F0}/{target.Data?.maxHP}", hpStyle);
-            cy += lineH;
-
-            // 구분선 — 거리·명중률
-            var sepStyle = new GUIStyle(style);
-            sepStyle.normal.textColor = new Color(0.6f, 0.6f, 0.7f);
-            GUI.Label(new Rect(cx, cy, innerW, lineH), "────────────────────────", sepStyle);
-            cy += lineH;
-
-            // 거리
-            GUI.Label(new Rect(cx, cy, innerW, lineH), $"거리  {p.distance}셀", style);
-            cy += lineH;
-
-            // 명중률 + 분해
-            var hitStyle = new GUIStyle(style);
-            hitStyle.fontSize = 18;
-            hitStyle.normal.textColor = new Color(1f, 0.95f, 0.4f);
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"명중률  {p.finalHit:P0}", hitStyle);
-            cy += lineH;
-
-            var breakStyle = new GUIStyle(style);
-            breakStyle.fontSize = 14;
-            breakStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
-            string brk = $"   기본 {p.baseHit:P0}";
-            if (p.coverPenalty > 0) brk += $"  −엄폐 {(p.coverPenalty * 100f):F0}%";
-            if (p.smokePenalty > 0) brk += $"  −연막 {(p.smokePenalty * 100f):F0}%";
-            GUI.Label(new Rect(cx, cy, innerW, 18), brk, breakStyle);
-            cy += 18;
-
-            // 피격 위치·장갑 (6섹터)
-            string zoneLabel = p.hitZone switch
-            {
-                HitZone.Front => "전면",
-                HitZone.FrontRight => "우전",
-                HitZone.RearRight => "우후",
-                HitZone.Rear => "후면",
-                HitZone.RearLeft => "좌후",
-                HitZone.FrontLeft => "좌전",
-                HitZone.Turret => "포탑",
-                _ => ""
-            };
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"피격  {zoneLabel}  장갑 {p.baseArmor:F0}mm (유효 {p.effectiveArmor:F0}mm)", style);
-            cy += lineH;
-
-            // 관통력 vs 장갑 + 판정
-            string outcomeLabel; Color outcomeColor;
-            switch (p.outcome)
-            {
-                case ShotOutcome.Penetration:
-                    outcomeLabel = "관통"; outcomeColor = new Color(0.4f, 1f, 0.5f); break;
-                case ShotOutcome.Hit:
-                    outcomeLabel = "명중"; outcomeColor = new Color(1f, 0.95f, 0.3f); break;
-                case ShotOutcome.Ricochet:
-                    outcomeLabel = "도탄"; outcomeColor = new Color(1f, 0.4f, 0.3f); break;
-                default:
-                    outcomeLabel = "실패"; outcomeColor = Color.gray; break;
-            }
-            var resStyle = new GUIStyle(style);
-            resStyle.normal.textColor = outcomeColor;
-            resStyle.fontSize = 18;
-            GUI.Label(new Rect(cx, cy, innerW, lineH),
-                $"관통력 {p.penetration:F0}mm  →  {outcomeLabel}", resStyle);
-            cy += lineH;
-
-            // 예상 피해
-            string dmgLine;
-            if (p.isMG)
-                dmgLine = $"예상 피해  {p.totalExpected:F0}  ({p.shotsPerAction}발 기준)";
-            else
-                dmgLine = $"예상 피해  {p.expectedDamagePerShot:F0}  (명중 시)";
-            var dmgStyle = new GUIStyle(style);
-            dmgStyle.fontSize = 18;
-            GUI.Label(new Rect(cx, cy, innerW, lineH), dmgLine, dmgStyle);
-            cy += lineH;
-
-            // 사격 후 예상 HP
-            float remainHP = Mathf.Max(0f, target.CurrentHP - p.totalExpected);
-            bool kill = remainHP <= 0f && p.finalHit > 0.01f;
-            var afterStyle = new GUIStyle(style);
-            afterStyle.fontSize = 16;
-            afterStyle.normal.textColor = kill ? new Color(1f, 0.3f, 0.3f)
-                                                : (remainHP / Mathf.Max(1f, target.Data.maxHP) < 0.5f
-                                                    ? new Color(1f, 0.7f, 0.3f)
-                                                    : new Color(0.85f, 0.85f, 0.9f));
-            string afterLine = kill
-                ? $"사격 후  {target.CurrentHP:F0} → 0  (격파)"
-                : $"사격 후  {target.CurrentHP:F0} → {remainHP:F0}";
-            GUI.Label(new Rect(cx, cy, innerW, lineH), afterLine, afterStyle);
-            cy += lineH;
-
-            // 엄폐
-            var coverStyle = new GUIStyle(style);
-            coverStyle.fontSize = 15;
-            if (p.coveredFromThisAngle)
-            {
-                var tc = grid.GetCell(target.GridPosition);
-                var cv = tc.Cover;
-                string sz = cv.size switch
-                {
-                    CoverSize.Small => "소",
-                    CoverSize.Medium => "중",
-                    CoverSize.Large => "대",
-                    _ => ""
-                };
-                string dirs = GetFacetLabel(cv.CurrentFacets);
-                coverStyle.normal.textColor = new Color(0.4f, 1f, 0.5f);
-                GUI.Label(new Rect(cx, cy, innerW, lineH),
-                    $"엄폐 {cv.coverName}({sz}) {dirs}  유효", coverStyle);
-            }
-            else
-            {
-                coverStyle.normal.textColor = new Color(0.8f, 0.8f, 0.85f);
-                GUI.Label(new Rect(cx, cy, innerW, lineH), "엄폐  현재 각도에 무효", coverStyle);
-            }
-        }
-
-        /// <summary>전차 분류 라벨</summary>
-        private static string GetTankClassLabel(TankClass cls) => cls switch
-        {
-            TankClass.Vehicle => "차량",
-            TankClass.Light => "경전차",
-            TankClass.Medium => "중형전차",
-            TankClass.Heavy => "중전차",
-            _ => ""
-        };
-
-        /// <summary>나침반 각도 → N/NE/E/SE/S/SW/W/NW</summary>
-        private static string GetCompassLabel(float compassAngle)
-        {
-            float a = ((compassAngle % 360f) + 360f) % 360f;
-            int idx = Mathf.RoundToInt(a / 45f) % 8;
-            return idx switch
-            {
-                0 => "↑N",
-                1 => "↗NE",
-                2 => "→E",
-                3 => "↘SE",
-                4 => "↓S",
-                5 => "↙SW",
-                6 => "←W",
-                7 => "↖NW",
-                _ => ""
-            };
-        }
-
-        /// <summary>6면 방호 플래그 → "북/북동/남동" 식 라벨</summary>
-        private static string GetFacetLabel(HexFacet facets)
-        {
-            if (facets == HexFacet.None) return "—";
-            var list = new List<string>();
-            foreach (var d in facets.Enumerate())
-                list.Add(HexCoord.DirLabel(d));
-            return string.Join("/", list);
-        }
-
-        private void DrawInputModeInfo()
-        {
-            // 무기 선택 모드 — 특별 UI
-            if (inputMode == InputMode.WeaponSelect && pendingTarget != null)
-            {
-                DrawWeaponSelectUI();
-                return;
-            }
-
-            // 방향 선택 모드 — 특별 UI
-            if (inputMode == InputMode.MoveDirectionSelect)
-            {
-                DrawMoveDirectionUI();
-                return;
-            }
-
-            string modeText = inputMode switch
-            {
-                InputMode.Move => "[이동 모드] 셀 클릭으로 이동",
-                InputMode.Fire => "[사격 모드] 적 유닛 클릭으로 사격",
-                _ => "[대기] Q:이동  E:사격  Space:턴종료"
-            };
-
-            float iw = 360;
-            GUI.Box(new Rect(ScaledW / 2 - iw / 2, ScaledH - 42, iw, 32), "", GetBoxStyle());
-            var style = new GUIStyle(GetLabelStyle());
-            style.fontSize = 17;
-            style.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(ScaledW / 2 - iw / 2, ScaledH - 42, iw, 32), modeText, style);
-        }
-
-        private void DrawMoveDirectionUI()
-        {
-            var box = GetBoxStyle();
-            var label = new GUIStyle(GetLabelStyle());
-            label.fontSize = 18;
-            label.alignment = TextAnchor.MiddleCenter;
-
-            float panelW = 440, panelH = 96;
-            float px = ScaledW / 2 - panelW / 2;
-            float py = ScaledH / 2 + 60;
-
-            GUI.Box(new Rect(px, py, panelW, panelH), "", box);
-
-            // 6방향 라벨 (60° 단위, QWE/ASD 매핑)
-            string dirName = pendingFacingAngle switch
-            {
-                0f => "↑ 북 (W)",
-                60f => "↗ 북동 (E)",
-                120f => "↘ 남동 (D)",
-                180f => "↓ 남 (S)",
-                240f => "↙ 남서 (A)",
-                300f => "↖ 북서 (Q)",
-                _ => $"{pendingFacingAngle:F0}°"
-            };
-
-            GUI.Label(new Rect(px, py + 5, panelW, 22),
-                $"목적지: ({pendingMoveTarget.x},{pendingMoveTarget.y})  AP: {pendingMoveCost}", label);
-            GUI.Label(new Rect(px, py + 30, panelW, 22),
-                $"방향: {dirName}", label);
-            var hintStyle = new GUIStyle(label);
-            hintStyle.fontSize = 16;
-            hintStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
-            GUI.Label(new Rect(px, py + 60, panelW, 22),
-                "[Space] 확정   [클릭] 방향+확정   [Tab] 취소", hintStyle);
-        }
-
-        private void DrawWeaponSelectUI()
-        {
-            var box = GetBoxStyle();
-            var label = GetLabelStyle();
-
-            // 무기 선택 패널
-            float panelW = 420, panelH = 138;
-            float px = ScaledW / 2 - panelW / 2;
-            float py = ScaledH / 2 + 40;
-
-            GUI.Box(new Rect(px, py, panelW, panelH), "", box);
-
-            var titleStyle = new GUIStyle(label);
-            titleStyle.fontSize = 21;
-            titleStyle.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(px, py + 5, panelW, 22), $"무기 선택 — 대상: {pendingTarget.Data.tankName}", titleStyle);
-
-            var normalCol = new Color(0.75f, 0.75f, 0.8f);
-            var selCol = new Color(1f, 0.95f, 0.3f);
-
-            void DrawItem(int slot, WeaponType wt, string text)
-            {
-                var st = new GUIStyle(label);
-                st.fontSize = 18;
-                st.normal.textColor = (selectedWeapon == wt) ? selCol : normalCol;
-                string mark = (selectedWeapon == wt) ? "▶ " : "  ";
-                GUI.Label(new Rect(px + 10, py + 30 + (slot - 1) * 23, panelW - 20, 20),
-                    $"{mark}[{slot}] {text}", st);
-            }
-
-            // 1. 주포
-            string mainAmmo = selectedUnit.currentAmmo != null
-                ? (!string.IsNullOrEmpty(selectedUnit.currentAmmo.shortCode)
-                    ? selectedUnit.currentAmmo.shortCode : selectedUnit.currentAmmo.ammoName)
-                : "AP";
-            int mainCal = selectedUnit.Data != null ? selectedUnit.Data.mainGunCaliber : 0;
-            DrawItem(1, WeaponType.MainGun,
-                $"주포 {mainCal}mm {mainAmmo}  AP:{GameConstants.FireCost}");
-
-            // 2. 동축 기관총
-            if (coaxialMGData != null)
-                DrawItem(2, WeaponType.CoaxialMG,
-                    $"{coaxialMGData.mgName} {coaxialMGData.burstCount}발  AP:{coaxialMGData.apCost}");
-
-            // 3. 탑재 기관총
-            if (mountedMGData != null)
-                DrawItem(3, WeaponType.MountedMG,
-                    $"{mountedMGData.mgName} {mountedMGData.burstCount}발  AP:{mountedMGData.apCost}");
-
-            var hintStyle = new GUIStyle(label);
-            hintStyle.fontSize = 15;
-            hintStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
-            hintStyle.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(px, py + 110, panelW, 18),
-                "1/2/3: 선택   Space/클릭: 사격   Tab: 취소", hintStyle);
-        }
-
-        private void DrawModuleStatus()
-        {
-            // 정보 패널과 동일한 유닛 기준 (적 클릭 시 적 모듈 상태)
-            var u = inspectedUnit != null && !inspectedUnit.IsDestroyed
-                    ? inspectedUnit : selectedUnit;
-            if (u == null || u.IsDestroyed) return;
-
-            var modules = u.Modules;
-            float panelX = 10f, panelY = 240f, panelW = 350f, panelH = 58f;
-
-            GUI.Box(new Rect(panelX, panelY, panelW, panelH), "", GetBoxStyle());
-
-            var style = new GUIStyle(GetLabelStyle());
-            style.fontSize = 15;
-
-            var types = new (Unit.ModuleType type, string name)[]
-            {
-                (Unit.ModuleType.Engine, "엔진"),
-                (Unit.ModuleType.Barrel, "포신"),
-                (Unit.ModuleType.AmmoRack, "탄약"),
-                (Unit.ModuleType.Loader, "장전"),
-                (Unit.ModuleType.MachineGun, "기총"),
-                (Unit.ModuleType.TurretRing, "포탑"),
-                (Unit.ModuleType.CaterpillarLeft, "캐L"),
-                (Unit.ModuleType.CaterpillarRight, "캐R"),
-            };
-
-            float x = panelX + 5;
-            float y2 = panelY + 3;
-            int col = 0;
-
-            foreach (var (type, name) in types)
-            {
-                var m = modules.Get(type);
-                if (m == null) continue;
-
-                style.normal.textColor = m.state switch
-                {
-                    Unit.ModuleState.Normal => new Color(0.7f, 0.7f, 0.7f),
-                    Unit.ModuleState.Damaged => new Color(1f, 0.9f, 0.2f),
-                    Unit.ModuleState.Broken => new Color(1f, 0.3f, 0.2f),
-                    Unit.ModuleState.Destroyed => new Color(0.4f, 0.4f, 0.4f),
-                    _ => Color.white
-                };
-
-                string stateChar = m.state switch
-                {
-                    Unit.ModuleState.Normal => "",
-                    Unit.ModuleState.Damaged => "!",
-                    Unit.ModuleState.Broken => "X",
-                    Unit.ModuleState.Destroyed => "#",
-                    _ => ""
-                };
-
-                GUI.Label(new Rect(x + col * 85, y2, 80, 16), $"{name}{stateChar}", style);
-                col++;
-                if (col >= 4)
-                {
-                    col = 0;
-                    y2 += 17;
-                }
-            }
-        }
-
         /// <summary>모든 셀의 연막 턴 감소</summary>
         private void TickSmoke()
         {
@@ -2449,84 +1583,6 @@ namespace Crux.Core
                             visualizer.ClearSmoke(cell.Position);
                     }
                 }
-        }
-
-        private void DrawControls()
-        {
-            var style = new GUIStyle(GetLabelStyle());
-            style.fontSize = 16;
-            style.normal.textColor = new Color(0.7f, 0.7f, 0.7f);
-
-            GUI.Box(new Rect(10, ScaledH - 115, 340, 98), "", GetBoxStyle());
-            GUI.Label(new Rect(15, ScaledH - 112, 330, 18), "Q: 이동  |  E: 사격  |  Tab: 취소", style);
-            GUI.Label(new Rect(15, ScaledH - 93, 330, 18), "Space: 확정/턴종료  |  1/2/3: 무기", style);
-            GUI.Label(new Rect(15, ScaledH - 74, 330, 18), "C: 소화  |  V: 연막", style);
-            GUI.Label(new Rect(15, ScaledH - 55, 330, 18),
-                      $"O: 오버워치 (AP -{GameConstants.OverwatchCost})", style);
-        }
-
-        private void DrawGameResult()
-        {
-            // 승리/패배 체크
-            if (playerUnit != null && playerUnit.IsDestroyed)
-                currentPhase = TurnPhase.GameOver;
-
-            bool allEnemiesDead = true;
-            foreach (var e in enemyUnits)
-                if (e != null && !e.IsDestroyed) { allEnemiesDead = false; break; }
-            if (allEnemiesDead)
-                currentPhase = TurnPhase.Victory;
-
-            if (currentPhase == TurnPhase.GameOver || currentPhase == TurnPhase.Victory)
-            {
-                string msg = currentPhase == TurnPhase.Victory
-                    ? "승리! 적 전멸!"
-                    : "패배... 로시난테 파괴됨";
-
-                var bigStyle = new GUIStyle(GetLabelStyle());
-                bigStyle.fontSize = 36;
-                bigStyle.alignment = TextAnchor.MiddleCenter;
-
-                GUI.Box(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 35, 360, 70), "", GetBoxStyle());
-                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 35, 360, 70), msg, bigStyle);
-
-                if (Input.GetKeyDown(KeyCode.R))
-                    SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-            }
-        }
-
-        // ===== UI 유틸 =====
-
-        private GUIStyle _boxStyle;
-        private GUIStyle GetBoxStyle()
-        {
-            if (_boxStyle != null) return _boxStyle;
-            _boxStyle = new GUIStyle(GUI.skin.box);
-            _boxStyle.normal.background = GetTex(new Color(0, 0, 0, 0.7f));
-            return _boxStyle;
-        }
-
-        private GUIStyle _labelStyle;
-        private GUIStyle GetLabelStyle()
-        {
-            if (_labelStyle != null) return _labelStyle;
-            _labelStyle = new GUIStyle(GUI.skin.label);
-            _labelStyle.fontSize = 20;
-            _labelStyle.normal.textColor = Color.white;
-            _labelStyle.fontStyle = FontStyle.Bold;
-            return _labelStyle;
-        }
-
-        private Texture2D GetTex(Color col)
-        {
-            if (texCache.TryGetValue(col, out var cached)) return cached;
-            var tex = new Texture2D(2, 2);
-            var pixels = new Color[4];
-            for (int i = 0; i < 4; i++) pixels[i] = col;
-            tex.SetPixels(pixels);
-            tex.Apply();
-            texCache[col] = tex;
-            return tex;
         }
     }
 }
