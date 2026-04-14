@@ -134,22 +134,22 @@ Data ──┐
 
 | 에이전트 | 언제 |
 |---|---|
-| **시타 (planner)** | 사용자 요청 진입점. 탐색→계획→위임 |
-| **시그마 (backend)** | Grid/Unit/Combat/AI/Data/Core 구현 |
-| **픽셀 (frontend)** | OnGUI HUD/UI/Camera/Cinematic/스프라이트/VFX |
-| **모나미 (reviewer)** | 리뷰 + **점진적 리팩토링 실행** (아래 S1~S7 스케줄 주도) |
+| **시타 (planner)** | 사용자 요청 진입점. 탐색→계획→위임→검증 루프 주도 |
+| **시그마 (backend)** | Grid/Unit/Combat/AI/Data/Core 구현 (리팩토링 포함) |
+| **픽셀 (frontend)** | OnGUI HUD/UI/Camera/Cinematic/스프라이트/VFX 구현 (리팩토링 포함) |
+| **모나미 (reviewer)** | 검증 전담 — 컴파일·테스트·구조 감사·성능. **직접 구현/편집 금지** |
 
 ### 8.1 위임 원칙
 - **탐색(Explore)은 subagent** — 3개 이상의 Grep/Read가 예상되면 Explore 에이전트에 넘김
 - **병렬 가능한 작업은 동시 호출** — 시그마 + 픽셀 동시 실행 가능
-- **리팩토링 세션은 모나미 단독** — 구조 변경은 한 에이전트가 끝까지 책임
+- **구현과 검증의 분리** — 리팩토링도 도메인에 따라 시그마(백엔드)/픽셀(프론트엔드)가 실행. 모나미는 DoD 검증만. 시타가 검증 불합격 시 구현 에이전트에 재작업 지시 루프
 - **모호하면 사용자에게 질문** — 특히 밸런스·게임 디자인 관련
 
 ## 9. BattleController 분할 로드맵 (P-S1 ~ P-S7)
 
 현 `BattleController.cs`: **2,532 LOC**. 목표: **~500 LOC** 순수 오케스트레이터.
 
-**각 스케줄은 독립 세션·독립 커밋**. 모나미가 순차 실행. 각 스케줄 DoD(Definition of Done)에 도달해야 다음으로.
+**각 스케줄은 독립 세션·독립 커밋**. 시타가 오케스트레이션, 도메인 에이전트(시그마/픽셀)가 구현, 모나미가 DoD 검증. 통과해야 다음 스케줄로.
 
 ### P-S1 — HUD 추출 (예상 감소: −900 LOC)
 - **추출 대상**: `OnGUI`·`DrawBanner`·`DrawTurnInfo`·`DrawUnitInfo`·`DrawUnitInfoPanel`·`DrawFireTargetPreview`·`DrawInputModeInfo`·`DrawMoveDirectionUI`·`DrawWeaponSelectUI`·`DrawModuleStatus`·`DrawControls`·`DrawGameResult`·`DrawReactionAlert`·`DrawTerrainOverlay`·`DrawTerrainHoverInfo`
@@ -191,7 +191,7 @@ Data ──┐
 - **DoD**: BattleController ≤ 500 LOC · 전체 회귀 없음 · docs/12_enemy_ai.md §1 § 2와 코드 구조 일치 검증
 
 ### 스케줄 실행 주의사항
-- **P-S1이 가장 큼 + 가장 독립적** → 첫 타깃. 모나미가 한 세션 안에 완료 가능 여부 판단
+- **P-S1이 가장 큼 + 가장 독립적** → 첫 타깃. 시타가 한 세션 안에 완료 가능 여부 판단 (HUD 추출은 픽셀 담당)
 - **각 스케줄은 PR 규모의 단독 커밋**, 메시지 예: `refactor(P-S1): HUD 추출 — BattleController 2532 → 1640`
 - **중간 이탈 금지**: 스케줄 시작했으면 DoD까지 간다. 도중에 새 기능 섞지 말 것
 - **각 스케줄 직후 회귀 검증**: `check_compile_errors` → Play 모드 로드 → 스크린샷
