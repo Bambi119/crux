@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Crux.Core;
+using TerrainData = Crux.Core.TerrainData;
 
 namespace Crux.Grid
 {
@@ -19,6 +20,15 @@ namespace Crux.Grid
 
         private void Awake()
         {
+            InitializeGrid();
+        }
+
+        /// <summary>그리드 차원 재설정 + 즉시 재초기화 — Awake 이후에만 의미 있음</summary>
+        /// <remarks>BattleController가 테스트 맵 모드에서 12×12 등으로 확장할 때 사용.</remarks>
+        public void SetDimensions(int newWidth, int newHeight)
+        {
+            width = newWidth;
+            height = newHeight;
             InitializeGrid();
         }
 
@@ -62,13 +72,30 @@ namespace Crux.Grid
             return neighbors;
         }
 
+        // ===== 통과 판정 (지형 연동) =====
+
+        /// <summary>지상 유닛(전차) 통과 가능 — CellType + Occupant + 지형 연동</summary>
+        private static bool IsGroundPassable(GridCell cell)
+        {
+            if (cell == null) return false;
+            if (cell.Type == CellType.Impassable) return false;
+            if (cell.Occupant != null) return false;
+            if (!TerrainData.GroundPassable(cell.Terrain)) return false;
+            int cost = TerrainData.MoveCost(cell.Terrain);
+            return cost < int.MaxValue;
+        }
+
+        /// <summary>이 셀 진입에 드는 AP 비용 (지형 기반)</summary>
+        private static int StepCost(GridCell cell) =>
+            cell != null ? TerrainData.MoveCost(cell.Terrain) : int.MaxValue;
+
         // ===== A* 경로 탐색 =====
 
         public List<Vector2Int> FindPath(Vector2Int start, Vector2Int end)
         {
             if (!IsInBounds(start) || !IsInBounds(end)) return null;
             var endCell = GetCell(end);
-            if (endCell == null || !endCell.IsWalkable) return null;
+            if (endCell == null || !IsGroundPassable(endCell)) return null;
 
             var openList = new List<PathNode>();
             var cameFrom = new Dictionary<Vector2Int, Vector2Int>();
@@ -92,10 +119,10 @@ namespace Crux.Grid
 
                 foreach (var neighbor in GetNeighbors(current.pos))
                 {
-                    if (!neighbor.IsWalkable || visited.Contains(neighbor.Position))
+                    if (!IsGroundPassable(neighbor) || visited.Contains(neighbor.Position))
                         continue;
 
-                    float tentativeG = gCost[current.pos] + 1f;
+                    float tentativeG = gCost[current.pos] + StepCost(neighbor);
                     if (!gCost.ContainsKey(neighbor.Position) || tentativeG < gCost[neighbor.Position])
                     {
                         cameFrom[neighbor.Position] = current.pos;
@@ -107,7 +134,7 @@ namespace Crux.Grid
             return null;
         }
 
-        /// <summary>AP 기반 이동 가능 범위</summary>
+        /// <summary>AP 기반 이동 가능 범위 (지형 비용 반영)</summary>
         public List<Vector2Int> GetReachableCells(Vector2Int start, int maxCost)
         {
             var reachable = new List<Vector2Int>();
@@ -122,8 +149,9 @@ namespace Crux.Grid
                 var (pos, cost) = queue.Dequeue();
                 foreach (var neighbor in GetNeighbors(pos))
                 {
-                    float newCost = cost + 1f;
-                    if (newCost > maxCost || !neighbor.IsWalkable) continue;
+                    if (!IsGroundPassable(neighbor)) continue;
+                    float newCost = cost + StepCost(neighbor);
+                    if (newCost > maxCost) continue;
                     if (visited.ContainsKey(neighbor.Position) && newCost >= visited[neighbor.Position]) continue;
 
                     visited[neighbor.Position] = newCost;
@@ -132,6 +160,34 @@ namespace Crux.Grid
                 }
             }
             return reachable;
+        }
+
+        // ===== LOS (Line of Sight) =====
+
+        /// <summary>두 셀 간 LOS 유효 여부 — 중간 셀의 건물/벽이 차단, 고도차로 1단계 무력화</summary>
+        /// <remarks>기획 §4.4 참조. 공격자/목표 위치의 고도가 중간 장애물보다 높으면 통과.</remarks>
+        public bool HasLOS(Vector2Int from, Vector2Int to)
+        {
+            if (from == to) return true;
+            var line = HexCoord.LineBetween(from, to);
+            if (line.Count <= 2) return true; // 인접 셀은 LOS 항상 유효
+
+            var fromCell = GetCell(from);
+            var toCell = GetCell(to);
+            int fromElev = fromCell != null ? TerrainData.Elevation(fromCell.Terrain) : 0;
+            int toElev = toCell != null ? TerrainData.Elevation(toCell.Terrain) : 0;
+
+            for (int i = 1; i < line.Count - 1; i++)
+            {
+                var mid = GetCell(line[i]);
+                if (mid == null) continue;
+                if (!TerrainData.BlocksLOS(mid.Terrain)) continue;
+                int midElev = TerrainData.Elevation(mid.Terrain);
+                // 고도 규칙: 공격자 또는 목표가 중간보다 높으면 1단계까지 넘김
+                if (fromElev > midElev && toElev >= midElev) continue;
+                return false;
+            }
+            return true;
         }
 
         /// <summary>두 셀 간 육각 거리 (cube distance)</summary>

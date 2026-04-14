@@ -27,15 +27,15 @@ namespace Crux.Core
         public Sprite bioCoreSprite;
         public Sprite defenseTurretSprite;
 
-        private GridManager grid;
-        private GridTankUnit playerUnit;
-        private List<GridTankUnit> enemyUnits = new();
-        private List<GameObject> coverObjects = new();
+        protected GridManager grid;
+        protected GridTankUnit playerUnit;
+        protected List<GridTankUnit> enemyUnits = new();
+        protected List<GameObject> coverObjects = new();
 
         public GridTankUnit PlayerUnit => playerUnit;
         public List<GridTankUnit> EnemyUnits => enemyUnits;
 
-        public void Setup(GridManager grid)
+        public virtual void Setup(GridManager grid)
         {
             this.grid = grid;
 
@@ -46,7 +46,7 @@ namespace Crux.Core
             SpawnBioCore();
         }
 
-        private void SpawnFloorTiles()
+        protected virtual void SpawnFloorTiles()
         {
             var floorSprite = TankSpriteGenerator.CreateFloorTile();
             for (int x = 0; x < grid.Width; x++)
@@ -67,7 +67,7 @@ namespace Crux.Core
             }
         }
 
-        private void SpawnPlayer()
+        protected virtual void SpawnPlayer()
         {
             playerUnit = CreateUnit(new Vector2Int(4, 1), playerTankData, playerAmmo,
                                      PlayerSide.Player,
@@ -76,7 +76,7 @@ namespace Crux.Core
                                      playerTurretSprite); // 포탑 스프라이트
         }
 
-        private void SpawnEnemies()
+        protected virtual void SpawnEnemies()
         {
             enemyUnits.Add(CreateUnit(new Vector2Int(2, 7), lightEnemyData, enemyAmmo,
                                        PlayerSide.Enemy,
@@ -94,7 +94,7 @@ namespace Crux.Core
                                        "코어 수호 전차", spriteRotOffset: -90f));
         }
 
-        private void SpawnCovers()
+        protected virtual void SpawnCovers()
         {
             // 엄폐물 배치 데이터: (위치, 이름, 크기, HP, 엄폐율, 방호면)
             // facets: 막아주는 변의 비트 플래그 (그 방향에서 오는 공격을 막음)
@@ -146,7 +146,7 @@ namespace Crux.Core
             }
         }
 
-        private void SpawnBioCore()
+        protected virtual void SpawnBioCore()
         {
             var pos = new Vector2Int(4, 9);
             var obj = new GameObject("BioCore");
@@ -161,7 +161,7 @@ namespace Crux.Core
             if (cell != null) cell.Type = CellType.Impassable;
         }
 
-        private GridTankUnit CreateUnit(Vector2Int pos, TankDataSO data, AmmoDataSO ammo,
+        protected GridTankUnit CreateUnit(Vector2Int pos, TankDataSO data, AmmoDataSO ammo,
                                          PlayerSide side, Sprite hullSprite, string name,
                                          Sprite turretSprite = null, float spriteRotOffset = 0f)
         {

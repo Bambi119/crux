@@ -32,7 +32,7 @@ namespace Crux.Grid
         {
             Position = pos;
             Type = type;
-            Terrain = TerrainType.Normal;
+            Terrain = TerrainType.Open;
         }
     }
 }

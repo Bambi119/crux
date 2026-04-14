@@ -73,8 +73,20 @@ namespace Crux.Core
     /// <summary>엄폐물 크기</summary>
     public enum CoverSize { Small, Medium, Large }
 
-    /// <summary>바닥 지형</summary>
-    public enum TerrainType { Normal, Mud, Road }
+    /// <summary>바닥 지형 — 이동 비용·고도·은엄폐·LOS 속성의 원천 (TerrainData 참조)</summary>
+    public enum TerrainType
+    {
+        Open,             // 개활지 — 기본
+        Road,             // 도로 — 이동 보너스
+        Mud,              // 진창 — 이동 느림
+        Woods,            // 수풀 — 은엄폐, 비행 통과
+        Rubble,           // 파편지대 — 이동 느림 + 약한 엄폐
+        Crater,           // 탄흔 — 엄폐 30% (동적 생성)
+        Hill,             // 언덕 — 고도 +3
+        Building,         // 건물 외벽 — 통과 불가, LOS 차단
+        ElevatedBuilding, // 고지 건물 — 보병/드론만, 고도 +3
+        Water             // 물 — 지상 불가, 비행 통과
+    }
 
     /// <summary>턴 페이즈</summary>
     public enum TurnPhase { PlayerTurn, EnemyTurn, Cinematic, GameOver, Victory }

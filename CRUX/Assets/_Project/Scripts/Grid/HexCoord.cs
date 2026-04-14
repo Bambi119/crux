@@ -94,6 +94,60 @@ namespace Crux.Grid
             return (Mathf.Abs(dq) + Mathf.Abs(dr) + Mathf.Abs(ds)) / 2;
         }
 
+        // ===== 라인/LOS (hex linear interpolation) =====
+
+        /// <summary>두 hex 사이를 잇는 셀 라인 (양 끝 포함) — LOS·블라스트 판정용</summary>
+        /// <remarks>
+        /// 큐브 좌표 선형 보간 → 각 지점을 cube round로 가장 가까운 hex에 스냅.
+        /// 참고: https://www.redblobgames.com/grids/hexagons/#line-drawing
+        /// </remarks>
+        public static List<Vector2Int> LineBetween(Vector2Int a, Vector2Int b)
+        {
+            int dist = Distance(a, b);
+            var result = new List<Vector2Int>(dist + 1);
+            if (dist == 0)
+            {
+                result.Add(a);
+                return result;
+            }
+
+            var axA = OffsetToAxial(a);
+            var axB = OffsetToAxial(b);
+            // axial → cube: (x=q, z=r, y=-q-r)
+            float ax = axA.x, az = axA.y, ay = -ax - az;
+            float bx = axB.x, bz = axB.y, by = -bx - bz;
+
+            // 경계 모호성 회피용 미세 오프셋 (redblobgames 권장)
+            ax += 1e-6f; ay += 1e-6f; az -= 2e-6f;
+
+            for (int i = 0; i <= dist; i++)
+            {
+                float t = (float)i / dist;
+                float cx = Mathf.Lerp(ax, bx, t);
+                float cy = Mathf.Lerp(ay, by, t);
+                float cz = Mathf.Lerp(az, bz, t);
+                var rounded = CubeRoundToAxial(cx, cy, cz);
+                result.Add(AxialToOffset(rounded));
+            }
+            return result;
+        }
+
+        /// <summary>큐브 분수 좌표 → 가장 가까운 axial 정수 좌표</summary>
+        private static Vector2Int CubeRoundToAxial(float x, float y, float z)
+        {
+            int rx = Mathf.RoundToInt(x);
+            int ry = Mathf.RoundToInt(y);
+            int rz = Mathf.RoundToInt(z);
+            float dx = Mathf.Abs(rx - x);
+            float dy = Mathf.Abs(ry - y);
+            float dz = Mathf.Abs(rz - z);
+            if (dx > dy && dx > dz) rx = -ry - rz;
+            else if (dy > dz) ry = -rx - rz;
+            else rz = -rx - ry;
+            // axial (q=x, r=z)
+            return new Vector2Int(rx, rz);
+        }
+
         // ===== 월드 좌표 변환 (flat-top) =====
 
         /// <summary>오프셋 좌표 → 월드 좌표</summary>

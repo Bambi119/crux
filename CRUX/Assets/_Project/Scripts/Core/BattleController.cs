@@ -6,6 +6,7 @@ using Crux.Grid;
 using Crux.Unit;
 using Crux.Data;
 using Crux.Combat;
+using TerrainData = Crux.Core.TerrainData;
 
 namespace Crux.Core
 {
@@ -31,6 +32,12 @@ namespace Crux.Core
         [Header("기관총 데이터")]
         public Data.MachineGunDataSO coaxialMGData;
         public Data.MachineGunDataSO mountedMGData;
+
+        [Header("맵 설정")]
+        [Tooltip("켜면 12×12 지형 테스트 맵 사용. 꺼져있으면 표준 8×10 맵.")]
+        [SerializeField] private bool useTerrainTestMap = false;
+        [SerializeField] private int testMapWidth = 12;
+        [SerializeField] private int testMapHeight = 12;
 
         // 시스템
         private GridManager grid;
@@ -102,18 +109,22 @@ namespace Crux.Core
         {
             mainCam = UnityEngine.Camera.main;
 
-            // 그리드
+            // 그리드 — 테스트 맵일 경우 차원 확장
             var gridObj = new GameObject("Grid");
             grid = gridObj.AddComponent<GridManager>();
+            if (useTerrainTestMap)
+                grid.SetDimensions(testMapWidth, testMapHeight);
 
             // 시각화
             var visObj = new GameObject("GridVisualizer");
             visualizer = visObj.AddComponent<GridVisualizer>();
             visualizer.Initialize(grid);
 
-            // 맵 배치
+            // 맵 배치 — 모드별 배치 클래스 선택
             var setupObj = new GameObject("MapSetup");
-            mapSetup = setupObj.AddComponent<GridMapSetup>();
+            mapSetup = useTerrainTestMap
+                ? setupObj.AddComponent<TerrainTestMapSetup>()
+                : setupObj.AddComponent<GridMapSetup>();
             mapSetup.playerTankData = playerTankData;
             mapSetup.lightEnemyData = lightEnemyData;
             mapSetup.heavyEnemyData = heavyEnemyData;
@@ -1173,7 +1184,7 @@ namespace Crux.Core
             return Mathf.Clamp01(chance);
         }
 
-        /// <summary>엄폐 + 모듈 보정 포함 명중률</summary>
+        /// <summary>엄폐 + 모듈 + 지형(고도·은엄폐) 보정 포함 명중률</summary>
         private float CalculateHitChanceWithCover(GridTankUnit attacker, GridTankUnit target)
         {
             int distance = grid.GetDistance(attacker.GridPosition, target.GridPosition);
@@ -1182,14 +1193,38 @@ namespace Crux.Core
             // 포신 손상 패널티
             chance -= attacker.Modules.GetAccuracyPenalty();
 
-            // 6방향 슬롯 엄폐 보정
+            var attackerCell = grid.GetCell(attacker.GridPosition);
             var targetCell = grid.GetCell(target.GridPosition);
+
+            // 지형 고도 차 — 공격자 > 목표면 +5%/단계
+            if (attackerCell != null && targetCell != null)
+            {
+                int elevDelta = TerrainData.Elevation(attackerCell.Terrain)
+                              - TerrainData.Elevation(targetCell.Terrain);
+                if (elevDelta > 0) chance += elevDelta * 0.05f;
+            }
+
+            // 6방향 슬롯 엄폐 보정
             if (targetCell != null && targetCell.HasCover && targetCell.Cover != null
                 && !targetCell.Cover.IsDestroyed)
             {
                 var atkDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
                 if (targetCell.Cover.IsCovered(atkDir))
                     chance -= targetCell.Cover.CoverRate * 0.3f;
+            }
+
+            // 지형 자체 엄폐 (파편지대·탄흔 등) — 엄폐물과 합산
+            if (targetCell != null)
+            {
+                float intrinsicCover = TerrainData.IntrinsicCoverRate(targetCell.Terrain);
+                if (intrinsicCover > 0f) chance -= intrinsicCover * 0.3f;
+            }
+
+            // 은엄폐 (수풀·파편) — 엄폐와 독립 감산
+            if (targetCell != null)
+            {
+                int concealment = TerrainData.Concealment(targetCell.Terrain);
+                if (concealment > 0) chance -= concealment * 0.01f;
             }
 
             // 연막 보정
@@ -1592,10 +1627,19 @@ namespace Crux.Core
             // 명중률 분해
             float chance = CalculateHitChance(p.distance, target);
             chance -= attacker.Modules.GetAccuracyPenalty();
+
+            // 지형 고도 차 (공격자 > 목표면 보너스)
+            var aCell = grid.GetCell(attacker.GridPosition);
+            var tCell = grid.GetCell(target.GridPosition);
+            if (aCell != null && tCell != null)
+            {
+                int elevDelta = TerrainData.Elevation(aCell.Terrain)
+                              - TerrainData.Elevation(tCell.Terrain);
+                if (elevDelta > 0) chance += elevDelta * 0.05f;
+            }
             p.baseHit = Mathf.Clamp01(chance);
 
-            // 엄폐 보정
-            var tCell = grid.GetCell(target.GridPosition);
+            // 엄폐 보정 — 엄폐물 + 지형 고유 엄폐 합산
             p.coverPenalty = 0f;
             if (tCell != null && tCell.HasCover && tCell.Cover != null && !tCell.Cover.IsDestroyed)
             {
@@ -1606,9 +1650,20 @@ namespace Crux.Core
                     p.coverPenalty = tCell.Cover.CoverRate * 0.3f;
                 }
             }
+            if (tCell != null)
+            {
+                float intrinsic = TerrainData.IntrinsicCoverRate(tCell.Terrain);
+                if (intrinsic > 0f) p.coverPenalty += intrinsic * 0.3f;
+            }
+
+            // 은엄폐 (수풀·파편)
+            int concealmentPct = tCell != null ? TerrainData.Concealment(tCell.Terrain) : 0;
+            float concealmentPenalty = concealmentPct * 0.01f;
 
             // 연막 보정
             p.smokePenalty = (tCell != null && tCell.HasSmoke) ? 0.4f : 0f;
+            // 은엄폐를 연막 페널티에 합산 (별도 필드 없이 기존 구조 유지)
+            p.smokePenalty += concealmentPenalty;
 
             // 기총 기본 명중률 보정
             if (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
