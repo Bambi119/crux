@@ -31,6 +31,9 @@ namespace Crux.Core
         public static bool HasSavedState;
         public static BattleSaveData SavedState;
 
+        /// <summary>연출 씬 종료 후 복귀할 전략 씬 이름 (비어있으면 StrategyScene 기본)</summary>
+        public static string SourceScene;
+
         public static void Save(BattleSaveData data)
         {
             SavedState = data;

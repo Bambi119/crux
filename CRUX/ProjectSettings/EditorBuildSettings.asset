@@ -14,6 +14,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Project/Scenes/FireActionScene.unity
     guid: 358b89eede92ca2449ac4fd69a3b7db5
+  - enabled: 1
+    path: Assets/_Project/Scenes/TerrainTestScene.unity
+    guid: ee6ca787637848be9c3b570e2f2fac47
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   m_UseUCBPForAssetBundles: 0

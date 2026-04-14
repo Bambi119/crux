@@ -31,7 +31,7 @@ namespace Crux.Cinematic
         {
             if (!FireActionContext.HasPendingAction)
             {
-                SceneManager.LoadScene("StrategyScene");
+                SceneManager.LoadScene(GetReturnScene());
                 return;
             }
 
@@ -51,9 +51,16 @@ namespace Crux.Cinematic
         {
             if (sequenceDone && (Input.anyKeyDown || Input.GetMouseButtonDown(0)))
             {
-                // Clear는 StrategyScene의 ApplyPendingResult에서 처리
-                SceneManager.LoadScene("StrategyScene");
+                // Clear는 복귀 씬의 ApplyPendingResult에서 처리
+                SceneManager.LoadScene(GetReturnScene());
             }
+        }
+
+        /// <summary>연출 종료 후 복귀할 전략 씬 — BattleStateStorage에 기록된 이름 우선</summary>
+        private static string GetReturnScene()
+        {
+            var s = BattleStateStorage.SourceScene;
+            return string.IsNullOrEmpty(s) ? "StrategyScene" : s;
         }
 
         private IEnumerator PlaySequence()

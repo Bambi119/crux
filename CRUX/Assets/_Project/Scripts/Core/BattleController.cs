@@ -225,9 +225,9 @@ namespace Crux.Core
                 float halfH = camTargetSize;
                 float halfW = camTargetSize * mainCam.aspect;
                 camTargetPos.x = Mathf.Clamp(camTargetPos.x, -halfW * 0.3f,
-                    GameConstants.GridWidth * GameConstants.CellSize + halfW * 0.3f);
+                    grid.Width * GameConstants.CellSize + halfW * 0.3f);
                 camTargetPos.y = Mathf.Clamp(camTargetPos.y, -halfH * 0.3f,
-                    GameConstants.GridHeight * GameConstants.CellSize + halfH * 0.3f);
+                    grid.Height * GameConstants.CellSize + halfH * 0.3f);
                 camTargetPos.z = -10f;
             }
 
@@ -1255,15 +1255,17 @@ namespace Crux.Core
         /// <summary>씬 전환 직전 — 전투 상태 저장</summary>
         private void SaveBattleState()
         {
-            Debug.Log($"[CRUX] SaveBattleState — Player at ({playerUnit.GridPosition.x},{playerUnit.GridPosition.y})");
+            // 연출 씬 복귀 대상 씬 기록 (TerrainTestScene 등에서 사격 시 원본으로 안 돌아가게)
+            BattleStateStorage.SourceScene = SceneManager.GetActiveScene().name;
+            Debug.Log($"[CRUX] SaveBattleState — Player at ({playerUnit.GridPosition.x},{playerUnit.GridPosition.y}), return → {BattleStateStorage.SourceScene}");
             var enemyStates = new UnitSaveData[enemyUnits.Count];
             for (int i = 0; i < enemyUnits.Count; i++)
                 enemyStates[i] = enemyUnits[i].SaveState();
 
             // 엄폐물 HP 저장
             var coverHPs = new List<float>();
-            for (int x = 0; x < GameConstants.GridWidth; x++)
-                for (int y = 0; y < GameConstants.GridHeight; y++)
+            for (int x = 0; x < grid.Width; x++)
+                for (int y = 0; y < grid.Height; y++)
                 {
                     var cell = grid.GetCell(new Vector2Int(x, y));
                     if (cell != null && cell.Type == CellType.Cover && cell.Cover != null)
@@ -1272,8 +1274,8 @@ namespace Crux.Core
 
             // 연막 상태 저장
             var smokeTurns = new List<int>();
-            for (int x = 0; x < GameConstants.GridWidth; x++)
-                for (int y = 0; y < GameConstants.GridHeight; y++)
+            for (int x = 0; x < grid.Width; x++)
+                for (int y = 0; y < grid.Height; y++)
                 {
                     var c = grid.GetCell(new Vector2Int(x, y));
                     smokeTurns.Add(c != null ? c.SmokeTurnsLeft : 0);
@@ -1313,8 +1315,8 @@ namespace Crux.Core
 
                 // 엄폐물 HP 복원
                 int coverIdx = 0;
-                for (int x = 0; x < GameConstants.GridWidth; x++)
-                    for (int y = 0; y < GameConstants.GridHeight; y++)
+                for (int x = 0; x < grid.Width; x++)
+                    for (int y = 0; y < grid.Height; y++)
                     {
                         var cell = grid.GetCell(new Vector2Int(x, y));
                         if (cell != null && cell.Type == CellType.Cover && cell.Cover != null)
@@ -1333,8 +1335,8 @@ namespace Crux.Core
                 if (state.smokeTurns != null)
                 {
                     int si = 0;
-                    for (int x2 = 0; x2 < GameConstants.GridWidth; x2++)
-                        for (int y2 = 0; y2 < GameConstants.GridHeight; y2++)
+                    for (int x2 = 0; x2 < grid.Width; x2++)
+                        for (int y2 = 0; y2 < grid.Height; y2++)
                         {
                             if (si < state.smokeTurns.Length)
                             {
@@ -2126,8 +2128,8 @@ namespace Crux.Core
         /// <summary>모든 셀의 연막 턴 감소</summary>
         private void TickSmoke()
         {
-            for (int x = 0; x < GameConstants.GridWidth; x++)
-                for (int y = 0; y < GameConstants.GridHeight; y++)
+            for (int x = 0; x < grid.Width; x++)
+                for (int y = 0; y < grid.Height; y++)
                 {
                     var cell = grid.GetCell(new Vector2Int(x, y));
                     if (cell != null && cell.SmokeTurnsLeft > 0)
