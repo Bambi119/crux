@@ -58,6 +58,7 @@ namespace Crux.Core
         public int mainGunAmmoCount;
         public int mgAmmoLoaded;
         public int mgAmmoTotal;
+        public bool isOverwatching;
     }
 
     [System.Serializable]

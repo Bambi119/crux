@@ -27,6 +27,9 @@ namespace Crux.Unit
         private bool isOnFire;
         private int remainingSmokeCharges;
 
+        // 오버워치 (반응 사격) — 활성화 시 FireCost 선지불, 이동 적에게 즉시 반격 1회
+        private bool isOverwatching;
+
         // 탄약 잔량
         private int mainGunAmmoCount;
         private int mgAmmoLoaded;
@@ -61,6 +64,7 @@ namespace Crux.Unit
         public ModuleManager Modules => moduleManager;
         public bool IsOnFire => isOnFire;
         public int RemainingSmokeCharges => remainingSmokeCharges;
+        public bool IsOverwatching => isOverwatching;
         public int MainGunAmmoCount => mainGunAmmoCount;
         public int MaxMainGunAmmo => tankData != null ? tankData.maxMainGunAmmo : 0;
         public int MGAmmoLoaded => mgAmmoLoaded;
@@ -70,6 +74,8 @@ namespace Crux.Unit
         public System.Action<GridTankUnit> OnFireKilled; // 화재 누적 사망 전용
         public System.Action OnAPChanged;
         public System.Action OnMoveComplete;
+        /// <summary>한 셀 이동 완료 시점에 발행 — 오버워치 트리거 체크용</summary>
+        public System.Action<GridTankUnit, Vector2Int> OnMoveStepComplete;
 
         /// <summary>현재 상태를 스냅샷으로 저장</summary>
         public UnitSaveData SaveState()
@@ -86,7 +92,8 @@ namespace Crux.Unit
                 remainingSmokeCharges = remainingSmokeCharges,
                 mainGunAmmoCount = mainGunAmmoCount,
                 mgAmmoLoaded = mgAmmoLoaded,
-                mgAmmoTotal = mgAmmoTotal
+                mgAmmoTotal = mgAmmoTotal,
+                isOverwatching = isOverwatching
             };
         }
 
@@ -122,6 +129,7 @@ namespace Crux.Unit
             mainGunAmmoCount = state.mainGunAmmoCount;
             mgAmmoLoaded = state.mgAmmoLoaded;
             mgAmmoTotal = state.mgAmmoTotal;
+            isOverwatching = state.isOverwatching;
 
             UpdateVisual();
 
@@ -169,6 +177,9 @@ namespace Crux.Unit
         public void OnTurnStart()
         {
             currentAP = tankData != null ? tankData.maxAP : 6;
+
+            // 오버워치는 다음 턴 시작 시 해제 — 트리거되지 않았다면 사전 지불 AP는 손실
+            isOverwatching = false;
 
             // 화재 처리
             if (isOnFire)
@@ -235,6 +246,34 @@ namespace Crux.Unit
         /// <summary>실효 사격 AP 비용</summary>
         public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
 
+        // ===== 오버워치 (반응 사격) =====
+
+        /// <summary>오버워치 설정 가능 여부 — 주포 발사 가능 + 잔탄 + AP 충분 + 아직 설정 안됨</summary>
+        public bool CanActivateOverwatch()
+        {
+            if (isMoving || isOverwatching) return false;
+            if (!moduleManager.CanFireMainGun()) return false;
+            if (mainGunAmmoCount <= 0) return false;
+            return currentAP >= GameConstants.OverwatchCost;
+        }
+
+        /// <summary>오버워치 설정 — AP 선지불, 트리거 시 반격 1회</summary>
+        public bool ActivateOverwatch()
+        {
+            if (!CanActivateOverwatch()) return false;
+            currentAP -= GameConstants.OverwatchCost;
+            isOverwatching = true;
+            OnAPChanged?.Invoke();
+            Debug.Log($"[CRUX] {tankData?.tankName} 오버워치 설정 (AP -{GameConstants.OverwatchCost})");
+            return true;
+        }
+
+        /// <summary>오버워치 반격 소진 — BattleController 트리거 처리 후 호출</summary>
+        public void ConsumeOverwatchShot()
+        {
+            isOverwatching = false;
+        }
+
         // ===== 이동 (애니메이션) =====
 
         public bool MoveTo(Vector2Int target)
@@ -262,6 +301,7 @@ namespace Crux.Unit
             float moveSpeed = tankData != null ? tankData.moveSpeed : 3f;
             float rotSpeed = moduleManager.CanRotate() ? 180f : 0f;
 
+            int lastStepIdx = 0;
             for (int i = 1; i < path.Count; i++)
             {
                 Vector3 from = grid.GridToWorld(path[i - 1]);
@@ -295,11 +335,18 @@ namespace Crux.Unit
                     yield return null;
                 }
                 transform.position = to;
+
+                // 스텝 완료 — 논리 좌표를 즉시 반영 (오버워치 트리거가 현재 셀을 정확히 알도록)
+                gridPosition = path[i];
+                lastStepIdx = i;
+
+                // 구독자(BattleController)가 오버워치 체크 → 반격 → 이 유닛 사망 가능
+                OnMoveStepComplete?.Invoke(this, gridPosition);
+                if (IsDestroyed) break;
             }
 
-            gridPosition = path[^1];
             var newCell = grid.GetCell(gridPosition);
-            if (newCell != null) newCell.Occupant = gameObject;
+            if (newCell != null && !IsDestroyed) newCell.Occupant = gameObject;
 
             currentAP -= totalCost;
             OnAPChanged?.Invoke();

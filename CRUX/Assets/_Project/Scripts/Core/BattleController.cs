@@ -137,6 +137,10 @@ namespace Crux.Core
             foreach (var e in enemyUnits)
                 if (e != null) e.OnFireKilled += HandleFireKill;
 
+            // 오버워치 트리거 — 적 이동 스텝마다 플레이어측 반응 사격 체크
+            foreach (var e in enemyUnits)
+                if (e != null) e.OnMoveStepComplete += HandleEnemyMoveStep;
+
             // 카메라 — 맵 전체가 보이도록 자동 조정 (flat-top hex 실제 치수)
             if (mainCam != null)
             {
@@ -417,6 +421,9 @@ namespace Crux.Core
                             yield return null;
                     }
 
+                    // 오버워치 반격으로 이동 중 격파됐다면 이 적 행동은 종결
+                    if (enemy.IsDestroyed) continue;
+
                     // 이동 후 사격 가능하면 사격
                     dist = grid.GetDistance(enemy.GridPosition, playerUnit.GridPosition);
                     if (dist <= GameConstants.MaxFireRange && enemy.CanFire())
@@ -560,6 +567,17 @@ namespace Crux.Core
                 }
             }
 
+            // O: 오버워치 (반응 사격)
+            if (Input.GetKeyDown(KeyCode.O) && inputMode == InputMode.Select
+                && selectedUnit.CanActivateOverwatch())
+            {
+                if (selectedUnit.ActivateOverwatch())
+                {
+                    ShowBanner("⌁ 오버워치 설정 — 전방 50° 내 적 이동 시 반격",
+                               new Color(0.4f, 0.9f, 1f), 1.5f);
+                }
+            }
+
             // Space: 턴 종료 (Select 모드에서만)
             if (Input.GetKeyDown(KeyCode.Space) && inputMode == InputMode.Select)
             {
@@ -610,6 +628,111 @@ namespace Crux.Core
             unit.gameObject.SetActive(false);
 
             Debug.Log($"[CRUX] {unit.Data?.tankName} 화재로 인한 전소");
+        }
+
+        // ===== 오버워치 (반응 사격) =====
+
+        private const float OverwatchArcHalfWidth = 25f; // 전방 50° (±25°)
+
+        /// <summary>적이 한 셀 이동 완료할 때마다 호출 — 플레이어측 오버워치 트리거 판정</summary>
+        private void HandleEnemyMoveStep(GridTankUnit movingEnemy, Vector2Int newPos)
+        {
+            if (movingEnemy == null || movingEnemy.IsDestroyed) return;
+            if (playerUnit == null || playerUnit.IsDestroyed) return;
+            if (!playerUnit.IsOverwatching) return;
+
+            // 사거리 체크
+            int dist = grid.GetDistance(playerUnit.GridPosition, newPos);
+            if (dist <= 0 || dist > GameConstants.MaxFireRange) return;
+
+            // 각도 체크 — 플레이어 차체 방향 vs 대상 방향의 차이가 ±25° 이내
+            Vector3 attackerWorld = grid.GridToWorld(playerUnit.GridPosition);
+            Vector3 targetWorld = grid.GridToWorld(newPos);
+            Vector2 dir = ((Vector2)(targetWorld - attackerWorld)).normalized;
+            float dirAngle = AngleUtil.FromDir(dir);
+            float delta = Mathf.Abs(Mathf.DeltaAngle(playerUnit.HullAngle, dirAngle));
+            if (delta > OverwatchArcHalfWidth) return;
+
+            // 트리거! — 즉시 반응 사격 (연출 씬 전환 없음)
+            ExecuteReactionFire(playerUnit, movingEnemy);
+        }
+
+        /// <summary>경량 반응 사격 — 씬 전환 없이 맵 상에서 즉시 데미지 + VFX</summary>
+        /// <remarks>오버워치 AP는 활성화 시점에 선지불되었으므로 추가 AP 소모 없음.
+        /// 1회 발사 후 isOverwatching 해제. ExecuteFire의 경량 버전 — 엄폐/연출 생략.</remarks>
+        private void ExecuteReactionFire(GridTankUnit attacker, GridTankUnit target)
+        {
+            attacker.ConsumeOverwatchShot();
+            if (!attacker.ConsumeMainGunRound())
+            {
+                Debug.LogWarning("[CRUX] 오버워치 트리거 시점 주포 잔탄 0 — 사격 무시");
+                return;
+            }
+
+            float hitChance = CalculateHitChanceWithCover(attacker, target);
+            bool hit = Random.value <= hitChance;
+
+            Vector3 attackerPos = attacker.transform.position;
+            Vector3 targetPos = target.transform.position;
+            Vector2 fireDir = ((Vector2)(targetPos - attackerPos)).normalized;
+
+            // 공격자 쪽 머즐 플래시
+            MuzzleFlash.Spawn(attackerPos + (Vector3)(fireDir * 0.3f), fireDir);
+
+            if (!hit)
+            {
+                HitEffects.Spawn(targetPos + (Vector3)(Random.insideUnitCircle * 0.2f),
+                                  ShotOutcome.Miss, fireDir);
+                ShowBanner($"⌁ 반응 사격 빗나감 — {target.Data?.tankName}",
+                           new Color(0.8f, 0.8f, 0.4f), 1.5f);
+                Debug.Log($"[CRUX] 오버워치 빗나감");
+                return;
+            }
+
+            // 명중 — 기존 PenetrationCalculator로 관통 판정
+            var hitZone = PenetrationCalculator.DetermineHitZone(
+                attackerPos, targetPos, target.HullAngle);
+            float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
+            float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                attackerPos, targetPos, target.HullAngle, hitZone);
+            float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+
+            float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+            var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+
+            float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+            float finalDmg = outcome switch
+            {
+                ShotOutcome.Ricochet => dmg * 0.03f,
+                ShotOutcome.Hit => dmg,
+                ShotOutcome.Penetration => dmg * 2.5f,
+                _ => 0f
+            };
+
+            // VFX
+            float caliberScale = attacker.currentAmmo != null
+                ? HitEffects.CaliberScaleFromAmmoDamage(attacker.currentAmmo.damage)
+                : 1f;
+            HitEffects.Spawn(targetPos, outcome, fireDir, caliberScale);
+
+            // 데미지 적용 — PreRoll → ApplyPrerolledDamage
+            var info = new DamageInfo
+            {
+                damage = finalDmg,
+                outcome = outcome,
+                hitZone = hitZone,
+                penetrationValue = pen,
+                effectiveArmor = effectiveArmor,
+                impactAngle = impactAngle
+            };
+            var prerolled = target.PreRollDamage(info);
+            target.ApplyPrerolledDamage(info, prerolled);
+
+            string outcomeLabel = outcome == ShotOutcome.Penetration ? "관통"
+                                  : outcome == ShotOutcome.Hit ? "명중" : "도탄";
+            ShowBanner($"⌁ 반응 사격 {outcomeLabel}! — {target.Data?.tankName}",
+                       new Color(1f, 0.6f, 0.2f), 1.8f);
+            Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
         }
 
         /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
@@ -1429,7 +1552,8 @@ namespace Crux.Core
             string statusExtra = "";
             if (u.IsOnFire) statusExtra += "[화재] ";
             if (u.RemainingSmokeCharges > 0) statusExtra += $"연막:{u.RemainingSmokeCharges} ";
-            if (cell != null && cell.HasSmoke) statusExtra += "[연막중]";
+            if (cell != null && cell.HasSmoke) statusExtra += "[연막중] ";
+            if (u.IsOverwatching) statusExtra += "[⌁반응대기]";
             if (statusExtra.Length == 0) statusExtra = "정상";
             var stStyle = new GUIStyle(style);
             stStyle.fontSize = 15;
@@ -1965,10 +2089,12 @@ namespace Crux.Core
             style.fontSize = 16;
             style.normal.textColor = new Color(0.7f, 0.7f, 0.7f);
 
-            GUI.Box(new Rect(10, ScaledH - 95, 340, 78), "", GetBoxStyle());
-            GUI.Label(new Rect(15, ScaledH - 92, 330, 18), "Q: 이동  |  E: 사격  |  Tab: 취소", style);
-            GUI.Label(new Rect(15, ScaledH - 73, 330, 18), "Space: 확정/턴종료  |  1/2/3: 무기", style);
-            GUI.Label(new Rect(15, ScaledH - 54, 330, 18), "C: 소화  |  V: 연막", style);
+            GUI.Box(new Rect(10, ScaledH - 115, 340, 98), "", GetBoxStyle());
+            GUI.Label(new Rect(15, ScaledH - 112, 330, 18), "Q: 이동  |  E: 사격  |  Tab: 취소", style);
+            GUI.Label(new Rect(15, ScaledH - 93, 330, 18), "Space: 확정/턴종료  |  1/2/3: 무기", style);
+            GUI.Label(new Rect(15, ScaledH - 74, 330, 18), "C: 소화  |  V: 연막", style);
+            GUI.Label(new Rect(15, ScaledH - 55, 330, 18),
+                      $"O: 오버워치 (AP -{GameConstants.OverwatchCost})", style);
         }
 
         private void DrawGameResult()
