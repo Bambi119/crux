@@ -661,15 +661,18 @@ namespace Crux.Core
         }
 
         /// <summary>
-        /// 반응 사격 연출 시퀀스 — 긴박형. 카메라 즉시 점프 → 머즐 → 레이저 트레이서 → 강타.
+        /// 반응 사격 연출 시퀀스 — 비트 분리형. 각 단계가 사용자에게 인지되도록 간격 확보.
         /// IsReactionPlaying 플래그로 이동 중인 적 코루틴을 일시 정지시킴.
         /// </summary>
         /// <remarks>
-        /// 타임라인: [0.00s 카메라 즉시 점프 + 경고 + 머즐]
-        ///            [0.02s 트레이서 그림 + 페이드 0.08s]
-        ///            [0.10s 강타 VFX + 데미지 + 결과 배너]
-        ///            [0.35s 여운 끝 + 카메라 즉시 복귀]
-        ///            총 약 0.35초. 이전 1.55초 대비 크게 단축.
+        /// 5개 비트로 분리:
+        ///   [1] 0.00s 카메라 즉시 점프 → 공격자 타이트 줌인 (사격자 표현)
+        ///   [2] 0.30s "!" 마커 + 발동 배너 (띠링! 인지)
+        ///   [3] 0.65s 줌 아웃 애니메이션 0.15s (공격자+목표 한 화면)
+        ///   [4] 0.80s 머즐 + 레이저 트레이서 0.08s (빠른 탄환)
+        ///   [5] 0.88s 강타 VFX + 데미지 + 결과 배너
+        ///        +0.35s 판정 결과 인지 여운 → 카메라 즉시 복귀
+        /// 총 ≈1.23초.
         /// </remarks>
         private IEnumerator ExecuteReactionFireSequence(GridTankUnit attacker, GridTankUnit target)
         {
@@ -685,48 +688,69 @@ namespace Crux.Core
 
             Vector3 attackerPos = attacker.transform.position;
             Vector3 targetPos = target.transform.position;
-
-            // ===== 1) 카메라 즉시 점프 — 공격자+목표 둘 다 한 화면에 =====
             Vector3 savedCamPos = camTargetPos;
             float savedCamSize = camTargetSize;
 
+            // ===== [1] 카메라 즉시 점프 — 공격자 타이트 줌인 =====
+            const float closeupSize = 2.5f; // camMinSize(3) 우회 — 더 타이트하게
+            Vector3 closeupPos = new Vector3(attackerPos.x, attackerPos.y, -10f);
+            camTargetPos = closeupPos;
+            camTargetSize = closeupSize;
+            mainCam.transform.position = closeupPos;
+            mainCam.orthographicSize = closeupSize;
+
+            // 사격자 인지 시간
+            yield return new WaitForSeconds(0.30f);
+
+            // ===== [2] 머리 위 "!" 마커 + 발동 배너 =====
+            ShowAlertAt(attackerPos, 0.40f);
+            ShowBanner($"⚠ 오버워치 — {attacker.Data?.tankName}",
+                       new Color(1f, 0.4f, 0.2f), 1.2f);
+
+            // 느낌표/배너 인지 시간
+            yield return new WaitForSeconds(0.35f);
+
+            // ===== [3] 줌 아웃 — 공격자+목표 한 화면으로 (짧은 eased 애니메이션) =====
             Vector3 midPos = (attackerPos + targetPos) * 0.5f;
             float dx = Mathf.Abs(attackerPos.x - targetPos.x);
             float dy = Mathf.Abs(attackerPos.y - targetPos.y);
             float aspect = mainCam.aspect;
-            // 여유 마진 포함한 최소 필요 orthographicSize 계산 (width/height 중 큰 쪽)
             const float margin = 2.0f;
             float halfByH = dy * 0.5f + margin;
             float halfByW = (dx * 0.5f + margin) / Mathf.Max(0.1f, aspect);
-            float newSize = Mathf.Max(halfByH, halfByW);
-            newSize = Mathf.Max(newSize, camMinSize);
+            float wideSize = Mathf.Max(halfByH, halfByW);
+            wideSize = Mathf.Max(wideSize, closeupSize + 0.5f);
+            Vector3 widePos = new Vector3(midPos.x, midPos.y, -10f);
 
-            camTargetPos = new Vector3(midPos.x, midPos.y, -10f);
-            camTargetSize = newSize;
-            // 즉시 반영 — Lerp 보간 우회
-            mainCam.transform.position = camTargetPos;
-            mainCam.orthographicSize = newSize;
+            const float zoomOutDur = 0.15f;
+            float zoomT = 0f;
+            while (zoomT < zoomOutDur)
+            {
+                zoomT += Time.deltaTime;
+                float u = Mathf.Clamp01(zoomT / zoomOutDur);
+                // Ease-out quad
+                float e = 1f - (1f - u) * (1f - u);
+                mainCam.transform.position = Vector3.Lerp(closeupPos, widePos, e);
+                mainCam.orthographicSize = Mathf.Lerp(closeupSize, wideSize, e);
+                yield return null;
+            }
+            mainCam.transform.position = widePos;
+            mainCam.orthographicSize = wideSize;
+            camTargetPos = widePos;
+            camTargetSize = wideSize;
 
-            // 경고 마커 + 배너
-            ShowAlertAt(attackerPos, 0.32f);
-            ShowBanner($"⚠ 오버워치 — {attacker.Data?.tankName}",
-                       new Color(1f, 0.4f, 0.2f), 0.9f);
-
-            // ===== 2) 명중 판정 =====
+            // ===== [4] 명중 판정 + 머즐 + 레이저 트레이서 =====
             float hitChance = CalculateHitChanceWithCover(attacker, target);
             bool hit = Random.value <= hitChance;
 
             Vector2 fireDir = ((Vector2)(targetPos - attackerPos)).normalized;
             Vector3 muzzlePos = attackerPos + (Vector3)(fireDir * 0.3f);
 
-            // ===== 3) 머즐 플래시 (카메라 점프와 동시 프레임) =====
             MuzzleFlash.Spawn(muzzlePos, fireDir);
-            yield return null; // 한 프레임만 — 카메라가 점프한 직후 트레이서가 즉시 보이도록
-
-            // ===== 4) 레이저식 트레이서 (전체 선 즉시 + 빠른 페이드) =====
+            yield return null; // 머즐 인지 1프레임
             yield return StartCoroutine(AnimateReactionTracer(muzzlePos, targetPos, 0.08f));
 
-            // ===== 5) 강타 — 명중/빗나감 판정 실행 =====
+            // ===== [5] 강타 — 명중/빗나감 판정 실행 =====
             if (!hit)
             {
                 HitEffects.Spawn(targetPos + (Vector3)(Random.insideUnitCircle * 0.2f),
@@ -780,10 +804,10 @@ namespace Crux.Core
                 Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
             }
 
-            // ===== 6) 강타 여운 =====
-            yield return new WaitForSeconds(0.25f);
+            // ===== [5-후] 판정 결과 인지 여운 =====
+            yield return new WaitForSeconds(0.35f);
 
-            // ===== 7) 카메라 즉시 복귀 =====
+            // ===== 카메라 즉시 복귀 =====
             camTargetPos = savedCamPos;
             camTargetSize = savedCamSize;
             mainCam.transform.position = savedCamPos;
