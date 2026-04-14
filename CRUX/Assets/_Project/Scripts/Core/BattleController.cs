@@ -665,14 +665,15 @@ namespace Crux.Core
         /// IsReactionPlaying 플래그로 이동 중인 적 코루틴을 일시 정지시킴.
         /// </summary>
         /// <remarks>
-        /// 5개 비트로 분리:
+        /// 6개 비트로 분리:
         ///   [1] 0.00s 카메라 즉시 점프 → 공격자 타이트 줌인 (사격자 표현)
         ///   [2] 0.30s "!" 마커 + 발동 배너 (띠링! 인지)
         ///   [3] 0.65s 줌 아웃 애니메이션 0.15s (공격자+목표 한 화면)
-        ///   [4] 0.80s 머즐 + 레이저 트레이서 0.08s (빠른 탄환)
-        ///   [5] 0.88s 강타 VFX + 데미지 + 결과 배너
+        ///  [3.5] 0.80s 조준 여유 0.20s (줌 아웃 후 발사 전 breath)
+        ///   [4] 1.00s 머즐 + 레이저 트레이서 0.08s (빠른 탄환)
+        ///   [5] 1.08s 강타 VFX + DamagePopup + 데미지 + 결과 배너
         ///        +0.35s 판정 결과 인지 여운 → 카메라 즉시 복귀
-        /// 총 ≈1.23초.
+        /// 총 ≈1.43초.
         /// </remarks>
         private IEnumerator ExecuteReactionFireSequence(GridTankUnit attacker, GridTankUnit target)
         {
@@ -739,6 +740,9 @@ namespace Crux.Core
             camTargetPos = widePos;
             camTargetSize = wideSize;
 
+            // ===== [3.5] 조준 여유 — 줌 아웃 후 발사 전 breath =====
+            yield return new WaitForSeconds(0.20f);
+
             // ===== [4] 명중 판정 + 머즐 + 레이저 트레이서 =====
             float hitChance = CalculateHitChanceWithCover(attacker, target);
             bool hit = Random.value <= hitChance;
@@ -750,11 +754,13 @@ namespace Crux.Core
             yield return null; // 머즐 인지 1프레임
             yield return StartCoroutine(AnimateReactionTracer(muzzlePos, targetPos, 0.08f));
 
-            // ===== [5] 강타 — 명중/빗나감 판정 실행 =====
+            // ===== [5] 강타 — 명중/빗나감 판정 실행 + DamagePopup 피드백 =====
             if (!hit)
             {
-                HitEffects.Spawn(targetPos + (Vector3)(Random.insideUnitCircle * 0.2f),
-                                  ShotOutcome.Miss, fireDir);
+                Vector3 missPos = targetPos + (Vector3)(Random.insideUnitCircle * 0.2f);
+                HitEffects.Spawn(missPos, ShotOutcome.Miss, fireDir);
+                // MISS 팝업 — 목표 머리 위
+                Crux.Cinematic.DamagePopup.Spawn(targetPos, 0f, ShotOutcome.Miss);
                 ShowBanner($"⌁ 반응 사격 빗나감 — {target.Data?.tankName}",
                            new Color(0.8f, 0.8f, 0.4f), 1.5f);
                 Debug.Log($"[CRUX] 오버워치 빗나감");
@@ -785,6 +791,9 @@ namespace Crux.Core
                     : 1f;
                 HitEffects.Spawn(targetPos, outcome, fireDir, caliberScale);
 
+                // 데미지 팝업 — 목표 머리 위 (outcome별 색/텍스트 자동)
+                Crux.Cinematic.DamagePopup.Spawn(targetPos, finalDmg, outcome);
+
                 var info = new DamageInfo
                 {
                     damage = finalDmg,
@@ -799,8 +808,15 @@ namespace Crux.Core
 
                 string outcomeLabel = outcome == ShotOutcome.Penetration ? "관통"
                                       : outcome == ShotOutcome.Hit ? "명중" : "도탄";
+                Color bannerCol = outcome switch
+                {
+                    ShotOutcome.Penetration => new Color(1f, 0.25f, 0.15f), // 빨강
+                    ShotOutcome.Hit         => new Color(1f, 0.55f, 0.15f), // 주황
+                    ShotOutcome.Ricochet    => new Color(1f, 0.85f, 0.25f), // 노랑
+                    _ => new Color(1f, 0.6f, 0.2f)
+                };
                 ShowBanner($"⌁ 반응 사격 {outcomeLabel}! — {target.Data?.tankName}",
-                           new Color(1f, 0.6f, 0.2f), 1.8f);
+                           bannerCol, 1.8f);
                 Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
             }
 
