@@ -217,8 +217,10 @@ namespace Crux.Core
         {
             if (mainCam == null) return;
 
-            // 반응 사격 중에는 사용자 입력 무시 — 시퀀스가 카메라를 점유
-            if (!IsReactionPlaying)
+            // 반응 사격 중에는 HandleCamera가 전혀 간섭하지 않음 — 시퀀스가 카메라를 완전 독점
+            // (Lerp 보간도 차단해야 시퀀스의 즉시 점프가 뭉개지지 않음)
+            if (IsReactionPlaying) return;
+
             {
                 // 마우스 휠 줌
                 float scroll = Input.mouseScrollDelta.y;
@@ -659,13 +661,15 @@ namespace Crux.Core
         }
 
         /// <summary>
-        /// 반응 사격 연출 시퀀스 — 씬 전환 없이 맵 상에서 공격자 인식 → 사격 → 추적 → 명중.
+        /// 반응 사격 연출 시퀀스 — 긴박형. 카메라 즉시 점프 → 머즐 → 레이저 트레이서 → 강타.
         /// IsReactionPlaying 플래그로 이동 중인 적 코루틴을 일시 정지시킴.
         /// </summary>
         /// <remarks>
-        /// 오버워치 AP는 활성화 시점에 선지불. 1회 발사 후 isOverwatching 해제.
-        /// 타임라인: [0~0.4s 경고+카메라 팬] [0.4~0.48s 머즐] [0.48~0.70s 트레이서]
-        ///            [0.70~1.20s 명중 여운] [1.20~1.55s 카메라 복귀]
+        /// 타임라인: [0.00s 카메라 즉시 점프 + 경고 + 머즐]
+        ///            [0.02s 트레이서 그림 + 페이드 0.08s]
+        ///            [0.10s 강타 VFX + 데미지 + 결과 배너]
+        ///            [0.35s 여운 끝 + 카메라 즉시 복귀]
+        ///            총 약 0.35초. 이전 1.55초 대비 크게 단축.
         /// </remarks>
         private IEnumerator ExecuteReactionFireSequence(GridTankUnit attacker, GridTankUnit target)
         {
@@ -679,38 +683,50 @@ namespace Crux.Core
                 yield break;
             }
 
-            // ===== 1) 경고 마커 + 카메라 팬 =====
             Vector3 attackerPos = attacker.transform.position;
             Vector3 targetPos = target.transform.position;
 
-            // 카메라 상태 저장 후 공격자 방향으로 팬 — 공격자와 목표의 중점으로 살짝 가중
+            // ===== 1) 카메라 즉시 점프 — 공격자+목표 둘 다 한 화면에 =====
             Vector3 savedCamPos = camTargetPos;
             float savedCamSize = camTargetSize;
-            Vector3 midPos = Vector3.Lerp(attackerPos, targetPos, 0.35f);
+
+            Vector3 midPos = (attackerPos + targetPos) * 0.5f;
+            float dx = Mathf.Abs(attackerPos.x - targetPos.x);
+            float dy = Mathf.Abs(attackerPos.y - targetPos.y);
+            float aspect = mainCam.aspect;
+            // 여유 마진 포함한 최소 필요 orthographicSize 계산 (width/height 중 큰 쪽)
+            const float margin = 2.0f;
+            float halfByH = dy * 0.5f + margin;
+            float halfByW = (dx * 0.5f + margin) / Mathf.Max(0.1f, aspect);
+            float newSize = Mathf.Max(halfByH, halfByW);
+            newSize = Mathf.Max(newSize, camMinSize);
+
             camTargetPos = new Vector3(midPos.x, midPos.y, -10f);
-            camTargetSize = Mathf.Clamp(camMinSize + 0.8f, camMinSize, camMaxSize);
+            camTargetSize = newSize;
+            // 즉시 반영 — Lerp 보간 우회
+            mainCam.transform.position = camTargetPos;
+            mainCam.orthographicSize = newSize;
 
-            ShowAlertAt(attackerPos, 0.4f);
-            ShowBanner($"⚠ 오버워치 발동! — {attacker.Data?.tankName}",
-                       new Color(1f, 0.5f, 0.2f), 1.2f);
+            // 경고 마커 + 배너
+            ShowAlertAt(attackerPos, 0.32f);
+            ShowBanner($"⚠ 오버워치 — {attacker.Data?.tankName}",
+                       new Color(1f, 0.4f, 0.2f), 0.9f);
 
-            yield return new WaitForSeconds(0.4f);
-
-            // ===== 2) 명중/관통 판정 (모두 계산 먼저) =====
+            // ===== 2) 명중 판정 =====
             float hitChance = CalculateHitChanceWithCover(attacker, target);
             bool hit = Random.value <= hitChance;
 
             Vector2 fireDir = ((Vector2)(targetPos - attackerPos)).normalized;
             Vector3 muzzlePos = attackerPos + (Vector3)(fireDir * 0.3f);
 
-            // ===== 3) 머즐 플래시 =====
+            // ===== 3) 머즐 플래시 (카메라 점프와 동시 프레임) =====
             MuzzleFlash.Spawn(muzzlePos, fireDir);
-            yield return new WaitForSeconds(0.08f);
+            yield return null; // 한 프레임만 — 카메라가 점프한 직후 트레이서가 즉시 보이도록
 
-            // ===== 4) 탄환 트레이서 =====
-            yield return StartCoroutine(AnimateReactionTracer(muzzlePos, targetPos, 0.22f));
+            // ===== 4) 레이저식 트레이서 (전체 선 즉시 + 빠른 페이드) =====
+            yield return StartCoroutine(AnimateReactionTracer(muzzlePos, targetPos, 0.08f));
 
-            // ===== 5) 명중/빗나감 판정 실행 =====
+            // ===== 5) 강타 — 명중/빗나감 판정 실행 =====
             if (!hit)
             {
                 HitEffects.Spawn(targetPos + (Vector3)(Random.insideUnitCircle * 0.2f),
@@ -764,13 +780,14 @@ namespace Crux.Core
                 Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
             }
 
-            // ===== 6) 명중 여운 =====
-            yield return new WaitForSeconds(0.5f);
+            // ===== 6) 강타 여운 =====
+            yield return new WaitForSeconds(0.25f);
 
-            // ===== 7) 카메라 복귀 =====
+            // ===== 7) 카메라 즉시 복귀 =====
             camTargetPos = savedCamPos;
             camTargetSize = savedCamSize;
-            yield return new WaitForSeconds(0.35f);
+            mainCam.transform.position = savedCamPos;
+            mainCam.orthographicSize = savedCamSize;
 
             IsReactionPlaying = false;
         }
@@ -782,53 +799,42 @@ namespace Crux.Core
             alertEndTime = Time.time + duration;
         }
 
-        /// <summary>반응 사격 탄환 트레이서 — LineRenderer로 머즐에서 목표까지 점진 연장</summary>
+        /// <summary>반응 사격 레이저식 트레이서 — 전체 선을 한 프레임에 그리고 즉시 페이드</summary>
+        /// <remarks>점진 연장은 리니어/느리게 보이므로 폐기. 레이저 플래시 → 빠른 페이드아웃으로
+        /// "순간적으로 때린다" 느낌을 연출.</remarks>
         private IEnumerator AnimateReactionTracer(Vector3 start, Vector3 end, float duration)
         {
             var obj = new GameObject("ReactionTracer");
             var lr = obj.AddComponent<LineRenderer>();
             lr.material = new Material(Shader.Find("Sprites/Default"));
-            var grad = new Gradient();
-            grad.SetKeys(
-                new[]
-                {
-                    new GradientColorKey(new Color(1f, 0.95f, 0.6f), 0f),
-                    new GradientColorKey(new Color(1f, 0.55f, 0.2f), 1f)
-                },
-                new[]
-                {
-                    new GradientAlphaKey(1f, 0f),
-                    new GradientAlphaKey(0.9f, 1f)
-                });
-            lr.colorGradient = grad;
-            lr.widthCurve = AnimationCurve.Linear(0f, 0.08f, 1f, 0.02f);
+            // 굵은 선 — 레이저 느낌 강조
+            lr.widthCurve = AnimationCurve.Linear(0f, 0.18f, 1f, 0.06f);
             lr.positionCount = 2;
             lr.useWorldSpace = true;
             lr.sortingOrder = 25;
-            lr.numCapVertices = 2;
+            lr.numCapVertices = 4;
 
+            // 전체 선 즉시 그림 (점진 연장 아님)
+            lr.SetPosition(0, start);
+            lr.SetPosition(1, end);
+
+            // 페이드만 duration 동안 수행 — 순간 플래시 → 빠르게 사라짐
+            var colKeys = new[]
+            {
+                new GradientColorKey(new Color(1f, 0.98f, 0.75f), 0f),
+                new GradientColorKey(new Color(1f, 0.55f, 0.2f), 1f)
+            };
             float t = 0f;
-            while (t < 1f)
+            while (t < duration)
             {
-                t += Time.deltaTime / duration;
-                Vector3 tip = Vector3.Lerp(start, end, Mathf.Clamp01(t));
-                lr.SetPosition(0, start);
-                lr.SetPosition(1, tip);
-                yield return null;
-            }
-
-            // 짧은 페이드
-            float fadeT = 0f;
-            const float fadeDur = 0.12f;
-            var baseGrad = lr.colorGradient;
-            while (fadeT < fadeDur)
-            {
-                fadeT += Time.deltaTime;
-                float a = 1f - Mathf.Clamp01(fadeT / fadeDur);
-                var fadeGrad = new Gradient();
-                fadeGrad.SetKeys(baseGrad.colorKeys,
-                    new[] { new GradientAlphaKey(a, 0f), new GradientAlphaKey(a * 0.9f, 1f) });
-                lr.colorGradient = fadeGrad;
+                t += Time.deltaTime;
+                float a = 1f - Mathf.Clamp01(t / duration);
+                // 가파른 페이드 커브 — 시작 순간이 가장 밝음
+                float alpha = a * a;
+                var grad = new Gradient();
+                grad.SetKeys(colKeys,
+                    new[] { new GradientAlphaKey(alpha, 0f), new GradientAlphaKey(alpha * 0.85f, 1f) });
+                lr.colorGradient = grad;
                 yield return null;
             }
 
