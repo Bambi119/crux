@@ -343,6 +343,11 @@ namespace Crux.Unit
                 // 구독자(BattleController)가 오버워치 체크 → 반격 → 이 유닛 사망 가능
                 OnMoveStepComplete?.Invoke(this, gridPosition);
                 if (IsDestroyed) break;
+
+                // 반응 사격 연출이 진행 중이면 종료까지 대기 (카메라 팬/트레이서 시간 확보)
+                while (Crux.Core.BattleController.IsReactionPlaying)
+                    yield return null;
+                if (IsDestroyed) break;
             }
 
             var newCell = grid.GetCell(gridPosition);

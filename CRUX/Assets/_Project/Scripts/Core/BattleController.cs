@@ -43,6 +43,13 @@ namespace Crux.Core
         [Tooltip("F1 토글 — 각 셀에 지형 라벨 + 마우스 호버 시 상세 정보")]
         [SerializeField] private bool showTerrainDebug = true;
 
+        // 반응 사격 연출 상태 — 적 이동 코루틴이 이 플래그를 폴링해 시퀀스 종료까지 대기
+        public static bool IsReactionPlaying;
+
+        // 경고 마커 (공격자 머리 위 "!") — OnGUI에서 월드→스크린 변환 후 렌더
+        private Vector3? alertWorldPos;
+        private float alertEndTime;
+
         // 시스템
         private GridManager grid;
         private GridVisualizer visualizer;
@@ -210,33 +217,37 @@ namespace Crux.Core
         {
             if (mainCam == null) return;
 
-            // 마우스 휠 줌
-            float scroll = Input.mouseScrollDelta.y;
-            if (scroll != 0)
+            // 반응 사격 중에는 사용자 입력 무시 — 시퀀스가 카메라를 점유
+            if (!IsReactionPlaying)
             {
-                camTargetSize -= scroll * 0.5f;
-                camTargetSize = Mathf.Clamp(camTargetSize, camMinSize, camMaxSize);
-            }
+                // 마우스 휠 줌
+                float scroll = Input.mouseScrollDelta.y;
+                if (scroll != 0)
+                {
+                    camTargetSize -= scroll * 0.5f;
+                    camTargetSize = Mathf.Clamp(camTargetSize, camMinSize, camMaxSize);
+                }
 
-            // 가장자리 스크롤 (마우스가 화면 가장자리에 있을 때)
-            Vector3 panDir = Vector3.zero;
-            Vector2 mp = Input.mousePosition;
-            if (mp.x < edgePanMargin) panDir.x = -1f;
-            else if (mp.x > Screen.width - edgePanMargin) panDir.x = 1f;
-            if (mp.y < edgePanMargin) panDir.y = -1f;
-            else if (mp.y > Screen.height - edgePanMargin) panDir.y = 1f;
+                // 가장자리 스크롤 (마우스가 화면 가장자리에 있을 때)
+                Vector3 panDir = Vector3.zero;
+                Vector2 mp = Input.mousePosition;
+                if (mp.x < edgePanMargin) panDir.x = -1f;
+                else if (mp.x > Screen.width - edgePanMargin) panDir.x = 1f;
+                if (mp.y < edgePanMargin) panDir.y = -1f;
+                else if (mp.y > Screen.height - edgePanMargin) panDir.y = 1f;
 
-            if (panDir != Vector3.zero)
-            {
-                camTargetPos += panDir * camPanSpeed * Time.deltaTime;
-                // 맵 범위 제한
-                float halfH = camTargetSize;
-                float halfW = camTargetSize * mainCam.aspect;
-                camTargetPos.x = Mathf.Clamp(camTargetPos.x, -halfW * 0.3f,
-                    grid.Width * GameConstants.CellSize + halfW * 0.3f);
-                camTargetPos.y = Mathf.Clamp(camTargetPos.y, -halfH * 0.3f,
-                    grid.Height * GameConstants.CellSize + halfH * 0.3f);
-                camTargetPos.z = -10f;
+                if (panDir != Vector3.zero)
+                {
+                    camTargetPos += panDir * camPanSpeed * Time.deltaTime;
+                    // 맵 범위 제한
+                    float halfH = camTargetSize;
+                    float halfW = camTargetSize * mainCam.aspect;
+                    camTargetPos.x = Mathf.Clamp(camTargetPos.x, -halfW * 0.3f,
+                        grid.Width * GameConstants.CellSize + halfW * 0.3f);
+                    camTargetPos.y = Mathf.Clamp(camTargetPos.y, -halfH * 0.3f,
+                        grid.Height * GameConstants.CellSize + halfH * 0.3f);
+                    camTargetPos.z = -10f;
+                }
             }
 
             // 부드러운 보간
@@ -643,32 +654,63 @@ namespace Crux.Core
             float delta = Mathf.Abs(Mathf.DeltaAngle(playerUnit.HullAngle, dirAngle));
             if (delta > OverwatchArcHalfWidth) return;
 
-            // 트리거! — 즉시 반응 사격 (연출 씬 전환 없음)
-            ExecuteReactionFire(playerUnit, movingEnemy);
+            // 트리거! — 반응 사격 시퀀스 시작 (카메라 팬 + 경고 마커 + 탄환 트레이서)
+            StartCoroutine(ExecuteReactionFireSequence(playerUnit, movingEnemy));
         }
 
-        /// <summary>경량 반응 사격 — 씬 전환 없이 맵 상에서 즉시 데미지 + VFX</summary>
-        /// <remarks>오버워치 AP는 활성화 시점에 선지불되었으므로 추가 AP 소모 없음.
-        /// 1회 발사 후 isOverwatching 해제. ExecuteFire의 경량 버전 — 엄폐/연출 생략.</remarks>
-        private void ExecuteReactionFire(GridTankUnit attacker, GridTankUnit target)
+        /// <summary>
+        /// 반응 사격 연출 시퀀스 — 씬 전환 없이 맵 상에서 공격자 인식 → 사격 → 추적 → 명중.
+        /// IsReactionPlaying 플래그로 이동 중인 적 코루틴을 일시 정지시킴.
+        /// </summary>
+        /// <remarks>
+        /// 오버워치 AP는 활성화 시점에 선지불. 1회 발사 후 isOverwatching 해제.
+        /// 타임라인: [0~0.4s 경고+카메라 팬] [0.4~0.48s 머즐] [0.48~0.70s 트레이서]
+        ///            [0.70~1.20s 명중 여운] [1.20~1.55s 카메라 복귀]
+        /// </remarks>
+        private IEnumerator ExecuteReactionFireSequence(GridTankUnit attacker, GridTankUnit target)
         {
+            IsReactionPlaying = true;
+
             attacker.ConsumeOverwatchShot();
             if (!attacker.ConsumeMainGunRound())
             {
                 Debug.LogWarning("[CRUX] 오버워치 트리거 시점 주포 잔탄 0 — 사격 무시");
-                return;
+                IsReactionPlaying = false;
+                yield break;
             }
 
+            // ===== 1) 경고 마커 + 카메라 팬 =====
+            Vector3 attackerPos = attacker.transform.position;
+            Vector3 targetPos = target.transform.position;
+
+            // 카메라 상태 저장 후 공격자 방향으로 팬 — 공격자와 목표의 중점으로 살짝 가중
+            Vector3 savedCamPos = camTargetPos;
+            float savedCamSize = camTargetSize;
+            Vector3 midPos = Vector3.Lerp(attackerPos, targetPos, 0.35f);
+            camTargetPos = new Vector3(midPos.x, midPos.y, -10f);
+            camTargetSize = Mathf.Clamp(camMinSize + 0.8f, camMinSize, camMaxSize);
+
+            ShowAlertAt(attackerPos, 0.4f);
+            ShowBanner($"⚠ 오버워치 발동! — {attacker.Data?.tankName}",
+                       new Color(1f, 0.5f, 0.2f), 1.2f);
+
+            yield return new WaitForSeconds(0.4f);
+
+            // ===== 2) 명중/관통 판정 (모두 계산 먼저) =====
             float hitChance = CalculateHitChanceWithCover(attacker, target);
             bool hit = Random.value <= hitChance;
 
-            Vector3 attackerPos = attacker.transform.position;
-            Vector3 targetPos = target.transform.position;
             Vector2 fireDir = ((Vector2)(targetPos - attackerPos)).normalized;
+            Vector3 muzzlePos = attackerPos + (Vector3)(fireDir * 0.3f);
 
-            // 공격자 쪽 머즐 플래시
-            MuzzleFlash.Spawn(attackerPos + (Vector3)(fireDir * 0.3f), fireDir);
+            // ===== 3) 머즐 플래시 =====
+            MuzzleFlash.Spawn(muzzlePos, fireDir);
+            yield return new WaitForSeconds(0.08f);
 
+            // ===== 4) 탄환 트레이서 =====
+            yield return StartCoroutine(AnimateReactionTracer(muzzlePos, targetPos, 0.22f));
+
+            // ===== 5) 명중/빗나감 판정 실행 =====
             if (!hit)
             {
                 HitEffects.Spawn(targetPos + (Vector3)(Random.insideUnitCircle * 0.2f),
@@ -676,53 +718,157 @@ namespace Crux.Core
                 ShowBanner($"⌁ 반응 사격 빗나감 — {target.Data?.tankName}",
                            new Color(0.8f, 0.8f, 0.4f), 1.5f);
                 Debug.Log($"[CRUX] 오버워치 빗나감");
+            }
+            else
+            {
+                var hitZone = PenetrationCalculator.DetermineHitZone(
+                    attackerPos, targetPos, target.HullAngle);
+                float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
+                float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                    attackerPos, targetPos, target.HullAngle, hitZone);
+                float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+
+                float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+                var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+
+                float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                float finalDmg = outcome switch
+                {
+                    ShotOutcome.Ricochet => dmg * 0.03f,
+                    ShotOutcome.Hit => dmg,
+                    ShotOutcome.Penetration => dmg * 2.5f,
+                    _ => 0f
+                };
+
+                float caliberScale = attacker.currentAmmo != null
+                    ? HitEffects.CaliberScaleFromAmmoDamage(attacker.currentAmmo.damage)
+                    : 1f;
+                HitEffects.Spawn(targetPos, outcome, fireDir, caliberScale);
+
+                var info = new DamageInfo
+                {
+                    damage = finalDmg,
+                    outcome = outcome,
+                    hitZone = hitZone,
+                    penetrationValue = pen,
+                    effectiveArmor = effectiveArmor,
+                    impactAngle = impactAngle
+                };
+                var prerolled = target.PreRollDamage(info);
+                target.ApplyPrerolledDamage(info, prerolled);
+
+                string outcomeLabel = outcome == ShotOutcome.Penetration ? "관통"
+                                      : outcome == ShotOutcome.Hit ? "명중" : "도탄";
+                ShowBanner($"⌁ 반응 사격 {outcomeLabel}! — {target.Data?.tankName}",
+                           new Color(1f, 0.6f, 0.2f), 1.8f);
+                Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
+            }
+
+            // ===== 6) 명중 여운 =====
+            yield return new WaitForSeconds(0.5f);
+
+            // ===== 7) 카메라 복귀 =====
+            camTargetPos = savedCamPos;
+            camTargetSize = savedCamSize;
+            yield return new WaitForSeconds(0.35f);
+
+            IsReactionPlaying = false;
+        }
+
+        /// <summary>경고 마커 예약 — OnGUI의 DrawReactionAlert에서 소비</summary>
+        private void ShowAlertAt(Vector3 worldPos, float duration)
+        {
+            alertWorldPos = worldPos;
+            alertEndTime = Time.time + duration;
+        }
+
+        /// <summary>반응 사격 탄환 트레이서 — LineRenderer로 머즐에서 목표까지 점진 연장</summary>
+        private IEnumerator AnimateReactionTracer(Vector3 start, Vector3 end, float duration)
+        {
+            var obj = new GameObject("ReactionTracer");
+            var lr = obj.AddComponent<LineRenderer>();
+            lr.material = new Material(Shader.Find("Sprites/Default"));
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(1f, 0.95f, 0.6f), 0f),
+                    new GradientColorKey(new Color(1f, 0.55f, 0.2f), 1f)
+                },
+                new[]
+                {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(0.9f, 1f)
+                });
+            lr.colorGradient = grad;
+            lr.widthCurve = AnimationCurve.Linear(0f, 0.08f, 1f, 0.02f);
+            lr.positionCount = 2;
+            lr.useWorldSpace = true;
+            lr.sortingOrder = 25;
+            lr.numCapVertices = 2;
+
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime / duration;
+                Vector3 tip = Vector3.Lerp(start, end, Mathf.Clamp01(t));
+                lr.SetPosition(0, start);
+                lr.SetPosition(1, tip);
+                yield return null;
+            }
+
+            // 짧은 페이드
+            float fadeT = 0f;
+            const float fadeDur = 0.12f;
+            var baseGrad = lr.colorGradient;
+            while (fadeT < fadeDur)
+            {
+                fadeT += Time.deltaTime;
+                float a = 1f - Mathf.Clamp01(fadeT / fadeDur);
+                var fadeGrad = new Gradient();
+                fadeGrad.SetKeys(baseGrad.colorKeys,
+                    new[] { new GradientAlphaKey(a, 0f), new GradientAlphaKey(a * 0.9f, 1f) });
+                lr.colorGradient = fadeGrad;
+                yield return null;
+            }
+
+            Destroy(obj);
+        }
+
+        /// <summary>반응 사격 공격자 머리 위 "!" 마커 — OnGUI에서 월드→스크린 변환</summary>
+        private void DrawReactionAlert()
+        {
+            if (!alertWorldPos.HasValue || mainCam == null) return;
+            float remaining = alertEndTime - Time.time;
+            if (remaining <= 0f)
+            {
+                alertWorldPos = null;
                 return;
             }
 
-            // 명중 — 기존 PenetrationCalculator로 관통 판정
-            var hitZone = PenetrationCalculator.DetermineHitZone(
-                attackerPos, targetPos, target.HullAngle);
-            float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
-            float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
-                attackerPos, targetPos, target.HullAngle, hitZone);
-            float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+            Vector3 sp = mainCam.WorldToScreenPoint(alertWorldPos.Value + Vector3.up * 0.6f);
+            if (sp.z < 0) return;
 
-            float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
-            var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+            float x = sp.x / uiScale;
+            float y = (Screen.height - sp.y) / uiScale;
 
-            float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
-            float finalDmg = outcome switch
-            {
-                ShotOutcome.Ricochet => dmg * 0.03f,
-                ShotOutcome.Hit => dmg,
-                ShotOutcome.Penetration => dmg * 2.5f,
-                _ => 0f
-            };
+            // 깜빡 패턴 — sin^2 펄스
+            float pulse = Mathf.Abs(Mathf.Sin(Time.time * 22f));
+            float alpha = 0.35f + 0.65f * pulse;
 
-            // VFX
-            float caliberScale = attacker.currentAmmo != null
-                ? HitEffects.CaliberScaleFromAmmoDamage(attacker.currentAmmo.damage)
-                : 1f;
-            HitEffects.Spawn(targetPos, outcome, fireDir, caliberScale);
+            var s = new GUIStyle(GetLabelStyle());
+            s.fontSize = 44;
+            s.fontStyle = FontStyle.Bold;
+            s.alignment = TextAnchor.MiddleCenter;
 
-            // 데미지 적용 — PreRoll → ApplyPrerolledDamage
-            var info = new DamageInfo
-            {
-                damage = finalDmg,
-                outcome = outcome,
-                hitZone = hitZone,
-                penetrationValue = pen,
-                effectiveArmor = effectiveArmor,
-                impactAngle = impactAngle
-            };
-            var prerolled = target.PreRollDamage(info);
-            target.ApplyPrerolledDamage(info, prerolled);
+            // 검은 외곽선
+            var shadow = new GUIStyle(s);
+            shadow.normal.textColor = new Color(0f, 0f, 0f, alpha * 0.9f);
+            GUI.Label(new Rect(x - 29, y - 29, 60, 60), "!", shadow);
+            GUI.Label(new Rect(x - 31, y - 31, 60, 60), "!", shadow);
 
-            string outcomeLabel = outcome == ShotOutcome.Penetration ? "관통"
-                                  : outcome == ShotOutcome.Hit ? "명중" : "도탄";
-            ShowBanner($"⌁ 반응 사격 {outcomeLabel}! — {target.Data?.tankName}",
-                       new Color(1f, 0.6f, 0.2f), 1.8f);
-            Debug.Log($"[CRUX] 오버워치 반격: {outcomeLabel} dmg={finalDmg:F0}");
+            s.normal.textColor = new Color(1f, 0.3f, 0.15f, alpha);
+            GUI.Label(new Rect(x - 30, y - 30, 60, 60), "!", s);
         }
 
         /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
@@ -1419,6 +1565,7 @@ namespace Crux.Core
             DrawInputModeInfo();
             DrawControls();
             DrawBanner();
+            DrawReactionAlert();
             DrawGameResult();
 
             if (showTerrainDebug)
