@@ -7,6 +7,7 @@ using Crux.Unit;
 using Crux.Data;
 using Crux.Combat;
 using Crux.UI;
+using Crux.Camera;
 using TerrainData = Crux.Core.TerrainData;
 
 namespace Crux.Core
@@ -79,20 +80,13 @@ namespace Crux.Core
         private int pendingMoveCost;          // 이동 AP 비용
 
         // 카메라
-        private UnityEngine.Camera mainCam;
-        private float camTargetSize;
-        private Vector3 camTargetPos;
-        private const float camZoomSpeed = 5f;
-        private const float camMinSize = 3f;
-        private const float camMaxSize = 8f;
-        private const float camPanSpeed = 8f;
-        private const int edgePanMargin = 15; // 가장자리 스크롤 픽셀 폭
+        private BattleCamera battleCam;
 
         public TurnPhase CurrentPhase => currentPhase;
         public int TurnCount => turnCount;
 
         // HUD 접근용 getter
-        public UnityEngine.Camera MainCam => mainCam;
+        public UnityEngine.Camera MainCam => battleCam != null ? battleCam.Cam : null;
         public GridManager Grid => grid;
         public bool ShowTerrainDebug => showTerrainDebug;
         public GridTankUnit SelectedUnit => selectedUnit;
@@ -126,8 +120,6 @@ namespace Crux.Core
 
         private void InitializeBattle()
         {
-            mainCam = UnityEngine.Camera.main;
-
             // 그리드 — 테스트 맵일 경우 차원 확장
             var gridObj = new GameObject("Grid");
             grid = gridObj.AddComponent<GridManager>();
@@ -171,30 +163,27 @@ namespace Crux.Core
             foreach (var e in enemyUnits)
                 if (e != null) e.OnMoveStepComplete += HandleEnemyMoveStep;
 
-            // 카메라 — 맵 전체가 보이도록 자동 조정 (flat-top hex 실제 치수)
-            // 주의: grid.Width/Height를 참조해야 테스트 맵(12×12 등)에도 대응
-            if (mainCam != null)
-            {
-                mainCam.orthographic = true;
-                // flat-top hex: width = 1.5*(w-1)*size + 2*size, height = sqrt(3)*(h-0.5)*size + sqrt(3)*size
-                float size = GameConstants.CellSize;
-                float mapW = size * (1.5f * (grid.Width - 1) + 2f);
-                float mapH = size * Mathf.Sqrt(3f) * (grid.Height + 0.5f);
-                float aspect = mainCam.aspect;
-                float sizeByH = mapH * 0.55f;
-                float sizeByW = (mapW * 0.55f) / aspect;
-                camTargetSize = Mathf.Max(sizeByH, sizeByW);
-                camTargetSize = Mathf.Clamp(camTargetSize, camMinSize, camMaxSize);
-                mainCam.orthographicSize = camTargetSize;
+            // BattleCamera 초기화
+            var camObj = new GameObject("BattleCamera");
+            battleCam = camObj.AddComponent<BattleCamera>();
+            battleCam.Initialize();
 
-                // 맵 중심 (hex 월드 좌표 기반)
-                Vector3 bl = HexCoord.OffsetToWorld(new Vector2Int(0, 0), size);
-                Vector3 tr = HexCoord.OffsetToWorld(new Vector2Int(grid.Width - 1, grid.Height - 1), size);
-                float cx = (bl.x + tr.x) * 0.5f;
-                float cy = (bl.y + tr.y) * 0.5f;
-                camTargetPos = new Vector3(cx, cy, -10f);
-                mainCam.transform.position = camTargetPos;
-            }
+            // 맵 프레이밍 계산 및 적용 — 맵 전체가 보이도록 자동 조정 (flat-top hex 실제 치수)
+            // 주의: grid.Width/Height를 참조해야 테스트 맵(12×12 등)에도 대응
+            float size = GameConstants.CellSize;
+            float mapW = size * (1.5f * (grid.Width - 1) + 2f);
+            float mapH = size * Mathf.Sqrt(3f) * (grid.Height + 0.5f);
+            float aspect = battleCam.Cam != null ? battleCam.Cam.aspect : 16f / 9f;
+            float sizeByH = mapH * 0.55f;
+            float sizeByW = (mapW * 0.55f) / aspect;
+            float initSize = Mathf.Max(sizeByH, sizeByW);
+
+            // 맵 중심 (hex 월드 좌표 기반)
+            Vector3 bl = HexCoord.OffsetToWorld(new Vector2Int(0, 0), size);
+            Vector3 tr = HexCoord.OffsetToWorld(new Vector2Int(grid.Width - 1, grid.Height - 1), size);
+            Vector3 center = new Vector3((bl.x + tr.x) * 0.5f, (bl.y + tr.y) * 0.5f, -10f);
+            battleCam.SetInitialFraming(center, initSize);
+            battleCam.SetPanBounds(0, grid.Width * size, 0, grid.Height * size);
 
             // HUD 초기화
             var hudObj = new GameObject("BattleHUD");
@@ -216,7 +205,7 @@ namespace Crux.Core
             }
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
-            HandleCamera();
+            if (battleCam != null) battleCam.Tick(IsReactionPlaying);
             CheckVictoryDefeat();
 
             // 지형 디버그 토글
@@ -240,50 +229,6 @@ namespace Crux.Core
                 if (e != null && !e.IsDestroyed) { allEnemiesDead = false; break; }
             if (allEnemiesDead)
                 currentPhase = TurnPhase.Victory;
-        }
-
-        private void HandleCamera()
-        {
-            if (mainCam == null) return;
-
-            // 반응 사격 중에는 HandleCamera가 전혀 간섭하지 않음 — 시퀀스가 카메라를 완전 독점
-            // (Lerp 보간도 차단해야 시퀀스의 즉시 점프가 뭉개지지 않음)
-            if (IsReactionPlaying) return;
-
-            {
-                // 마우스 휠 줌
-                float scroll = Input.mouseScrollDelta.y;
-                if (scroll != 0)
-                {
-                    camTargetSize -= scroll * 0.5f;
-                    camTargetSize = Mathf.Clamp(camTargetSize, camMinSize, camMaxSize);
-                }
-
-                // 가장자리 스크롤 (마우스가 화면 가장자리에 있을 때)
-                Vector3 panDir = Vector3.zero;
-                Vector2 mp = Input.mousePosition;
-                if (mp.x < edgePanMargin) panDir.x = -1f;
-                else if (mp.x > Screen.width - edgePanMargin) panDir.x = 1f;
-                if (mp.y < edgePanMargin) panDir.y = -1f;
-                else if (mp.y > Screen.height - edgePanMargin) panDir.y = 1f;
-
-                if (panDir != Vector3.zero)
-                {
-                    camTargetPos += panDir * camPanSpeed * Time.deltaTime;
-                    // 맵 범위 제한
-                    float halfH = camTargetSize;
-                    float halfW = camTargetSize * mainCam.aspect;
-                    camTargetPos.x = Mathf.Clamp(camTargetPos.x, -halfW * 0.3f,
-                        grid.Width * GameConstants.CellSize + halfW * 0.3f);
-                    camTargetPos.y = Mathf.Clamp(camTargetPos.y, -halfH * 0.3f,
-                        grid.Height * GameConstants.CellSize + halfH * 0.3f);
-                    camTargetPos.z = -10f;
-                }
-            }
-
-            // 부드러운 보간
-            mainCam.orthographicSize = Mathf.Lerp(mainCam.orthographicSize, camTargetSize, camZoomSpeed * Time.deltaTime);
-            mainCam.transform.position = Vector3.Lerp(mainCam.transform.position, camTargetPos, camZoomSpeed * Time.deltaTime);
         }
 
         /// <summary>플레이어 유닛의 엄폐 커버 범위 표시 (상태 변경 시만 갱신)</summary>
@@ -617,7 +562,7 @@ namespace Crux.Core
             // 좌클릭: 이동 목적지 / 사격 대상
             if (Input.GetMouseButtonDown(0))
             {
-                var worldPos = mainCam.ScreenToWorldPoint(Input.mousePosition);
+                var worldPos = battleCam?.Cam.ScreenToWorldPoint(Input.mousePosition) ?? Vector3.zero;
                 var clickedPos = grid.WorldToGrid(worldPos);
 
                 if (!grid.IsInBounds(clickedPos)) return;
@@ -715,16 +660,12 @@ namespace Crux.Core
 
             Vector3 attackerPos = attacker.transform.position;
             Vector3 targetPos = target.transform.position;
-            Vector3 savedCamPos = camTargetPos;
-            float savedCamSize = camTargetSize;
+            battleCam?.SaveState();
 
             // ===== [1] 카메라 즉시 점프 — 공격자 타이트 줌인 =====
-            const float closeupSize = 2.5f; // camMinSize(3) 우회 — 더 타이트하게
+            const float closeupSize = 2.5f; // battleCam.MinSize(3) 우회 — 더 타이트하게
             Vector3 closeupPos = new Vector3(attackerPos.x, attackerPos.y, -10f);
-            camTargetPos = closeupPos;
-            camTargetSize = closeupSize;
-            mainCam.transform.position = closeupPos;
-            mainCam.orthographicSize = closeupSize;
+            battleCam?.SnapTo(closeupPos, closeupSize);
 
             // 사격자 인지 시간
             yield return new WaitForSeconds(0.30f);
@@ -741,7 +682,7 @@ namespace Crux.Core
             Vector3 midPos = (attackerPos + targetPos) * 0.5f;
             float dx = Mathf.Abs(attackerPos.x - targetPos.x);
             float dy = Mathf.Abs(attackerPos.y - targetPos.y);
-            float aspect = mainCam.aspect;
+            float aspect = battleCam?.Cam.aspect ?? (16f / 9f);
             const float margin = 2.0f;
             float halfByH = dy * 0.5f + margin;
             float halfByW = (dx * 0.5f + margin) / Mathf.Max(0.1f, aspect);
@@ -757,14 +698,11 @@ namespace Crux.Core
                 float u = Mathf.Clamp01(zoomT / zoomOutDur);
                 // Ease-out quad
                 float e = 1f - (1f - u) * (1f - u);
-                mainCam.transform.position = Vector3.Lerp(closeupPos, widePos, e);
-                mainCam.orthographicSize = Mathf.Lerp(closeupSize, wideSize, e);
+                battleCam.Cam.transform.position = Vector3.Lerp(closeupPos, widePos, e);
+                battleCam.Cam.orthographicSize = Mathf.Lerp(closeupSize, wideSize, e);
                 yield return null;
             }
-            mainCam.transform.position = widePos;
-            mainCam.orthographicSize = wideSize;
-            camTargetPos = widePos;
-            camTargetSize = wideSize;
+            battleCam?.SnapTo(widePos, wideSize);
 
             // ===== [3.5] 조준 여유 — 줌 아웃 후 발사 전 breath =====
             yield return new WaitForSeconds(0.20f);
@@ -850,10 +788,7 @@ namespace Crux.Core
             yield return new WaitForSeconds(0.35f);
 
             // ===== 카메라 즉시 복귀 =====
-            camTargetPos = savedCamPos;
-            camTargetSize = savedCamSize;
-            mainCam.transform.position = savedCamPos;
-            mainCam.orthographicSize = savedCamSize;
+            battleCam?.RestoreState();
 
             IsReactionPlaying = false;
         }
@@ -920,8 +855,8 @@ namespace Crux.Core
         /// <summary>Fire 모드: 마우스 위치의 적을 hoveredTarget에 기록</summary>
         private void UpdateHoveredTarget()
         {
-            if (mainCam == null) return;
-            var worldPos = mainCam.ScreenToWorldPoint(Input.mousePosition);
+            if (battleCam?.Cam == null) return;
+            var worldPos = battleCam.Cam.ScreenToWorldPoint(Input.mousePosition);
             var pos = grid.WorldToGrid(worldPos);
             if (!grid.IsInBounds(pos))
             {
@@ -982,7 +917,7 @@ namespace Crux.Core
         /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
         private float GetSnappedDirectionFromMouse(Vector2Int targetCell)
         {
-            var clickWorld = mainCam.ScreenToWorldPoint(Input.mousePosition);
+            var clickWorld = battleCam?.Cam.ScreenToWorldPoint(Input.mousePosition) ?? Vector3.zero;
             var cellWorld = grid.GridToWorld(targetCell);
             var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
 
