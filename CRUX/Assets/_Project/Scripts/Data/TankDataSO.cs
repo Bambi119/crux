@@ -64,6 +64,21 @@ namespace Crux.Data
             HullClass.Siege => 150,
             _ => 100
         };
+
+        /// <summary>
+        /// 이니셔티브(선공 판정)용 차체 속도 보정 — docs/03 §2.3.
+        /// 이동 AP 계산용 moveSpeed와는 별개. 전투 시작 한 번만 반영되는 상수 보정.
+        /// 범위: Scout +4 ~ Siege -2.
+        /// </summary>
+        public static int InitiativeSpeedFor(HullClass cls) => cls switch
+        {
+            HullClass.Scout => +4,
+            HullClass.Assault => +2,
+            HullClass.Support => +1,
+            HullClass.Heavy => 0,
+            HullClass.Siege => -2,
+            _ => 0
+        };
     }
 
     [CreateAssetMenu(fileName = "NewTank", menuName = "CRUX/Tank Data")]
