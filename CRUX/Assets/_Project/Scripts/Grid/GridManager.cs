@@ -217,6 +217,23 @@ namespace Crux.Grid
             public PathNode(Vector2Int p, float f) { pos = p; fCost = f; }
         }
 
+        /// <summary>모든 셀의 연막 턴 감소</summary>
+        /// <remarks>BattleController가 플레이어 턴 시작 시 호출. visualizer가 null이면 시각 효과 생략.</remarks>
+        public void TickSmoke(GridVisualizer visualizer = null)
+        {
+            for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++)
+                {
+                    var cell = GetCell(new Vector2Int(x, y));
+                    if (cell != null && cell.SmokeTurnsLeft > 0)
+                    {
+                        cell.SmokeTurnsLeft--;
+                        if (cell.SmokeTurnsLeft <= 0)
+                            visualizer?.ClearSmoke(cell.Position);
+                    }
+                }
+        }
+
         // ===== 디버그 =====
 
         private void OnDrawGizmos()

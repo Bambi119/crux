@@ -52,6 +52,9 @@ namespace Crux.Core
         // 반응 사격 시퀀스 (P-S5에서 추출)
         private Crux.Combat.ReactionFireSequence reactionFireSeq;
 
+        // 화재 사망 처리 (P-S7에서 추출)
+        private Crux.Combat.FireKillHandler fireKillHandler;
+
         // HUD
         private BattleHUD hud;
 
@@ -176,11 +179,14 @@ namespace Crux.Core
             playerUnit = mapSetup.PlayerUnit;
             enemyUnits = mapSetup.EnemyUnits;
 
+            // 화재 사망 처리 (P-S7: FireKillHandler 초기화)
+            fireKillHandler = new Crux.Combat.FireKillHandler(grid, (t, c, d) => hud?.ShowBanner(t, c, d));
+
             // 화재 사망 이벤트 구독
             if (playerUnit != null)
-                playerUnit.OnFireKilled += HandleFireKill;
+                playerUnit.OnFireKilled += fireKillHandler.Handle;
             foreach (var e in enemyUnits)
-                if (e != null) e.OnFireKilled += HandleFireKill;
+                if (e != null) e.OnFireKilled += fireKillHandler.Handle;
 
             // 오버워치 트리거 — 적 이동 스텝마다 플레이어측 반응 사격 체크
             // (P-S5 추출: HandleEnemyMoveStep은 ReactionFireSequence로 이동됨, 초기화 이후 구독)
@@ -236,9 +242,6 @@ namespace Crux.Core
             StartPlayerTurn();
         }
 
-        private InputMode lastArcMode = InputMode.Select;
-        private Vector2Int lastArcPos;
-
         private void Update()
         {
             if (currentPhase == TurnPhase.PlayerTurn)
@@ -277,52 +280,29 @@ namespace Crux.Core
         /// <remarks>
         /// 플레이어 턴: selectedUnit(일반적으로 playerUnit)의 Select/Move 모드에서 표시
         /// 적 턴: 선택 상태 무관하게 playerUnit의 엄폐 상태 계속 표시 (사격 사이 복귀 시 가시성)
+        /// P-S7: 판정 로직만 유지, 실제 갱신은 GridVisualizer.UpdateCoverArcFor에 위임
         /// </remarks>
         private void UpdateCoverArcDisplay()
         {
             // 표시 대상 유닛 결정
             GridTankUnit target = null;
-            bool isPlayerSelectMode = false;
+            int modeKey = 0;
+
             if (currentPhase == TurnPhase.PlayerTurn
                 && selectedUnit != null && !selectedUnit.IsDestroyed
                 && (inputMode == InputMode.Select || inputMode == InputMode.Move))
             {
                 target = selectedUnit;
-                isPlayerSelectMode = true;
+                modeKey = (int)inputMode;
             }
             else if (playerUnit != null && !playerUnit.IsDestroyed)
             {
                 // 적 턴이거나 공격 모드 — playerUnit 엄폐 상태 폴백 표시
                 target = playerUnit;
+                modeKey = 0; // Select 모드와 동등
             }
 
-            if (target == null)
-            {
-                if (lastArcMode != InputMode.Select)
-                {
-                    visualizer.ClearCoverArcs();
-                    lastArcMode = InputMode.Select;
-                }
-                return;
-            }
-
-            // 위치나 모드가 바뀌었을 때만 갱신
-            var currentMode = isPlayerSelectMode ? inputMode : InputMode.Select;
-            if (lastArcPos == target.GridPosition && lastArcMode == currentMode) return;
-            lastArcPos = target.GridPosition;
-            lastArcMode = currentMode;
-
-            visualizer.ClearCoverArcs();
-
-            var cell = grid.GetCell(target.GridPosition);
-            if (cell != null && cell.HasCover && cell.Cover != null
-                && !cell.Cover.IsDestroyed)
-            {
-                visualizer.ShowCoverFacets(
-                    target.GridPosition,
-                    cell.Cover.CurrentFacets,
-                    new Color(0.2f, 0.8f, 0.4f, 0.8f));
-            }
+            visualizer.UpdateCoverArcFor(grid, target, modeKey);
         }
 
         // ===== 턴 관리 =====
@@ -356,8 +336,8 @@ namespace Crux.Core
                 selectedUnit = playerUnit;
             }
 
-            // 연막 턴 감소
-            TickSmoke();
+            // 연막 턴 감소 (P-S7: GridManager로 이관)
+            grid.TickSmoke(visualizer);
 
             turnCount++;
             Debug.Log($"[CRUX] === 플레이어 턴 {turnCount} ===");
@@ -461,29 +441,6 @@ namespace Crux.Core
         }
 
         // ===== 입력 처리 =====
-
-
-        /// <summary>화재 누적 사망 — 전략맵 내 폭파 연출 + 배너 표시</summary>
-        private void HandleFireKill(GridTankUnit unit)
-        {
-            if (unit == null) return;
-            Vector3 pos = unit.transform.position;
-
-            // 폭파 이펙트 — 기존 HitEffects 재사용
-            Crux.Combat.HitEffects.SpawnExplosion(pos);
-
-            // 배너 표시
-            ShowBanner($"화재로 인한 전소! — {unit.Data?.tankName}",
-                       new Color(1f, 0.4f, 0.15f), 2.5f);
-
-            // 유닛 외형 비활성화 (남은 처리는 기존 IsDestroyed 로직에 맡김)
-            var cell = grid.GetCell(unit.GridPosition);
-            if (cell != null && cell.Occupant == unit.gameObject)
-                cell.Occupant = null;
-            unit.gameObject.SetActive(false);
-
-            Debug.Log($"[CRUX] {unit.Data?.tankName} 화재로 인한 전소");
-        }
 
         // ===== 오버워치 (반응 사격) — P-S5에서 ReactionFireSequence로 추출됨 =====
 
@@ -696,49 +653,19 @@ namespace Crux.Core
         }
 
 
+        /// <summary>거리 기반 명중률 — FireExecutor의 wrapper (호환성 유지)</summary>
         public float CalculateHitChance(int distance, GridTankUnit target)
-        {
-            float chance = GameConstants.BaseAccuracy;
-            chance -= distance * GameConstants.DistancePenaltyPerCell;
+            => fireExecutor.CalculateHitChance(distance, target);
 
-            return Mathf.Clamp01(chance);
-        }
-
-        /// <summary>유닛의 현재 상태 (개활지/엄폐)</summary>
+        /// <summary>유닛의 현재 상태 (개활지/엄폐) — FireExecutor의 wrapper (호환성 유지)</summary>
         public string GetUnitCoverStatus(GridTankUnit unit)
-        {
-            var cell = grid.GetCell(unit.GridPosition);
-            if (cell == null) return "개활지";
-
-            if (cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
-            {
-                float rate = cell.Cover.CoverRate;
-                return $"엄폐 ({cell.Cover.coverName} 엄폐율:{rate:P0})";
-            }
-
-            return "개활지";
-        }
+            => fireExecutor.GetUnitCoverStatus(unit);
 
         // ===== UI (OnGUI) =====
 
         private void OnGUI()
         {
             if (hud != null) hud.Draw();
-        }
-        /// <summary>모든 셀의 연막 턴 감소</summary>
-        private void TickSmoke()
-        {
-            for (int x = 0; x < grid.Width; x++)
-                for (int y = 0; y < grid.Height; y++)
-                {
-                    var cell = grid.GetCell(new Vector2Int(x, y));
-                    if (cell != null && cell.SmokeTurnsLeft > 0)
-                    {
-                        cell.SmokeTurnsLeft--;
-                        if (cell.SmokeTurnsLeft <= 0)
-                            visualizer.ClearSmoke(cell.Position);
-                    }
-                }
         }
     }
 }

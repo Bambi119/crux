@@ -366,12 +366,27 @@ namespace Crux.Combat
         }
 
         /// <summary>거리 기반 기본 명중률 (모듈/지형 보정 제외)</summary>
-        private float CalculateHitChance(int distance, GridTankUnit target)
+        public float CalculateHitChance(int distance, GridTankUnit target)
         {
             float chance = GameConstants.BaseAccuracy;
             chance -= distance * GameConstants.DistancePenaltyPerCell;
 
             return Mathf.Clamp01(chance);
+        }
+
+        /// <summary>유닛의 현재 상태 (개활지/엄폐)</summary>
+        public string GetUnitCoverStatus(GridTankUnit unit)
+        {
+            var cell = grid.GetCell(unit.GridPosition);
+            if (cell == null) return "개활지";
+
+            if (cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
+            {
+                float rate = cell.Cover.CoverRate;
+                return $"엄폐 ({cell.Cover.coverName} 엄폐율:{rate:P0})";
+            }
+
+            return "개활지";
         }
 
         /// <summary>SpriteContainer가 있으면 그 회전 오프셋을 반환</summary>

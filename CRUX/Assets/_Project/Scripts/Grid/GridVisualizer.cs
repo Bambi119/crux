@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Crux.Core;
+using Crux.Unit;
 
 namespace Crux.Grid
 {
@@ -10,6 +11,10 @@ namespace Crux.Grid
         private GridManager grid;
         private List<GameObject> highlights = new();
         private List<GameObject> coverArcs = new();
+
+        // 엄폐 호 캐시 (변경 감지 시만 갱신)
+        private Vector2Int lastArcPos;
+        private int lastArcMode = -1;
 
         private static Sprite _cachedHexMask;
 
@@ -154,6 +159,38 @@ namespace Crux.Grid
             foreach (var obj in coverArcs)
                 if (obj != null) Destroy(obj);
             coverArcs.Clear();
+        }
+
+        /// <summary>매 프레임 호출 — target이 변경되었을 때만 호(arc)를 갱신</summary>
+        /// <remarks>
+        /// BattleController.UpdateCoverArcDisplay에서 매 프레임 호출.
+        /// target이 null이거나 위치/모드가 변경되지 않으면 갱신하지 않음 (캐시 활용).
+        /// modeKey는 InputMode enum값의 int(또는 구분값). GridVisualizer는 값만 비교.
+        /// </remarks>
+        public void UpdateCoverArcFor(GridManager gridMgr, GridTankUnit target, int modeKey)
+        {
+            if (target == null)
+            {
+                if (lastArcMode != -1)
+                {
+                    ClearCoverArcs();
+                    lastArcMode = -1;
+                }
+                return;
+            }
+
+            if (lastArcPos == target.GridPosition && lastArcMode == modeKey) return;
+            lastArcPos = target.GridPosition;
+            lastArcMode = modeKey;
+
+            ClearCoverArcs();
+
+            var cell = gridMgr.GetCell(target.GridPosition);
+            if (cell != null && cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
+            {
+                ShowCoverFacets(target.GridPosition, cell.Cover.CurrentFacets,
+                               new Color(0.2f, 0.8f, 0.4f, 0.8f));
+            }
         }
 
         // 연막 오버레이
