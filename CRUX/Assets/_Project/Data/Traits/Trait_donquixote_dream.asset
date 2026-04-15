@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f226fed60c52456cbe35feae01d44210, type: 3}
+  m_Name: Trait_donquixote_dream
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
+  id: donquixote_dream
+  displayName: "\uB3C8\uD0A4\uD638\uD14C\uC758 \uAFC8"
+  description: "\uC804\uD22C \uC2DC\uC791 \uC0AC\uAE30 +10 (\uB9C8\uD06C \uBCF4\uB108\uC2A4\uC640
+    \uBCC4\uAC1C)"
+  isPositive: 1
+  classRestriction: 0
+  effectKey: trait.donquixote_dream

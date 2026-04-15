@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f226fed60c52456cbe35feae01d44210, type: 3}
+  m_Name: Trait_silent_worker
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
+  id: silent_worker
+  displayName: "\uBB35\uBB35\uD55C \uC77C\uAFBC"
+  description: "\uD0C4\uC885 \uAD00\uACC4\uC5C6\uC774 \uC7A5\uC804 AP \uD56D\uC0C1
+    -1 (\uAE30\uBCF8 \uD0C4\uC57D\uC218 \uBCF4\uB108\uC2A4 \uC911\uCCA9)"
+  isPositive: 1
+  classRestriction: 2
+  effectKey: trait.silent_worker

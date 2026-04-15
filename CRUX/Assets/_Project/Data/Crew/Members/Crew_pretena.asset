@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d0509024d1e4d1e9b7038b86f9f0850, type: 3}
+  m_Name: Crew_pretena
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.CrewMemberSO
+  id: pretena
+  displayName: "\uD504\uB9AC\uD14C\uB098"
+  portrait: {fileID: 0}
+  klass: 3
+  aim: 40
+  react: 60
+  tech: 70
+  preferredTagType: 3
+  preferredTag: medium
+  traitPositive: {fileID: 11400000, guid: be1052e17c525ec4f9362a5c082e92fc, type: 2}
+  traitNegative: {fileID: 11400000, guid: 3a8dfe639b1566947bc6c128b07d2918, type: 2}
+  startingMarkKeys:
+  - medium
+  startingMarkValues: 02000000
+  storyRef: "\uB85C\uC2DC\uB09C\uD14C\uC758 \uCD5C\uCD08 \uBC1C\uACAC\uC790\uC774\uC790
+    \uC774\uB984\uC744 \uBD99\uC778 19\uC138. \uC774\uB9AC\uC2A4\uC758 \uC2A4\uC2B9.
+    \uAC00\uC7A5 \uC5F0\uC7A5\uC790\uC774\uC9C0\uB9CC \uC751\uC11D\uBC1B\uC774\uC778
+    \uD65C\uB2EC\uD55C \uC131\uACA9."

@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f226fed60c52456cbe35feae01d44210, type: 3}
+  m_Name: Trait_brother_dependent
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
+  id: brother_dependent
+  displayName: "\uC624\uBE60 \uC758\uC874"
+  description: "\uC544\uC2A4\uD2B8\uB77C \uACF5\uC11D\xB7\uBD80\uC0C1 \uC2DC \uBA85\uC911\xB7Tech
+    -10"
+  isPositive: 0
+  classRestriction: 4
+  effectKey: trait.brother_dependent

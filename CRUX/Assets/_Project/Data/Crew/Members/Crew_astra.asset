@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d0509024d1e4d1e9b7038b86f9f0850, type: 3}
+  m_Name: Crew_astra
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.CrewMemberSO
+  id: astra
+  displayName: "\uC544\uC2A4\uD2B8\uB77C"
+  portrait: {fileID: 0}
+  klass: 0
+  aim: 50
+  react: 55
+  tech: 45
+  preferredTagType: 0
+  preferredTag: medium
+  traitPositive: {fileID: 11400000, guid: 58081135feeb8c440b4f7aa2ad5ee4c6, type: 2}
+  traitNegative: {fileID: 11400000, guid: 394faecb3ff36ae46b94287cb07f3ed0, type: 2}
+  startingMarkKeys:
+  - medium
+  startingMarkValues: 01000000
+  storyRef: "\uC9C0\uD558 \uBC99\uCEE4\uC5D0\uC11C \uC790\uB780 16\uC138 \uC18C\uB144.
+    \uB3C8\uD0A4\uD638\uD14C \uCC45\uC5D0\uC11C \uB85C\uC2DC\uB09C\uD14C\uC758 \uC774\uB984
+    \uAE30\uC6D0\uC744 \uC54C\uACE0 \uC788\uB2E4. \uC77C\uD589\uC758 \uB9AC\uB354\uC774\uC790
+    \uC774\uB9AC\uC2A4\uC758 \uC624\uBE60."

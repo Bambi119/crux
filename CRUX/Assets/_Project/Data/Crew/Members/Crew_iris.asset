@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d0509024d1e4d1e9b7038b86f9f0850, type: 3}
+  m_Name: Crew_iris
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.CrewMemberSO
+  id: iris
+  displayName: "\uC774\uB9AC\uC2A4"
+  portrait: {fileID: 0}
+  klass: 4
+  aim: 30
+  react: 45
+  tech: 75
+  preferredTagType: 4
+  preferredTag: engine
+  traitPositive: {fileID: 11400000, guid: 563412ce998e04844af0ebae17f418a4, type: 2}
+  traitNegative: {fileID: 11400000, guid: f5a78a0ad8a3fe746ab74d0adc4b8bb4, type: 2}
+  startingMarkKeys:
+  - caterpillar
+  - engine
+  startingMarkValues: 0200000001000000
+  storyRef: "\uD504\uB9AC\uD14C\uB098\uB97C \uB530\uB77C\uB2E4\uB2C8\uBA70 \uAE30\uACC4\uB97C
+    \uBC30\uC6B4 13\uC138 \uC2E0\uB3D9. \uC544\uC2A4\uD2B8\uB77C\uC758 \uB3D9\uC0DD.
+    \uC870\uC6A9\uD558\uC9C0\uB9CC \uAE30\uACC4 \uC55E\uC5D0\uC11C\uB294 \uC9D1\uC694\uD558\uB2E4."

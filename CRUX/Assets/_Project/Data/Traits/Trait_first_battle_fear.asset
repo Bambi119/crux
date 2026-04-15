@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f226fed60c52456cbe35feae01d44210, type: 3}
+  m_Name: Trait_first_battle_fear
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
+  id: first_battle_fear
+  displayName: "\uCCAB \uC804\uD22C\uC758 \uACF5\uD3EC"
+  description: "\uB204\uC801 \uC804\uD22C \uC218 \u22645\uC77C \uB54C \uBA85\uC911
+    -10"
+  isPositive: 0
+  classRestriction: 0
+  effectKey: trait.first_battle_fear

@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d0509024d1e4d1e9b7038b86f9f0850, type: 3}
+  m_Name: Crew_grin
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.CrewMemberSO
+  id: grin
+  displayName: "\uADF8\uB9B0"
+  portrait: {fileID: 0}
+  klass: 2
+  aim: 30
+  react: 40
+  tech: 55
+  preferredTagType: 2
+  preferredTag: ap
+  traitPositive: {fileID: 11400000, guid: bdbb1fb175396c1478e5f3f475550b78, type: 2}
+  traitNegative: {fileID: 11400000, guid: c7206faa0b3216547a7a1a737a9d62f7, type: 2}
+  startingMarkKeys:
+  - ap
+  startingMarkValues: 01000000
+  storyRef: "\uBC99\uC5B4\uB9AC 17\uC138 \uAC70\uD55C. \uC120\uD558\uACE0 \uC21C\uBC15\uD558\uACE0
+    \uC131\uC2E4\uD55C \uBA39\uBCF4. \uB85C\uC2DC\uB09C\uD14C\uAC00 \uC9D1\uC774\uACE0
+    \uCE5C\uAD6C\uB4E4\uC774 \uAC00\uC871. \uB9AC\uB9AC\uB4DC\uC758 \uB450 \uBC88\uC9F8
+    \uCE5C\uAD6C."
