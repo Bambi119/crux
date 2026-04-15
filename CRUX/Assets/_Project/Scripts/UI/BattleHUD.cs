@@ -53,7 +53,7 @@ namespace Crux.UI
 
         public void Draw()
         {
-            if (controller == null) return;
+            if (controller == null || unitPanel == null || firePreview == null || modulePanel == null || terrainOverlay == null) return;
 
             // UI 스케일링 — 모든 좌표/크기에 자동 적용
             var prevMatrix = GUI.matrix;

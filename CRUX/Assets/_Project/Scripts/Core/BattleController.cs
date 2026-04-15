@@ -8,6 +8,7 @@ using Crux.Data;
 using Crux.Combat;
 using Crux.UI;
 using Crux.Camera;
+using Crux.PlayerInput;
 using TerrainData = Crux.Core.TerrainData;
 
 namespace Crux.Core
@@ -50,6 +51,9 @@ namespace Crux.Core
 
         // HUD
         private BattleHUD hud;
+
+        // 입력 핸들러
+        private PlayerInputHandler inputHandler;
 
         // 시스템
         private GridManager grid;
@@ -185,6 +189,11 @@ namespace Crux.Core
             battleCam.SetInitialFraming(center, initSize);
             battleCam.SetPanBounds(0, grid.Width * size, 0, grid.Height * size);
 
+            // 입력 핸들러 초기화
+            var inputObj = new GameObject("PlayerInputHandler");
+            inputHandler = inputObj.AddComponent<PlayerInputHandler>();
+            inputHandler.Initialize(this);
+
             // HUD 초기화
             var hudObj = new GameObject("BattleHUD");
             hud = hudObj.AddComponent<BattleHUD>();
@@ -201,7 +210,7 @@ namespace Crux.Core
         {
             if (currentPhase == TurnPhase.PlayerTurn)
             {
-                HandlePlayerInput();
+                inputHandler?.Tick();
             }
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
@@ -418,169 +427,6 @@ namespace Crux.Core
 
         // ===== 입력 처리 =====
 
-        private void HandlePlayerInput()
-        {
-            if (selectedUnit == null || selectedUnit.IsDestroyed) return;
-            if (selectedUnit.IsMoving) return; // 이동 애니메이션 중 입력 차단
-
-            // ===== 취소 (Tab / ESC) — 모든 모드에서 최우선 =====
-            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Tab))
-            {
-                inputMode = InputMode.Select;
-                visualizer.ClearHighlights();
-                targetUnit = null;
-                pendingTarget = null;
-                return;
-            }
-
-            // ===== 무기 선택 모드 — 1/2/3은 선택만, Space/Enter/Click으로 확정 =====
-            if (inputMode == InputMode.WeaponSelect && pendingTarget != null)
-            {
-                if (Input.GetKeyDown(KeyCode.Alpha1))
-                    selectedWeapon = WeaponType.MainGun;
-                else if (Input.GetKeyDown(KeyCode.Alpha2) && coaxialMGData != null)
-                    selectedWeapon = WeaponType.CoaxialMG;
-                else if (Input.GetKeyDown(KeyCode.Alpha3) && mountedMGData != null)
-                    selectedWeapon = WeaponType.MountedMG;
-
-                // Space / Enter / 좌클릭: 현재 선택 무기로 사격 확정
-                bool commit = Input.GetKeyDown(KeyCode.Space)
-                              || Input.GetKeyDown(KeyCode.Return)
-                              || Input.GetMouseButtonDown(0);
-                if (commit)
-                {
-                    CommitFire(selectedUnit, pendingTarget, selectedWeapon);
-                    return;
-                }
-                return; // 무기 선택 중 다른 입력 차단
-            }
-
-            // ===== 방향 선택 모드 (6방향) =====
-            if (inputMode == InputMode.MoveDirectionSelect)
-            {
-                // 6방향 육각 매핑 (QWE 상단 + ASD 하단, 2행 키보드 레이아웃)
-                //   Q = NW (300°)   W = N  (0°)    E = NE (60°)
-                //   A = SW (240°)   S = S  (180°)  D = SE (120°)
-                if (Input.GetKeyDown(KeyCode.Q)) pendingFacingAngle = 300f;   // NW
-                if (Input.GetKeyDown(KeyCode.W)) pendingFacingAngle = 0f;     // N
-                if (Input.GetKeyDown(KeyCode.E)) pendingFacingAngle = 60f;    // NE
-                if (Input.GetKeyDown(KeyCode.A)) pendingFacingAngle = 240f;   // SW
-                if (Input.GetKeyDown(KeyCode.S)) pendingFacingAngle = 180f;   // S
-                if (Input.GetKeyDown(KeyCode.D)) pendingFacingAngle = 120f;   // SE
-
-                // Space / Enter: 방향 확정
-                if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))
-                {
-                    selectedUnit.MoveToWithFacing(pendingMoveTarget, pendingFacingAngle);
-                    visualizer.ClearHighlights();
-                    inputMode = InputMode.Select;
-                    return;
-                }
-
-                // 좌클릭: 클릭 방향을 가장 가까운 6방향으로 스냅
-                if (Input.GetMouseButtonDown(0))
-                {
-                    pendingFacingAngle = GetSnappedDirectionFromMouse(pendingMoveTarget);
-                    selectedUnit.MoveToWithFacing(pendingMoveTarget, pendingFacingAngle);
-                    visualizer.ClearHighlights();
-                    inputMode = InputMode.Select;
-                    return;
-                }
-                return; // 방향 선택 중 다른 입력 차단
-            }
-
-            // ===== Select 모드: Q/M 이동, E/F 사격 =====
-            if ((Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.M)) && selectedUnit.CanMove())
-            {
-                inputMode = InputMode.Move;
-                var reachable = grid.GetReachableCells(selectedUnit.GridPosition,
-                                                       selectedUnit.CurrentAP);
-                visualizer.ShowMoveRange(reachable);
-            }
-
-            if ((Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.F)) && selectedUnit.CanFire())
-            {
-                inputMode = InputMode.Fire;
-                selectedWeapon = WeaponType.MainGun;
-                visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
-            }
-
-            // Fire 모드: 마우스 호버 대상 갱신 + 1/2/3으로 무기 전환
-            if (inputMode == InputMode.Fire)
-            {
-                UpdateHoveredTarget();
-                if (Input.GetKeyDown(KeyCode.Alpha1))
-                    selectedWeapon = WeaponType.MainGun;
-                else if (Input.GetKeyDown(KeyCode.Alpha2) && coaxialMGData != null)
-                    selectedWeapon = WeaponType.CoaxialMG;
-                else if (Input.GetKeyDown(KeyCode.Alpha3) && mountedMGData != null)
-                    selectedWeapon = WeaponType.MountedMG;
-            }
-            else
-            {
-                hoveredTarget = null;
-            }
-
-            // C: 소화
-            if (Input.GetKeyDown(KeyCode.C) && selectedUnit.IsOnFire && inputMode == InputMode.Select)
-            {
-                selectedUnit.TryExtinguish();
-            }
-
-            // V: 연막
-            if (Input.GetKeyDown(KeyCode.V) && selectedUnit.CanUseSmoke() && inputMode == InputMode.Select)
-            {
-                if (selectedUnit.UseSmoke())
-                {
-                    var cell = grid.GetCell(selectedUnit.GridPosition);
-                    if (cell != null)
-                    {
-                        cell.SmokeTurnsLeft = 2; // 현재 턴 + 다음 턴
-                        visualizer.ShowSmoke(selectedUnit.GridPosition);
-                    }
-                }
-            }
-
-            // O: 오버워치 (반응 사격)
-            if (Input.GetKeyDown(KeyCode.O) && inputMode == InputMode.Select
-                && selectedUnit.CanActivateOverwatch())
-            {
-                if (selectedUnit.ActivateOverwatch())
-                {
-                    ShowBanner("⌁ 오버워치 설정 — 전방 50° 내 적 이동 시 반격",
-                               new Color(0.4f, 0.9f, 1f), 1.5f);
-                }
-            }
-
-            // Space: 턴 종료 (Select 모드에서만)
-            if (Input.GetKeyDown(KeyCode.Space) && inputMode == InputMode.Select)
-            {
-                visualizer.ClearHighlights();
-                StartEnemyTurn();
-            }
-
-            // 좌클릭: 이동 목적지 / 사격 대상
-            if (Input.GetMouseButtonDown(0))
-            {
-                var worldPos = battleCam?.Cam.ScreenToWorldPoint(Input.mousePosition) ?? Vector3.zero;
-                var clickedPos = grid.WorldToGrid(worldPos);
-
-                if (!grid.IsInBounds(clickedPos)) return;
-
-                switch (inputMode)
-                {
-                    case InputMode.Move:
-                        TryMoveToCell(clickedPos);
-                        break;
-                    case InputMode.Fire:
-                        TrySelectTarget(clickedPos);
-                        break;
-                    case InputMode.Select:
-                        InspectCell(clickedPos);
-                        break;
-                }
-            }
-        }
 
         /// <summary>화재 누적 사망 — 전략맵 내 폭파 연출 + 배너 표시</summary>
         private void HandleFireKill(GridTankUnit unit)
@@ -841,6 +687,107 @@ namespace Crux.Core
             Destroy(obj);
         }
 
+        // ===== PlayerInputHandler 공개 API =====
+
+        public bool CanHandleInput => selectedUnit != null && !selectedUnit.IsDestroyed && !selectedUnit.IsMoving;
+
+        public void CancelToSelect()
+        {
+            inputMode = InputMode.Select;
+            visualizer.ClearHighlights();
+            targetUnit = null;
+            pendingTarget = null;
+            hoveredTarget = null;
+        }
+
+        public void TryEnterMoveMode()
+        {
+            if (selectedUnit == null || !selectedUnit.CanMove()) return;
+            inputMode = InputMode.Move;
+            visualizer.ShowMoveRange(grid.GetReachableCells(selectedUnit.GridPosition, selectedUnit.CurrentAP));
+        }
+
+        public void TryEnterFireMode()
+        {
+            if (selectedUnit == null || !selectedUnit.CanFire()) return;
+            inputMode = InputMode.Fire;
+            selectedWeapon = WeaponType.MainGun;
+            visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
+        }
+
+        public void SelectWeapon(WeaponType weapon)
+        {
+            if (weapon == WeaponType.MainGun
+                || (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
+                || (weapon == WeaponType.MountedMG && mountedMGData != null))
+                selectedWeapon = weapon;
+        }
+
+        public void CommitWeaponSelection()
+        {
+            if (selectedUnit != null && pendingTarget != null)
+                CommitFire(selectedUnit, pendingTarget, selectedWeapon);
+        }
+
+        public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
+
+        public void CommitMoveDirection()
+        {
+            if (selectedUnit == null) return;
+            selectedUnit.MoveToWithFacing(pendingMoveTarget, pendingFacingAngle);
+            visualizer.ClearHighlights();
+            inputMode = InputMode.Select;
+        }
+
+        public void CommitMoveDirectionFromMouse()
+        {
+            pendingFacingAngle = GetSnappedDirectionFromMouse(pendingMoveTarget);
+            CommitMoveDirection();
+        }
+
+        public void TryExtinguishAction()
+        {
+            if (selectedUnit != null && selectedUnit.IsOnFire && inputMode == InputMode.Select)
+                selectedUnit.TryExtinguish();
+        }
+
+        public void TryUseSmokeAction()
+        {
+            if (selectedUnit == null || !selectedUnit.CanUseSmoke() || inputMode != InputMode.Select) return;
+            if (!selectedUnit.UseSmoke()) return;
+            var cell = grid.GetCell(selectedUnit.GridPosition);
+            if (cell != null)
+            {
+                cell.SmokeTurnsLeft = 2;
+                visualizer.ShowSmoke(selectedUnit.GridPosition);
+            }
+        }
+
+        public void TryActivateOverwatchAction()
+        {
+            if (selectedUnit == null || inputMode != InputMode.Select || !selectedUnit.CanActivateOverwatch()) return;
+            if (selectedUnit.ActivateOverwatch())
+                ShowBanner("⌁ 오버워치 설정 — 전방 50° 내 적 이동 시 반격", new Color(0.4f, 0.9f, 1f), 1.5f);
+        }
+
+        public void EndPlayerTurn()
+        {
+            if (inputMode != InputMode.Select) return;
+            visualizer.ClearHighlights();
+            StartEnemyTurn();
+        }
+
+        public void HandleClickAt(Vector2Int gridPos)
+        {
+            if (!grid.IsInBounds(gridPos)) return;
+            switch (inputMode)
+            {
+                case InputMode.Move: TryMoveToCell(gridPos); break;
+                case InputMode.Fire: TrySelectTarget(gridPos); break;
+                case InputMode.Select: InspectCell(gridPos); break;
+            }
+        }
+
         /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
         public void ShowBanner(string text, Color color, float duration)
         {
@@ -853,7 +800,7 @@ namespace Crux.Core
         }
 
         /// <summary>Fire 모드: 마우스 위치의 적을 hoveredTarget에 기록</summary>
-        private void UpdateHoveredTarget()
+        public void UpdateHoveredTarget()
         {
             if (battleCam?.Cam == null) return;
             var worldPos = battleCam.Cam.ScreenToWorldPoint(Input.mousePosition);
