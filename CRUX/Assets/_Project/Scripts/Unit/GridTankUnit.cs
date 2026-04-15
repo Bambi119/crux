@@ -85,6 +85,8 @@ namespace Crux.Unit
         public System.Action OnMoveComplete;
         /// <summary>한 셀 이동 완료 시점에 발행 — 오버워치 트리거 체크용</summary>
         public System.Action<GridTankUnit, Vector2Int> OnMoveStepComplete;
+        /// <summary>피격 후 데미지 적용 완료 시점 — 사기 이벤트 라우팅용</summary>
+        public System.Action<GridTankUnit, Combat.DamageInfo, Unit.DamageOutcome> OnDamageApplied;
 
         /// <summary>현재 상태를 스냅샷으로 저장</summary>
         public UnitSaveData SaveState()
@@ -563,6 +565,9 @@ namespace Crux.Unit
             }
 
             UpdateVisual();
+
+            // 사기 이벤트 라우팅
+            OnDamageApplied?.Invoke(this, info, outcome);
         }
 
         /// <summary>현재 점유 셀에서 자기 자신을 제거 — 사망 시 호출 필수</summary>

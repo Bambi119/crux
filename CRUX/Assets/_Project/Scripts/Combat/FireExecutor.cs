@@ -171,7 +171,8 @@ namespace Crux.Combat
                 {
                     damage = result.damageDealt,
                     outcome = result.outcome,
-                    hitZone = result.hitZone
+                    hitZone = result.hitZone,
+                    attacker = attacker
                 });
             }
 
@@ -286,7 +287,8 @@ namespace Crux.Combat
                 {
                     damage = totalMGDamage,
                     outcome = anyPenetration ? ShotOutcome.Penetration : ShotOutcome.Hit,
-                    hitZone = mgZone
+                    hitZone = mgZone,
+                    attacker = attacker
                 });
             }
 

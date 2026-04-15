@@ -58,6 +58,9 @@ namespace Crux.Core
         // 화재 사망 처리 (P-S7에서 추출)
         private Crux.Combat.FireKillHandler fireKillHandler;
 
+        // 사기 라우터 (P3-b)
+        private Crux.Combat.CombatMoraleRouter moraleRouter;
+
         // HUD
         private BattleHUD hud;
 
@@ -243,6 +246,10 @@ namespace Crux.Core
 
             // 승무원 부착 — 모든 유닛에 TankCrew 초기화
             AttachCrews();
+
+            // 사기 라우터 초기화 (피격 → 사기 이벤트)
+            moraleRouter = new Crux.Combat.CombatMoraleRouter();
+            moraleRouter.Attach(playerUnit, enemyUnits);
 
             // 플레이어 턴 시작
             StartPlayerTurn();

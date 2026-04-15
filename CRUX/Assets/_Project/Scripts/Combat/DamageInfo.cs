@@ -11,6 +11,7 @@ namespace Crux.Combat
         public float penetrationValue;
         public float effectiveArmor;
         public float impactAngle;
+        public Unit.GridTankUnit attacker; // 공격자 참조 (사기 이벤트 라우팅용)
     }
 
     /// <summary>사격 결과 전체 정보</summary>
