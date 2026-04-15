@@ -32,7 +32,7 @@ namespace Crux.UI
             float innerW = w - 20;
 
             // 1행: 이름 + 전차타입 + 위치·방향
-            string cls = BattleHUD.GetTankClassLabelStatic(u.Data != null ? u.Data.tankClass : TankClass.Medium);
+            string cls = BattleHUD.GetHullClassLabelStatic(u.Data != null ? u.Data.hullClass : HullClass.Assault);
             string facing = BattleHUD.GetCompassLabelStatic(u.HullAngle);
             string sideTag = u.side == PlayerSide.Player ? "" : "[적] ";
             GUI.Label(new Rect(cx, cy, innerW, lineH),

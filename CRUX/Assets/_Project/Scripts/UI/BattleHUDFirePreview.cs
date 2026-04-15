@@ -230,7 +230,7 @@ namespace Crux.UI
             var titleStyle = new GUIStyle(style);
             titleStyle.fontSize = 19;
             titleStyle.normal.textColor = new Color(1f, 0.9f, 0.4f);
-            string cls = BattleHUD.GetTankClassLabelStatic(target.Data != null ? target.Data.tankClass : TankClass.Medium);
+            string cls = BattleHUD.GetHullClassLabelStatic(target.Data != null ? target.Data.hullClass : HullClass.Assault);
             GUI.Label(new Rect(cx, cy, 340, 22),
                 $"대상: {target.Data?.tankName}  [{cls}]", titleStyle);
         }

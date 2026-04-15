@@ -2,13 +2,68 @@ using UnityEngine;
 
 namespace Crux.Data
 {
-    /// <summary>전차 분류 — 무게/역할 기준</summary>
-    public enum TankClass
+    /// <summary>차체 분류 — docs/05 §1. 5 차체 고정.</summary>
+    public enum HullClass
     {
-        Vehicle,    // 차량 (비전투차량, 경장갑)
-        Light,      // 경전차
-        Medium,     // 중형전차
-        Heavy       // 중전차
+        Scout,     // 경전차 — 고속·경장·소구경 — 정찰·측면 기동
+        Assault,   // 중형전차 — 범용 밸런스 — 주전투 라인 (로시난테 기본값)
+        Support,   // 지원전차 — 수리·보조 장비 풍부 — 수리·보급
+        Heavy,     // 중전차 — 대구경·후장 — 관통 우위·요새화
+        Siege      // 초중전차 — 다연장·고정형 — 거점 공격·대보스
+    }
+
+    /// <summary>
+    /// 차체별 파츠 슬롯 수. docs/05 §1.1.
+    /// 특정 전차 인스턴스가 기본값을 벗어나야 하면 TankDataSO 인스펙터에서 개별 조정.
+    /// </summary>
+    [System.Serializable]
+    public struct HullSlotTable
+    {
+        public int engine;
+        public int turret;
+        public int mainGun;
+        [Tooltip("장갑 면별 독립 장착 슬롯 수")]
+        public int armor;
+        public int ammoRack;
+        public int track;
+        public int auxiliary;
+
+        public static HullSlotTable ForHull(HullClass cls) => cls switch
+        {
+            HullClass.Scout   => new HullSlotTable { engine = 1, turret = 1, mainGun = 1, armor = 3, ammoRack = 1, track = 1, auxiliary = 1 },
+            HullClass.Assault => new HullSlotTable { engine = 1, turret = 1, mainGun = 1, armor = 4, ammoRack = 1, track = 1, auxiliary = 2 },
+            HullClass.Support => new HullSlotTable { engine = 1, turret = 1, mainGun = 1, armor = 4, ammoRack = 1, track = 1, auxiliary = 4 },
+            HullClass.Heavy   => new HullSlotTable { engine = 1, turret = 1, mainGun = 1, armor = 6, ammoRack = 1, track = 1, auxiliary = 3 },
+            HullClass.Siege   => new HullSlotTable { engine = 1, turret = 1, mainGun = 2, armor = 6, ammoRack = 2, track = 1, auxiliary = 3 },
+            _ => new HullSlotTable { engine = 1, turret = 1, mainGun = 1, armor = 4, ammoRack = 1, track = 1, auxiliary = 2 }
+        };
+
+        /// <summary>모든 슬롯이 0이면 미초기화 상태로 간주</summary>
+        public bool IsEmpty() => engine == 0 && turret == 0 && mainGun == 0 && armor == 0 && ammoRack == 0 && track == 0 && auxiliary == 0;
+    }
+
+    /// <summary>차체별 하중/출력 기본값 — docs/05 §7.1</summary>
+    public static class HullClassDefaults
+    {
+        public static int WeightCapacityFor(HullClass cls) => cls switch
+        {
+            HullClass.Scout => 60,
+            HullClass.Assault => 100,
+            HullClass.Support => 110,
+            HullClass.Heavy => 160,
+            HullClass.Siege => 220,
+            _ => 100
+        };
+
+        public static int PowerRequirementFor(HullClass cls) => cls switch
+        {
+            HullClass.Scout => 80,
+            HullClass.Assault => 100,
+            HullClass.Support => 95,
+            HullClass.Heavy => 120,
+            HullClass.Siege => 150,
+            _ => 100
+        };
     }
 
     [CreateAssetMenu(fileName = "NewTank", menuName = "CRUX/Tank Data")]
@@ -16,8 +71,18 @@ namespace Crux.Data
     {
         [Header("기본 정보")]
         public string tankName;
-        [Tooltip("전차 분류 (차량/경/중형/중전차)")]
-        public TankClass tankClass = TankClass.Medium;
+        [Tooltip("차체 분류 (Scout/Assault/Support/Heavy/Siege)")]
+        public HullClass hullClass = HullClass.Assault;
+        [Tooltip("로시난테 특례 전차 플래그 — 폐기 불가, 전용 파츠 장착 가능")]
+        public bool isRocinante = false;
+
+        [Header("차체 스펙 (docs/05 §3 호환성 3중 체계)")]
+        [Tooltip("하중 한도. 장착 파츠 총 중량이 이 값을 초과하면 장착 거부")]
+        public int weightCapacity = 100;
+        [Tooltip("차체 기준 출력 요구. 엔진 출력이 이 값 + 파츠 출력 수요 합보다 작으면 장착 거부")]
+        public int powerRequirement = 100;
+        [Tooltip("파츠 카테고리별 슬롯 수 — 비어 있으면 hullClass 기본값으로 자동 채움")]
+        public HullSlotTable slotTable;
 
         [Header("AP")]
         public int maxAP = 6;
@@ -57,6 +122,17 @@ namespace Crux.Data
 
         [Header("모듈 내구력")]
         public ModuleHPProfile moduleHP;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // 하중/출력이 미설정(0 이하)이면 hullClass 기본값으로 자동 채움
+            if (weightCapacity <= 0) weightCapacity = HullClassDefaults.WeightCapacityFor(hullClass);
+            if (powerRequirement <= 0) powerRequirement = HullClassDefaults.PowerRequirementFor(hullClass);
+            // 슬롯 테이블이 미설정이면 hullClass 기본값으로 자동 채움
+            if (slotTable.IsEmpty()) slotTable = HullSlotTable.ForHull(hullClass);
+        }
+#endif
     }
 
     [System.Serializable]

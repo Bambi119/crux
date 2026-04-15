@@ -369,18 +369,19 @@ namespace Crux.UI
         /// <summary>UI 스케일 (헬퍼 클래스에서 접근 가능)</summary>
         public float UIScale => uiScale;
 
-        /// <summary>전차 분류 라벨</summary>
-        public static string GetTankClassLabelStatic(TankClass cls) => cls switch
+        /// <summary>차체 분류 라벨 — docs/05 §1</summary>
+        public static string GetHullClassLabelStatic(HullClass cls) => cls switch
         {
-            TankClass.Vehicle => "차량",
-            TankClass.Light => "경전차",
-            TankClass.Medium => "중형전차",
-            TankClass.Heavy => "중전차",
+            HullClass.Scout => "경전차",
+            HullClass.Assault => "중형전차",
+            HullClass.Support => "지원전차",
+            HullClass.Heavy => "중전차",
+            HullClass.Siege => "초중전차",
             _ => ""
         };
 
-        /// <summary>전차 분류 라벨 (내부용)</summary>
-        private static string GetTankClassLabel(TankClass cls) => GetTankClassLabelStatic(cls);
+        /// <summary>차체 분류 라벨 (내부용)</summary>
+        private static string GetHullClassLabel(HullClass cls) => GetHullClassLabelStatic(cls);
 
         /// <summary>나침반 각도 → N/NE/E/SE/S/SW/W/NW</summary>
         public static string GetCompassLabelStatic(float compassAngle)
