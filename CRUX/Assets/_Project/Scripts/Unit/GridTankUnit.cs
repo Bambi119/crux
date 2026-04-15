@@ -345,7 +345,7 @@ namespace Crux.Unit
                 if (IsDestroyed) break;
 
                 // 반응 사격 연출이 진행 중이면 종료까지 대기 (카메라 팬/트레이서 시간 확보)
-                while (Crux.Core.BattleController.IsReactionPlaying)
+                while (Crux.Combat.ReactionFireSequence.IsPlaying)
                     yield return null;
                 if (IsDestroyed) break;
             }
