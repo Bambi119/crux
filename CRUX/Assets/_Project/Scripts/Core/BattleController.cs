@@ -36,6 +36,9 @@ namespace Crux.Core
         public Data.MachineGunDataSO coaxialMGData;
         public Data.MachineGunDataSO mountedMGData;
 
+        [Header("승무원 (Inspector에서 연결 — 순서: Commander, Gunner, Loader, Driver, GunnerMech)")]
+        [SerializeField] private CrewMemberSO[] playerCrew = new CrewMemberSO[5];
+
         [Header("맵 설정")]
         [Tooltip("켜면 12×12 지형 테스트 맵 사용. 꺼져있으면 표준 8×10 맵.")]
         [SerializeField] private bool useTerrainTestMap = false;
@@ -237,6 +240,9 @@ namespace Crux.Core
             // 오버워치 이벤트 구독 (P-S5: ReactionFireSequence 초기화 이후)
             foreach (var e in enemyUnits)
                 if (e != null) e.OnMoveStepComplete += reactionFireSeq.HandleEnemyMoveStep;
+
+            // 승무원 부착 — 모든 유닛에 TankCrew 초기화
+            AttachCrews();
 
             // 플레이어 턴 시작
             StartPlayerTurn();
@@ -660,6 +666,53 @@ namespace Crux.Core
         /// <summary>유닛의 현재 상태 (개활지/엄폐) — FireExecutor의 wrapper (호환성 유지)</summary>
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
+
+        // ===== 승무원 부착 =====
+
+        /// <summary>
+        /// 모든 유닛에 승무원 컴포넌트 부착 및 초기화.
+        /// 플레이어 유닛: playerCrew 배열에서 취득
+        /// 적 유닛: 모두 null로 초기화 (사기 50 시작)
+        /// </summary>
+        private void AttachCrews()
+        {
+            AttachCrewTo(playerUnit, true);
+            foreach (var e in enemyUnits)
+                if (e != null) AttachCrewTo(e, false);
+        }
+
+        /// <summary>
+        /// 한 유닛에 TankCrew 컴포넌트 부착 및 초기화.
+        /// </summary>
+        private void AttachCrewTo(GridTankUnit unit, bool isPlayer)
+        {
+            var crew = unit.gameObject.GetComponent<Crux.Unit.TankCrew>();
+            if (crew == null)
+                crew = unit.gameObject.AddComponent<Crux.Unit.TankCrew>();
+
+            if (isPlayer)
+            {
+                // playerCrew 배열에서 5명 할당 (부족분은 null)
+                var cmd = playerCrew.Length > 0 ? playerCrew[0] : null;
+                var gun = playerCrew.Length > 1 ? playerCrew[1] : null;
+                var load = playerCrew.Length > 2 ? playerCrew[2] : null;
+                var drv = playerCrew.Length > 3 ? playerCrew[3] : null;
+                var mg = playerCrew.Length > 4 ? playerCrew[4] : null;
+
+                string hullClassAxis = unit.tankData?.hullClass.ToString();
+                crew.Initialize(cmd, gun, load, drv, mg, hullClassAxis);
+            }
+            else
+            {
+                // 적 유닛: 모두 null로 호출해 기본 사기 50 시작
+                crew.Initialize(null, null, null, null, null, null);
+            }
+
+            // GridTankUnit이 TankCrew를 캐시하도록 바인딩
+            unit.BindCrew(crew);
+
+            Debug.Log($"[CRUX] TankCrew 초기화 — {(isPlayer ? "player" : "enemy")} {unit.Data?.tankName} morale={crew.Morale}");
+        }
 
         // ===== UI (OnGUI) =====
 

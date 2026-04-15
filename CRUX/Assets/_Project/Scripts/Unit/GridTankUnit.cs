@@ -45,6 +45,14 @@ namespace Crux.Unit
         private SpriteRenderer hullRenderer;
         private Color baseHullColor = Color.white; // Initialize 시점의 원본 색 (HP별 암전 기준)
         private GridManager grid;
+        private TankCrew crew;  // 승무원 시스템 캐시
+
+        // ===== 승무원 바인딩 =====
+        /// <summary>승무원 컴포넌트 연결 (BattleController가 AddComponent 후 호출)</summary>
+        internal void BindCrew(TankCrew tankCrew)
+        {
+            crew = tankCrew;
+        }
 
         // ===== 회전 유틸 =====
         private Quaternion CompassToRotation(float compass)
@@ -69,6 +77,7 @@ namespace Crux.Unit
         public int MaxMainGunAmmo => tankData != null ? tankData.maxMainGunAmmo : 0;
         public int MGAmmoLoaded => mgAmmoLoaded;
         public int MGAmmoTotal => mgAmmoTotal;
+        public TankCrew Crew => crew;
 
         public System.Action<GridTankUnit> OnDeath;
         public System.Action<GridTankUnit> OnFireKilled; // 화재 누적 사망 전용
@@ -101,6 +110,10 @@ namespace Crux.Unit
         public void RestoreState(GridManager grid, UnitSaveData state)
         {
             this.grid = grid; // ClearCellOccupancy 등에서 사용되도록 보장
+
+            // 승무원 컴포넌트 캐싱
+            TryGetComponent(out TankCrew existingCrew);
+            crew = existingCrew;
 
             var oldCell = grid.GetCell(gridPosition);
             if (oldCell != null && oldCell.Occupant == gameObject)
@@ -170,6 +183,10 @@ namespace Crux.Unit
             hullRenderer = GetComponentInChildren<SpriteRenderer>();
             if (hullRenderer != null) baseHullColor = hullRenderer.color;
             UpdateVisual();
+
+            // 승무원 컴포넌트 캐싱 (BattleController가 이후 부착할 예정)
+            TryGetComponent(out TankCrew existingCrew);
+            crew = existingCrew;
         }
 
         // ===== 턴 관리 =====
