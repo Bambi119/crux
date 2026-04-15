@@ -649,139 +649,155 @@ namespace Crux.Cinematic
 
         // ===== 기관총 버스트 연출 (일제사격 → 탄줄 비행+즉시 판정 → 결과) =====
 
+        // MG 볼리 집계 — 스트림 코루틴 간 공유
+        private int mgHits;
+        private int mgRicochets;
+        private int mgPens;
+        private float mgTotalDamage;
+
         private IEnumerator PlayMGSequence(Vector3 attackerPosUnused, Vector3 targetPosUnused, Vector2 fireDir)
         {
-            // 위치 재배치 — 원점 기준
-            Vector2 hullDir = AngleUtil.ToDir(data.attackerHullAngle);
-            Vector3 attackerPos = -(Vector3)(hullDir * 3f);
-            Vector3 targetPos = (Vector3)(fireDir * 4f);
+            // 주포와 동일한 프레이밍 — 전진·정지·포탑 회전·카메라 중점 줌아웃
+            yield return PlayOpenFireSequence(attackerPosUnused, targetPosUnused, fireDir, data.attackerHullAngle);
 
-            attackerObj.transform.position = attackerPos;
-            attackerObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(data.attackerHullAngle));
-            targetObj.transform.position = targetPos;
-            targetObj.transform.rotation = Quaternion.Euler(0, 0, AngleUtil.ToUnity(data.targetHullAngle));
+            // 머즐 위치 — 주포와 동일한 포탑 회전 반영 오프셋 계산
+            Vector3 turretPos = attackerTurret != null ? attackerTurret.position : attackerObj.transform.position;
+            float turretZ = attackerTurret != null
+                ? attackerTurret.eulerAngles.z
+                : attackerObj.transform.eulerAngles.z;
+            float turretRad = turretZ * Mathf.Deg2Rad;
+            Vector2 muzzleOff = data.attackerMuzzleOffset;
+            Vector3 rotatedOffset = new Vector3(
+                muzzleOff.x * Mathf.Cos(turretRad) - muzzleOff.y * Mathf.Sin(turretRad),
+                muzzleOff.x * Mathf.Sin(turretRad) + muzzleOff.y * Mathf.Cos(turretRad),
+                0);
+            Vector3 muzzlePos = turretPos + rotatedOffset;
 
-            // 배치 완료 — 표시
-            attackerObj.SetActive(true);
-            targetObj.SetActive(true);
+            // 포탑 정렬 이후 실제 사격 방향 재계산
+            Vector3 targetPos = targetObj.transform.position;
+            Vector2 currentFireDir = ((Vector3)targetPos - muzzlePos).normalized;
+            Vector2 perpDir = new Vector2(-currentFireDir.y, currentFireDir.x);
 
             string mgName = data.mgData != null ? data.mgData.mgName : "기관총";
             int burstCount = data.mgResults != null ? data.mgResults.Length : 6;
-            float spread = data.mgData != null ? data.mgData.spreadPerShot : 8f;
-            Vector3 muzzle = attackerPos + (Vector3)(fireDir * 0.4f);
-
-            // 카메라: 공격자 쪽에서 시작
-            cam.transform.position = new Vector3(attackerPos.x, attackerPos.y, -10f);
-            cam.orthographicSize = 4f;
 
             ShowNarrative($"{mgName} 사격!", new Color(1f, 0.7f, 0.3f));
+            yield return new WaitForSeconds(0.15f);
 
-            yield return new WaitForSeconds(0.2f);
+            // 볼리 집계 리셋
+            mgHits = 0;
+            mgRicochets = 0;
+            mgPens = 0;
+            mgTotalDamage = 0f;
 
-            float totalDamage = 0;
-            int hitCount = 0;
-            int ricochetCount = 0;
-            int penCount = 0;
+            const float spawnInterval = 0.06f; // 발당 간격 — 따다다닥
+            const float flightTime = 0.2f;     // 비행 시간 — 약 3~4발 동시 재공
+            const float lateralSpread = 0.08f; // 머즐 측면 분산 폭
 
-            // ===== 발당 순차: 발사 → 비행 → 착탄(즉시 판정) =====
+            // ===== 스트림 볼리: 각 탄환을 비동기 코루틴으로 흐르게 =====
             for (int i = 0; i < burstCount; i++)
             {
                 var shotResult = data.mgResults != null && i < data.mgResults.Length
                     ? data.mgResults[i]
                     : new ShotResult { hit = false, outcome = ShotOutcome.Miss };
 
-                // 산포 적용한 목표점
-                float spreadAngle = data.attackerHullAngle + Random.Range(-spread, spread);
+                // 머즐 측면 미세 분산 — 탄환 행렬감
+                float lateral = Random.Range(-lateralSpread, lateralSpread);
+                Vector3 bulletStart = muzzlePos + (Vector3)(perpDir * lateral);
+
+                // 착탄점 흩어짐
                 Vector3 shotTarget = targetPos + (Vector3)(Random.insideUnitCircle * 0.3f);
 
-                // [1] 발사 — 포구 화염
-                SpawnSmallFlash(muzzle);
+                SpawnSmallFlash(muzzlePos);
                 StartCoroutine(CameraShake(0.02f, 0.01f));
+                StartCoroutine(AnimateMGBullet(bulletStart, shotTarget, flightTime, shotResult, currentFireDir));
 
-                // [2] 탄환 생성 + 비행 (빠르게, 0.08초)
-                var bullet = CreateProjectile(muzzle);
-                // MG 탄환을 진행 방향으로 회전
-                Vector2 mgDir = ((Vector2)(shotTarget - muzzle)).normalized;
-                float mgAngle = Mathf.Atan2(mgDir.y, mgDir.x) * Mathf.Rad2Deg;
-                bullet.transform.rotation = Quaternion.Euler(0, 0, mgAngle);
-                var bulletSr = bullet.GetComponent<SpriteRenderer>();
-                if (bulletSr != null)
-                {
-                    bulletSr.color = new Color(1f, 0.9f, 0.4f);
-                    bullet.transform.localScale = new Vector3(0.2f, 0.04f, 1f); // MG도 선형
-                }
-
-                float flightTime = 0.08f;
-                float ft = 0;
-                while (ft < 1f)
-                {
-                    ft += Time.deltaTime / flightTime;
-                    bullet.transform.position = Vector3.Lerp(muzzle, shotTarget, Mathf.Clamp01(ft));
-                    yield return null;
-                }
-                Destroy(bullet);
-
-                // [3] 착탄 — 즉시 판정 + 이펙트 + 데미지 폰트
-                if (shotResult.hit)
-                {
-                    hitCount++;
-                    totalDamage += shotResult.damageDealt;
-
-                    switch (shotResult.outcome)
-                    {
-                        case ShotOutcome.Ricochet:
-                            ricochetCount++;
-                            SpawnSmallSpark(shotTarget);
-                            DamagePopup.SpawnSmall(shotTarget, shotResult.damageDealt, false);
-                            break;
-                        case ShotOutcome.Hit:
-                            SpawnSmallHit(shotTarget);
-                            DamagePopup.SpawnSmall(shotTarget, shotResult.damageDealt, true);
-                            StartCoroutine(CameraShake(0.03f, 0.02f));
-                            break;
-                        case ShotOutcome.Penetration:
-                            penCount++;
-                            SpawnSmallHit(shotTarget);
-                            // MG는 작은 구경 — caliberScale 0.4
-                            HitEffects.Spawn(shotTarget, ShotOutcome.Hit, fireDir, 0.4f);
-                            DamagePopup.SpawnSmall(shotTarget, shotResult.damageDealt, true);
-                            StartCoroutine(CameraShake(0.05f, 0.04f));
-                            break;
-                    }
-                }
-                else
-                {
-                    SpawnSmallDust(shotTarget + (Vector3)(Random.insideUnitCircle * 0.2f));
-                }
-
-                // 발당 간격 (따다다닥)
-                yield return new WaitForSeconds(0.1f);
+                yield return new WaitForSeconds(spawnInterval);
             }
 
+            // 마지막 탄환 착탄까지 대기
+            yield return new WaitForSeconds(flightTime + 0.1f);
+
             // 대상 밀림
-            if (hitCount > 0)
-                StartCoroutine(TankRecoil(targetObj, fireDir, Mathf.Min(0.05f * hitCount, 0.3f)));
+            if (mgHits > 0)
+                StartCoroutine(TankRecoil(targetObj, fireDir, Mathf.Min(0.05f * mgHits, 0.3f)));
 
             // ===== 결과 요약 =====
             yield return new WaitForSeconds(0.3f);
 
             ShowNarrative("사격 완료", new Color(1f, 0.7f, 0.3f));
-            subText = $"{burstCount}발 중 {hitCount}발 명중";
-            if (ricochetCount > 0) subText += $" (도탄 {ricochetCount})";
-            if (penCount > 0) subText += $" (관통 {penCount})";
-            subText += $"\n총 데미지: {totalDamage:F0}";
+            subText = $"{burstCount}발 중 {mgHits}발 명중";
+            if (mgRicochets > 0) subText += $" (도탄 {mgRicochets})";
+            if (mgPens > 0) subText += $" (관통 {mgPens})";
+            subText += $"\n총 데미지: {mgTotalDamage:F0}";
 
-            if (totalDamage > 0)
-                DamagePopup.Spawn(targetPos + Vector3.up * 0.5f, totalDamage, ShotOutcome.Hit);
+            if (mgTotalDamage > 0)
+                DamagePopup.Spawn(targetPos + Vector3.up * 0.5f, mgTotalDamage, ShotOutcome.Hit);
 
             yield return new WaitForSeconds(0.5f);
 
             // 사후 상태: 격파 / 유폭 / 화재 / 모듈
-            if (totalDamage > 0)
+            if (mgTotalDamage > 0)
                 yield return PlayPostImpactNarratives(targetPos, data.mgAggregateOutcome);
 
             yield return new WaitForSeconds(0.5f);
             sequenceDone = true;
+        }
+
+        /// <summary>MG 탄환 1발 — 스트림 볼리에서 비동기 실행. 비행·착탄·판정 일원화.</summary>
+        private IEnumerator AnimateMGBullet(Vector3 start, Vector3 end, float flightTime,
+                                             ShotResult shotResult, Vector2 fireDir)
+        {
+            var bullet = CreateProjectile(start);
+            Vector2 dir = ((Vector2)(end - start)).normalized;
+            float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+            bullet.transform.rotation = Quaternion.Euler(0, 0, angle);
+            var bulletSr = bullet.GetComponent<SpriteRenderer>();
+            if (bulletSr != null)
+            {
+                bulletSr.color = new Color(1f, 0.9f, 0.4f);
+                bullet.transform.localScale = new Vector3(0.2f, 0.04f, 1f);
+            }
+
+            float ft = 0;
+            while (ft < 1f)
+            {
+                ft += Time.deltaTime / flightTime;
+                bullet.transform.position = Vector3.Lerp(start, end, Mathf.Clamp01(ft));
+                yield return null;
+            }
+            Destroy(bullet);
+
+            if (shotResult.hit)
+            {
+                mgHits++;
+                mgTotalDamage += shotResult.damageDealt;
+
+                switch (shotResult.outcome)
+                {
+                    case ShotOutcome.Ricochet:
+                        mgRicochets++;
+                        SpawnSmallSpark(end);
+                        DamagePopup.SpawnSmall(end, shotResult.damageDealt, false);
+                        break;
+                    case ShotOutcome.Hit:
+                        SpawnSmallHit(end);
+                        DamagePopup.SpawnSmall(end, shotResult.damageDealt, true);
+                        StartCoroutine(CameraShake(0.03f, 0.02f));
+                        break;
+                    case ShotOutcome.Penetration:
+                        mgPens++;
+                        SpawnSmallHit(end);
+                        HitEffects.Spawn(end, ShotOutcome.Hit, fireDir, 0.4f);
+                        DamagePopup.SpawnSmall(end, shotResult.damageDealt, true);
+                        StartCoroutine(CameraShake(0.05f, 0.04f));
+                        break;
+                }
+            }
+            else
+            {
+                SpawnSmallDust(end + (Vector3)(Random.insideUnitCircle * 0.2f));
+            }
         }
 
         // ===== 기관총 보조 이펙트 (작고 가벼움) =====
