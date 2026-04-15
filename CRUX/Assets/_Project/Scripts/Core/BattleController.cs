@@ -111,12 +111,28 @@ namespace Crux.Core
         // InputMode를 외부에서 참조할 수 있게 enum으로 노출
         public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
 
+        // ===== 상태 저장/복원 관리자 (P-S6) =====
+        private BattleStateManager stateManager;
+
+        // BattleStateManager용 internal 접근자
+        internal GridManager GridRef => grid;
+        internal GridTankUnit PlayerUnitRef => playerUnit;
+        internal List<GridTankUnit> EnemyUnitsRef => enemyUnits;
+        internal GridVisualizer VisualizerRef => visualizer;
+        internal int TurnCountInternal { get => turnCount; set => turnCount = value; }
+        internal TurnPhase CurrentPhaseInternal { get => currentPhase; set => currentPhase = value; }
+        internal int CurrentEnemyIndexInternal { get => currentEnemyIndex; set => currentEnemyIndex = value; }
+        internal void ReinitializeBattle() => InitializeBattle();
+        internal void StartProcessEnemyTurnFrom(int startIdx) => StartCoroutine(ProcessEnemyTurn(startIdx));
+
         private void Start()
         {
+            stateManager = new BattleStateManager(this);
+
             if (FireActionContext.HasPendingAction)
             {
                 // 연출 씬에서 복귀 — 상태 복원 + 데미지 적용
-                ApplyPendingResult();
+                stateManager.ApplyPendingResult();
             }
             else
             {
@@ -430,7 +446,7 @@ namespace Crux.Core
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
-                        SaveBattleState();
+                        stateManager.Save();
                         SceneManager.LoadScene("FireActionScene");
                         yield break; // 씬 전환됨
                     }
@@ -609,7 +625,7 @@ namespace Crux.Core
         private void CommitFire(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
             fireExecutor.Execute(attacker, target, weapon);
-            SaveBattleState();
+            stateManager.Save();
             SceneManager.LoadScene("FireActionScene");
         }
 
@@ -701,183 +717,6 @@ namespace Crux.Core
             }
 
             return "개활지";
-        }
-
-        // ===== 연출 복귀 후 결과 적용 =====
-
-        /// <summary>씬 전환 직전 — 전투 상태 저장</summary>
-        private void SaveBattleState()
-        {
-            // 연출 씬 복귀 대상 씬 기록 (TerrainTestScene 등에서 사격 시 원본으로 안 돌아가게)
-            BattleStateStorage.SourceScene = SceneManager.GetActiveScene().name;
-            Debug.Log($"[CRUX] SaveBattleState — Player at ({playerUnit.GridPosition.x},{playerUnit.GridPosition.y}), return → {BattleStateStorage.SourceScene}");
-            var enemyStates = new UnitSaveData[enemyUnits.Count];
-            for (int i = 0; i < enemyUnits.Count; i++)
-                enemyStates[i] = enemyUnits[i].SaveState();
-
-            // 엄폐물 HP 저장
-            var coverHPs = new List<float>();
-            for (int x = 0; x < grid.Width; x++)
-                for (int y = 0; y < grid.Height; y++)
-                {
-                    var cell = grid.GetCell(new Vector2Int(x, y));
-                    if (cell != null && cell.Type == CellType.Cover && cell.Cover != null)
-                        coverHPs.Add(cell.Cover.CurrentHP);
-                }
-
-            // 연막 상태 저장
-            var smokeTurns = new List<int>();
-            for (int x = 0; x < grid.Width; x++)
-                for (int y = 0; y < grid.Height; y++)
-                {
-                    var c = grid.GetCell(new Vector2Int(x, y));
-                    smokeTurns.Add(c != null ? c.SmokeTurnsLeft : 0);
-                }
-
-            BattleStateStorage.Save(new BattleSaveData
-            {
-                playerState = playerUnit.SaveState(),
-                enemyStates = enemyStates,
-                turnCount = turnCount,
-                phase = currentPhase,
-                coverHPs = coverHPs.ToArray(),
-                smokeTurns = smokeTurns.ToArray(),
-                nextEnemyIndex = currentEnemyIndex
-            });
-        }
-
-        /// <summary>연출 씬 복귀 — 상태 복원 + 데미지 적용</summary>
-        private void ApplyPendingResult()
-        {
-            Debug.Log($"[CRUX] ApplyPendingResult — HasSavedState: {BattleStateStorage.HasSavedState}");
-
-            // 먼저 씬 초기화 (그리드, 유닛 생성)
-            InitializeBattle();
-
-            // 저장된 상태 복원
-            if (BattleStateStorage.HasSavedState)
-            {
-                var state = BattleStateStorage.SavedState;
-
-                // 플레이어 복원
-                playerUnit.RestoreState(grid, state.playerState);
-
-                // 적 복원
-                for (int i = 0; i < enemyUnits.Count && i < state.enemyStates.Length; i++)
-                    enemyUnits[i].RestoreState(grid, state.enemyStates[i]);
-
-                // 엄폐물 HP 복원
-                int coverIdx = 0;
-                for (int x = 0; x < grid.Width; x++)
-                    for (int y = 0; y < grid.Height; y++)
-                    {
-                        var cell = grid.GetCell(new Vector2Int(x, y));
-                        if (cell != null && cell.Type == CellType.Cover && cell.Cover != null)
-                        {
-                            if (coverIdx < state.coverHPs.Length)
-                            {
-                                float hp = state.coverHPs[coverIdx++];
-                                float dmg = cell.Cover.CurrentHP - hp;
-                                if (dmg > 0)
-                                    cell.Cover.TakeDamage(dmg);
-                            }
-                        }
-                    }
-
-                // 연막 복원
-                if (state.smokeTurns != null)
-                {
-                    int si = 0;
-                    for (int x2 = 0; x2 < grid.Width; x2++)
-                        for (int y2 = 0; y2 < grid.Height; y2++)
-                        {
-                            if (si < state.smokeTurns.Length)
-                            {
-                                var sc = grid.GetCell(new Vector2Int(x2, y2));
-                                if (sc != null)
-                                {
-                                    sc.SmokeTurnsLeft = state.smokeTurns[si];
-                                    if (sc.HasSmoke) visualizer.ShowSmoke(sc.Position);
-                                }
-                                si++;
-                            }
-                        }
-                }
-
-                turnCount = state.turnCount;
-                currentPhase = state.phase;
-
-                // 연출 결과 데미지 적용
-                var actionData = FireActionContext.Current;
-                GridTankUnit target = null;
-
-                if (actionData.targetSide == PlayerSide.Enemy
-                    && actionData.targetUnitIndex >= 0
-                    && actionData.targetUnitIndex < enemyUnits.Count)
-                    target = enemyUnits[actionData.targetUnitIndex];
-                else if (actionData.targetSide == PlayerSide.Player)
-                    target = playerUnit;
-
-                if (target != null && !target.IsDestroyed)
-                {
-                    if (actionData.weaponType == WeaponType.MainGun)
-                    {
-                        // 주포 데미지 — 사전 롤된 결과 적용
-                        if (actionData.result.hit && actionData.result.damageDealt > 0)
-                        {
-                            target.ApplyPrerolledDamage(new DamageInfo
-                            {
-                                damage = actionData.result.damageDealt,
-                                outcome = actionData.result.outcome,
-                                hitZone = actionData.result.hitZone
-                            }, actionData.mainOutcome);
-                        }
-                    }
-                    else if (actionData.mgResults != null)
-                    {
-                        // 기총 총 데미지 합산 + 사전 롤된 모듈/화재/격파 적용
-                        float total = 0f;
-                        bool anyPen = false;
-                        HitZone zone = HitZone.Front;
-                        foreach (var r in actionData.mgResults)
-                        {
-                            if (r.hit && r.damageDealt > 0)
-                            {
-                                total += r.damageDealt;
-                                if (r.outcome == ShotOutcome.Penetration) anyPen = true;
-                                zone = r.hitZone;
-                            }
-                        }
-                        if (total > 0)
-                        {
-                            target.ApplyPrerolledDamage(new DamageInfo
-                            {
-                                damage = total,
-                                outcome = anyPen ? ShotOutcome.Penetration : ShotOutcome.Hit,
-                                hitZone = zone
-                            }, actionData.mgAggregateOutcome);
-                        }
-                    }
-                }
-
-                // 먼저 클리어 — 적 턴 재개 시 새 데이터를 덮어쓸 수 있도록
-                int nextEnemy = state.nextEnemyIndex;
-                TurnPhase savedPhase = state.phase;
-
-                BattleStateStorage.Clear();
-                FireActionContext.Clear();
-
-                // 적 턴 중이었으면 나머지 적 행동 이어서 진행
-                if (savedPhase == TurnPhase.EnemyTurn)
-                {
-                    currentPhase = TurnPhase.EnemyTurn;
-                    StartCoroutine(ProcessEnemyTurn(nextEnemy));
-                }
-
-                return;
-            }
-
-            FireActionContext.Clear();
         }
 
         // ===== UI (OnGUI) =====
