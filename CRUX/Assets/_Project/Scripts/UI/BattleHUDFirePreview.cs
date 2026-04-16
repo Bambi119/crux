@@ -20,6 +20,7 @@ namespace Crux.UI
             public float baseHit;      // 거리 패널티 적용 후
             public float coverPenalty; // 엄폐에 의한 차감
             public float smokePenalty; // 연막에 의한 차감
+            public float moraleBonus;  // 공격자 사기 명중 보정 (-0.15 ~ +0.05)
             public float finalHit;
             public HitZone hitZone;
             public float baseArmor;
@@ -67,6 +68,15 @@ namespace Crux.UI
                 if (elevDelta > 0) chance += elevDelta * 0.05f;
             }
             p.baseHit = Mathf.Clamp01(chance);
+
+            // 사기 보정 (P3-c) — 공격자 Band 기반 AimModifier
+            p.moraleBonus = 0f;
+            var atkCrew = attacker.Crew;
+            if (atkCrew != null)
+            {
+                p.moraleBonus = MoraleSystem.AimModifier(atkCrew.Band) * 0.01f;
+                p.baseHit = Mathf.Clamp01(p.baseHit + p.moraleBonus);
+            }
 
             // 엄폐 보정 — 엄폐물 + 지형 고유 엄폐 합산
             p.coverPenalty = 0f;
@@ -280,6 +290,23 @@ namespace Crux.UI
             breakStyle.fontSize = 14;
             breakStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
             string brk = $"   기본 {p.baseHit:P0}";
+            if (p.moraleBonus != 0f)
+            {
+                if (p.moraleBonus > 0)
+                {
+                    breakStyle.normal.textColor = new Color(0.4f, 1f, 0.5f);
+                    brk = $"   기본 {(p.baseHit - p.moraleBonus):P0}  +사기 {(p.moraleBonus * 100f):F0}%";
+                }
+                else
+                {
+                    breakStyle.normal.textColor = new Color(1f, 0.4f, 0.3f);
+                    brk = $"   기본 {(p.baseHit - p.moraleBonus):P0}  −사기 {(Mathf.Abs(p.moraleBonus) * 100f):F0}%";
+                }
+            }
+            else
+            {
+                breakStyle.normal.textColor = new Color(0.75f, 0.75f, 0.8f);
+            }
             if (p.coverPenalty > 0) brk += $"  −엄폐 {(p.coverPenalty * 100f):F0}%";
             if (p.smokePenalty > 0) brk += $"  −연막 {(p.smokePenalty * 100f):F0}%";
             GUI.Label(new Rect(cx, cy, innerW, 18), brk, breakStyle);
