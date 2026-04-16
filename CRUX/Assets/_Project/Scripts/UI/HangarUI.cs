@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using Crux.Data;
 using System.Collections.Generic;
 
@@ -32,8 +31,8 @@ namespace Crux.UI
         [SerializeField] private GameObject lockedTabPrefab;
         [SerializeField] private GameObject tabButtonPrefab;
 
-        [SerializeField] private TMP_Text moneyText;
-        [SerializeField] private TMP_Text moraleText;
+        [SerializeField] private Text moneyText;
+        [SerializeField] private Text moraleText;
 
         private HangarTab currentTab = HangarTab.Composition;
         private Dictionary<HangarTab, GameObject> instantiatedTabs = new();
@@ -42,6 +41,10 @@ namespace Crux.UI
         {
             if (leftMenuRoot == null || centerContentSlot == null)
                 return;
+
+            // ConvoyInventory는 POCO — SerializeField 직렬화 불가. MVP 폴백 인스턴스.
+            if (convoyRef == null)
+                convoyRef = new ConvoyInventory();
 
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
@@ -66,7 +69,7 @@ namespace Crux.UI
                     ? Instantiate(tabButtonPrefab, leftMenuRoot)
                     : new GameObject(tab.ToString());
 
-                TMP_Text btnText = btnObj.GetComponentInChildren<TMP_Text>();
+                Text btnText = btnObj.GetComponentInChildren<Text>();
                 if (btnText != null)
                     btnText.text = FormatTabName(tab);
 

@@ -1,5 +1,5 @@
 using UnityEngine;
-using TMPro;
+using UnityEngine.UI;
 using Crux.Data;
 using System.Collections.Generic;
 
@@ -11,9 +11,9 @@ namespace Crux.UI
     /// </summary>
     public class HangarRightPanel : MonoBehaviour
     {
-        [SerializeField] private TMP_Text nameText;
-        [SerializeField] private TMP_Text hpText;
-        [SerializeField] private TMP_Text armorText;
+        [SerializeField] private Text nameText;
+        [SerializeField] private Text hpText;
+        [SerializeField] private Text armorText;
 
         [SerializeField] private Transform traitListRoot;
         [SerializeField] private Transform crewListRoot;
