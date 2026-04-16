@@ -35,8 +35,11 @@ namespace Crux.Core
             return outcome.firstSide;
         }
 
-        /// <summary>유닛 정보로 InitiativeInput 구성</summary>
-        static InitiativeInput BuildInitiativeInput(GridTankUnit unit)
+        /// <summary>테스트용 공개 래퍼. 실제로는 BuildInitiativeInput를 호출.</summary>
+        public static InitiativeInput BuildForTest(GridTankUnit unit) => BuildInitiativeInput(unit);
+
+        /// <summary>유닛 정보로 InitiativeInput 구성. 테스트 용도로 공개.</summary>
+        internal static InitiativeInput BuildInitiativeInput(GridTankUnit unit)
         {
             int react = 0, morale = 50, traitInitBonus = 0;
             if (unit.Crew != null)

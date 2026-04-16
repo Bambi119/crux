@@ -120,6 +120,9 @@ namespace Crux.EditorTools
             RunOne("P6", P6_TraitEffectsTest.Execute);
             totalPassed += passedCount; totalFailed += failedCount;
 
+            RunOne("P6B", P6B_TraitIntegrationTest.Execute);
+            totalPassed += passedCount; totalFailed += failedCount;
+
             Append($"[RUNNER] ===== TOTAL passed={totalPassed} failed={totalFailed} =====");
             Debug.Log($"[RUNNER] wrote {LogPath} — passed={totalPassed} failed={totalFailed}");
         }
@@ -178,6 +181,14 @@ namespace Crux.EditorTools
             ResetLog();
             RunOne("P6", P6_TraitEffectsTest.Execute);
             Debug.Log($"[RUNNER] wrote {LogPath} — P6 passed={passedCount} failed={failedCount}");
+        }
+
+        [MenuItem("Crux/Test/Run P6B")]
+        public static void RunP6B()
+        {
+            ResetLog();
+            RunOne("P6B", P6B_TraitIntegrationTest.Execute);
+            Debug.Log($"[RUNNER] wrote {LogPath} — P6B passed={passedCount} failed={failedCount}");
         }
     }
 }

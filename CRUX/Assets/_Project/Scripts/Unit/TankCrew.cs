@@ -39,7 +39,7 @@ namespace Crux.Unit
             driver = drv != null ? new CrewMemberRuntime(drv) : null;
             mgMechanic = mg != null ? new CrewMemberRuntime(mg) : null;
 
-            // 시작 사기 — docs/04 §6.1: base 50 + (전차장 해당 클래스 마크 × 3)
+            // 시작 사기 — docs/04 §6.1: base 50 + (전차장 해당 클래스 마크 × 3) + 5인 trait moraleFloor 합산
             int commanderMark = 0;
             if (commander != null)
             {
@@ -47,7 +47,21 @@ namespace Crux.Unit
                     ? commander.GetMark(commanderHullClassAxis)
                     : 0;
             }
-            morale = Mathf.Clamp(50 + commanderMark * 3, 0, 100);
+
+            // P6B: 5인 trait moraleFloor 합산
+            int traitFloor = 0;
+            if (commander != null)
+                traitFloor += TraitEffects.SumForCrewMember(commander.data.traitPositive, commander.data.traitNegative).moraleFloor;
+            if (gunner != null)
+                traitFloor += TraitEffects.SumForCrewMember(gunner.data.traitPositive, gunner.data.traitNegative).moraleFloor;
+            if (loader != null)
+                traitFloor += TraitEffects.SumForCrewMember(loader.data.traitPositive, loader.data.traitNegative).moraleFloor;
+            if (driver != null)
+                traitFloor += TraitEffects.SumForCrewMember(driver.data.traitPositive, driver.data.traitNegative).moraleFloor;
+            if (mgMechanic != null)
+                traitFloor += TraitEffects.SumForCrewMember(mgMechanic.data.traitPositive, mgMechanic.data.traitNegative).moraleFloor;
+
+            morale = Mathf.Clamp(50 + commanderMark * 3 + traitFloor, 0, 100);
             PanicSafetyUsed = false;
         }
 
