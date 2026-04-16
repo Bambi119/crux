@@ -108,6 +108,9 @@ namespace Crux.EditorTools
             RunOne("P2C", P2C_InitiativeTest.Execute);
             totalPassed += passedCount; totalFailed += failedCount;
 
+            RunOne("P4B", P4B_CompatibilityTest.Execute);
+            totalPassed += passedCount; totalFailed += failedCount;
+
             Append($"[RUNNER] ===== TOTAL passed={totalPassed} failed={totalFailed} =====");
             Debug.Log($"[RUNNER] wrote {LogPath} — passed={totalPassed} failed={totalFailed}");
         }
@@ -134,6 +137,14 @@ namespace Crux.EditorTools
             ResetLog();
             RunOne("P2C", P2C_InitiativeTest.Execute);
             Debug.Log($"[RUNNER] wrote {LogPath} — P2C passed={passedCount} failed={failedCount}");
+        }
+
+        [MenuItem("Crux/Test/Run P4B")]
+        public static void RunP4B()
+        {
+            ResetLog();
+            RunOne("P4B", P4B_CompatibilityTest.Execute);
+            Debug.Log($"[RUNNER] wrote {LogPath} — P4B passed={passedCount} failed={failedCount}");
         }
     }
 }
