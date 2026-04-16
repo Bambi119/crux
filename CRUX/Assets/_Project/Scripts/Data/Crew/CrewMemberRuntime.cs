@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using Crux.Data;
 
-namespace Crux.Unit
+namespace Crux.Data
 {
     /// <summary>
     /// 승무원 런타임 상태 래퍼. CrewMemberSO(불변 기본값) + 가변 마크·쿨다운·부상 상태.
-    /// 전차 1대당 최대 5명(직책별 1명)이 TankCrew에 할당된다.
+    /// 전차 1대당 최대 5명(직책별 1명)이 TankCrewInstance에 할당된다.
     /// </summary>
     public class CrewMemberRuntime
     {

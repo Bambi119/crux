@@ -4,8 +4,8 @@ using System.Linq;
 namespace Crux.Data
 {
     /// <summary>
-    /// 부대 전체가 공유하는 파츠 재고(stash).
-    /// 편성 씬에서 TankInstance 간 파츠 이동을 중개.
+    /// 부대 전체가 공유하는 파츠 재고(stash) + 승무원 풀.
+    /// 편성 씬에서 TankInstance 간 파츠·승무원 이동을 중개.
     /// 카테고리별 리스트로 분류 저장 — 조회·장착 후보 필터링 용이.
     ///
     /// 세이브 직렬화는 후속 커밋. 이번은 in-memory 구조만.
@@ -14,6 +14,9 @@ namespace Crux.Data
     {
         // 카테고리별 분류 저장 — 조회 효율 + 인덱스 안정성
         private readonly Dictionary<PartCategory, List<PartInstance>> buckets;
+
+        // 승무원 풀 — ID별 조회 가능하도록 저장
+        public readonly List<CrewMemberRuntime> availableCrew = new();
 
         // 자원 관리 — 첫 빌드 임시값, docs/09 §5 자원 관리 기반으로 추후 수정
         public int Money { get; set; }
@@ -124,6 +127,47 @@ namespace Crux.Data
             Morale += delta;
             if (Morale < 0) Morale = 0;
             if (Morale > 100) Morale = 100;
+        }
+
+        /// <summary>
+        /// 풀에서 승무원을 지정 전차의 직책에 할당.
+        /// 직책 일치 + 목표 직책 공석이면 할당 성공, 아니면 false.
+        /// </summary>
+        public bool AssignCrewTo(TankInstance tank, CrewClass klass, string crewId)
+        {
+            if (tank == null || tank.crew == null) return false;
+
+            // 풀에서 crewId 검색
+            var crew = availableCrew.Find(c => c != null && c.data != null && c.data.id == crewId);
+            if (crew == null) return false;
+
+            // 직책 일치 확인
+            if (crew.Class != klass) return false;
+
+            // 목표 직책 공석 확인
+            if (!tank.crew.HasVacancy(klass)) return false;
+
+            // 할당 — 풀에서 제거, 전차에 배치
+            availableCrew.Remove(crew);
+            tank.crew.Set(klass, crew);
+            return true;
+        }
+
+        /// <summary>
+        /// 지정 전차의 직책에서 승무원을 제거하고 풀로 돌려보냄.
+        /// 공석이면 no-op.
+        /// </summary>
+        public CrewMemberRuntime UnassignCrewFrom(TankInstance tank, CrewClass klass)
+        {
+            if (tank == null || tank.crew == null) return null;
+
+            var crew = tank.crew.Get(klass);
+            if (crew == null) return null;
+
+            // 전차에서 제거, 풀에 추가
+            tank.crew.Set(klass, null);
+            availableCrew.Add(crew);
+            return crew;
         }
     }
 }

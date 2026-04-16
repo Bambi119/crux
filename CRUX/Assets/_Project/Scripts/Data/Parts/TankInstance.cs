@@ -34,6 +34,9 @@ namespace Crux.Data
         public int CurrentHP { get; set; }
         public int MaxHP { get; private set; }
 
+        // 승무원 매핑 — D 옵션 (하이브리드)
+        public TankCrewInstance crew;
+
         /// <summary>
         /// TankInstance 생성.
         /// </summary>
@@ -58,6 +61,9 @@ namespace Crux.Data
             // 복수 슬롯 초기화 — 카테고리별 슬롯 개수만큼 null 원소
             armor = new List<PartInstance>(new PartInstance[slotTable.armor]);
             auxiliary = new List<PartInstance>(new PartInstance[slotTable.auxiliary]);
+
+            // 승무원 매핑 초기화
+            crew = new TankCrewInstance();
 
             // HP 초기화 — 차체 기본값으로 시작
             RecalculateMaxHP();

@@ -80,8 +80,40 @@ namespace Crux.UI
             if (currentUnit == null || crewListRoot == null)
                 return;
 
-            // 승무원 정보는 TankInstance에 직접 저장되지 않음 — 향후 crew 시스템과 통합
-            // 지금은 플레이스홀더
+            if (currentUnit.crew == null)
+                return;
+
+            // 모든 직책과 해당 승무원을 열거
+            foreach (var (klass, crew) in currentUnit.crew.All())
+            {
+                CreateCrewEntry(klass, crew);
+            }
+        }
+
+        private void CreateCrewEntry(CrewClass klass, CrewMemberRuntime crew)
+        {
+            // 동적 생성 — GameObject + Text
+            GameObject entryObj = new GameObject($"CrewEntry_{klass}");
+            entryObj.transform.SetParent(crewListRoot, false);
+
+            RectTransform rt = entryObj.AddComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = new Vector2(0f, 20f);
+
+            Text textComponent = entryObj.AddComponent<Text>();
+            textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.font = Resources.Load<Font>("Arial") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.fontSize = 14;
+            textComponent.fontStyle = FontStyle.Normal;
+            textComponent.alignment = TextAnchor.MiddleLeft;
+
+            // 텍스트 포맷
+            if (crew != null)
+                textComponent.text = $"{klass}: {crew.DisplayName} (Aim {crew.BaseAim})";
+            else
+                textComponent.text = $"{klass}: (공석)";
         }
 
         private void ClearList(Transform listRoot)
