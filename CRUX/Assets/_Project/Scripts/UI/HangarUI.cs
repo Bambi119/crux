@@ -160,6 +160,9 @@ namespace Crux.UI
             {
                 GameObject instance = Instantiate(prefabToUse, centerContentSlot);
                 instantiatedTabs[tab] = instance;
+
+                if (tab == HangarTab.Composition)
+                    BindTankSlots(instance);
             }
         }
 
@@ -182,6 +185,59 @@ namespace Crux.UI
         {
             if (rightPanel != null)
                 rightPanel.Clear();
+        }
+
+        private void BindTankSlots(GameObject compositionTabInstance)
+        {
+            if (convoyRef == null) return;
+
+            // SortieGrid, StorageGrid는 프리팹 안에 이름으로 찾는다
+            Transform sortieGrid = compositionTabInstance.transform.Find("SortieGrid");
+            Transform storageGrid = compositionTabInstance.transform.Find("StorageGrid");
+
+            // 현재 MVP: 출격/보관 구분 없음 → convoy.tanks를 순서대로 sortie 먼저 채우고 나머지는 storage
+            // 향후 tank.inSortie 플래그 도입 예정
+            var tanks = convoyRef.tanks;
+            int sortieCount = 5, storageCount = 5;
+
+            for (int i = 0; i < sortieCount; i++)
+            {
+                if (sortieGrid == null || i >= sortieGrid.childCount) break;
+                Transform slot = sortieGrid.GetChild(i);
+                TankInstance tank = (i < tanks.Count) ? tanks[i] : null;
+                BindOneSlot(slot, tank);
+            }
+
+            for (int i = 0; i < storageCount; i++)
+            {
+                if (storageGrid == null || i >= storageGrid.childCount) break;
+                Transform slot = storageGrid.GetChild(i);
+                int tankIdx = i + sortieCount;
+                TankInstance tank = (tankIdx < tanks.Count) ? tanks[tankIdx] : null;
+                BindOneSlot(slot, tank);
+            }
+        }
+
+        private void BindOneSlot(Transform slot, TankInstance tank)
+        {
+            if (slot == null) return;
+
+            // SlotLabel Text 갱신
+            Text label = slot.GetComponentInChildren<Text>();
+            if (label != null)
+                label.text = (tank != null) ? tank.tankName : "없음";
+
+            // Button 확보 (없으면 AddComponent) + 기존 리스너 제거 + 신규 연결
+            Button btn = slot.GetComponent<Button>();
+            if (btn == null)
+                btn = slot.gameObject.AddComponent<Button>();
+            btn.onClick.RemoveAllListeners();
+
+            if (tank != null)
+            {
+                var captured = tank;  // 클로저 캡처 보호
+                btn.onClick.AddListener(() => OnUnitSelected(captured));
+            }
         }
 
         private string FormatTabName(HangarTab tab)
