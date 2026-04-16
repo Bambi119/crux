@@ -13,8 +13,8 @@ namespace Crux.EditorTools
     /// 한 번에 실행하고 전체 로그를 파일로 덤프. Claude/에이전트가 파일 Read로 PASS/FAIL 확인.
     ///
     /// 호출:
-    /// - `Crux/Test/Run All Static` — P2A + P2B + P2C 순차 실행
-    /// - `Crux/Test/Run P2A` / `P2B` / `P2C` — 개별 실행
+    /// - `Crux/Test/Run All Static` — P2A + P2B + P2C + P4B + P4C + P4D 순차 실행
+    /// - `Crux/Test/Run P2A` / `P2B` / `P2C` / `P4B` / `P4C` / `P4D` — 개별 실행
     ///
     /// 결과 파일: `CRUX/Temp/crux-tests.log` — 실행 시각 + 각 테스트의 Debug.Log 전문
     /// 파일 끝에 `[RUNNER] result: passed=N failed=N` 요약 1줄.
@@ -114,6 +114,9 @@ namespace Crux.EditorTools
             RunOne("P4C", P4C_TankInstanceTest.Execute);
             totalPassed += passedCount; totalFailed += failedCount;
 
+            RunOne("P4D", P4D_ConvoyInventoryTest.Execute);
+            totalPassed += passedCount; totalFailed += failedCount;
+
             Append($"[RUNNER] ===== TOTAL passed={totalPassed} failed={totalFailed} =====");
             Debug.Log($"[RUNNER] wrote {LogPath} — passed={totalPassed} failed={totalFailed}");
         }
@@ -156,6 +159,14 @@ namespace Crux.EditorTools
             ResetLog();
             RunOne("P4C", P4C_TankInstanceTest.Execute);
             Debug.Log($"[RUNNER] wrote {LogPath} — P4C passed={passedCount} failed={failedCount}");
+        }
+
+        [MenuItem("Crux/Test/Run P4D")]
+        public static void RunP4D()
+        {
+            ResetLog();
+            RunOne("P4D", P4D_ConvoyInventoryTest.Execute);
+            Debug.Log($"[RUNNER] wrote {LogPath} — P4D passed={passedCount} failed={failedCount}");
         }
     }
 }
