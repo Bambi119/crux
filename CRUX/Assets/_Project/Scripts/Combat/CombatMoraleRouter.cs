@@ -126,5 +126,18 @@ namespace Crux.Combat
                     unit.Crew.ApplyMoraleEvent(kind);
             }
         }
+
+        /// <summary>
+        /// 구독 해제 및 캐시 정리 — 씬 복귀/재초기화 시 메모리 누수 방지.
+        /// </summary>
+        public void Detach()
+        {
+            foreach (var p in playerUnits)
+                if (p != null) p.OnDamageApplied -= HandleDamage;
+            foreach (var e in enemyUnits)
+                if (e != null) e.OnDamageApplied -= HandleDamage;
+            playerUnits.Clear();
+            enemyUnits.Clear();
+        }
     }
 }

@@ -152,6 +152,7 @@ namespace Crux.Core
 
         private void InitializeBattle()
         {
+            moraleRouter?.Detach();
             // 그리드 — 테스트 맵일 경우 차원 확장
             var gridObj = new GameObject("Grid");
             grid = gridObj.AddComponent<GridManager>();
