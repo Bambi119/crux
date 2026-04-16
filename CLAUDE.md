@@ -234,6 +234,7 @@ Data ──┐
 | TD-04 | 빈 의도 폴더 Enemy/Loot/Vision (Camera/Input/UI는 채워짐) | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
 | TD-05 | `HitEffects`/`MuzzleFlash`/VFX 렌더 상수 하드코드 | 🟢 P4 | 밸런스 패스 때 Data SO로 |
 | TD-06 | 지형 플로어 스프라이트가 다크톤 multiply라 틴트 약함 | 🟡 P2 | Pixel 에이전트 타일 변형 생성 |
+| TD-07 | `BattleHUD.cs` OnGUI → uGUI 이관 | 🟢 P3 | 첫 빌드 완성 이후 리팩토링 슬롯 (docs/10 §5) |
 
 ## 11. 변경 이력
 
