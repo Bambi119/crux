@@ -433,6 +433,13 @@ namespace Crux.Unit
             OnAPChanged?.Invoke();
         }
 
+        /// <summary>AP 감소 (사기 페널티 등). OnAPChanged 발행.</summary>
+        public void DeductAP(int amount)
+        {
+            currentAP = Mathf.Max(0, currentAP - amount);
+            OnAPChanged?.Invoke();
+        }
+
         /// <summary>주포 1발 소모 — 잔탄 없으면 false</summary>
         public bool ConsumeMainGunRound()
         {

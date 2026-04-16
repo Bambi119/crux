@@ -364,6 +364,11 @@ namespace Crux.Combat
             if (targetCell != null && targetCell.HasSmoke)
                 chance -= 0.4f;
 
+            // 공격자 사기 명중 보정
+            var atkCrew = attacker.Crew;
+            if (atkCrew != null)
+                chance += MoraleSystem.AimModifier(atkCrew.Band) * 0.01f;
+
             return Mathf.Clamp01(chance);
         }
 

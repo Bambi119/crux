@@ -251,8 +251,8 @@ namespace Crux.Core
             moraleRouter = new Crux.Combat.CombatMoraleRouter();
             moraleRouter.Attach(playerUnit, enemyUnits);
 
-            // 플레이어 턴 시작
-            StartPlayerTurn();
+            // 전투 시작 선공 판정
+            ResolveInitiative();
         }
 
         private void Update()
@@ -352,8 +352,60 @@ namespace Crux.Core
             // 연막 턴 감소 (P-S7: GridManager로 이관)
             grid.TickSmoke(visualizer);
 
+            // 플레이어 사기 턴 시작 처리 + AP 페널티
+            if (playerUnit != null && !playerUnit.IsDestroyed)
+            {
+                playerUnit.Crew?.TickTurnStart();
+                int apPenalty = playerUnit.Crew != null
+                    ? MoraleSystem.TurnApPenalty(playerUnit.Crew.Band)
+                    : 0;
+                if (apPenalty > 0)
+                {
+                    playerUnit.DeductAP(apPenalty);
+                    Debug.Log($"[CRUX] 플레이어 사기 패널티: -{apPenalty} AP (사기={playerUnit.Crew.Morale})");
+                }
+            }
+
             turnCount++;
             Debug.Log($"[CRUX] === 플레이어 턴 {turnCount} ===");
+        }
+
+        /// <summary>전투 시작 이니셔티브 판정 — 유닛별 React/사기/차체로 선공 결정</summary>
+        private void ResolveInitiative()
+        {
+            var inputs = new List<Crux.Combat.InitiativeInput>();
+            if (playerUnit != null && !playerUnit.IsDestroyed)
+                inputs.Add(BuildInitiativeInput(playerUnit));
+            foreach (var e in enemyUnits)
+                if (e != null && !e.IsDestroyed)
+                    inputs.Add(BuildInitiativeInput(e));
+            var outcome = Crux.Combat.EngagementResolver.Resolve(inputs);
+            Debug.Log($"[CRUX] 이니셔티브: 아군={outcome.allyAvg:F1} 적군={outcome.enemyAvg:F1} 선공={outcome.firstSide}");
+            if (outcome.firstSide == Crux.Core.PlayerSide.Enemy)
+                StartEnemyTurn();
+            else
+                StartPlayerTurn();
+        }
+
+        /// <summary>유닛 정보로 InitiativeInput 구성</summary>
+        private Crux.Combat.InitiativeInput BuildInitiativeInput(GridTankUnit unit)
+        {
+            int react = 0, morale = 50;
+            if (unit.Crew != null)
+            {
+                morale = unit.Crew.Morale;
+                if (unit.Crew.commander?.data != null)
+                    react = unit.Crew.commander.data.react;
+            }
+            return new Crux.Combat.InitiativeInput
+            {
+                unitId = unit.Data?.tankName ?? unit.name,
+                side = unit.side,
+                react = react,
+                morale = morale,
+                traitBonus = 0,
+                hullClass = unit.Data != null ? unit.Data.hullClass : default
+            };
         }
 
         private void StartEnemyTurn()
@@ -379,6 +431,22 @@ namespace Crux.Core
                     yield return new WaitForSeconds(1.3f);
                 }
             }
+
+            // 생존한 적 유닛 사기 턴 시작 처리 + AP 페널티
+            foreach (var enemy in enemyUnits)
+            {
+                if (enemy == null || enemy.IsDestroyed) continue;
+                enemy.Crew?.TickTurnStart();
+                int apPenalty = enemy.Crew != null
+                    ? MoraleSystem.TurnApPenalty(enemy.Crew.Band)
+                    : 0;
+                if (apPenalty > 0)
+                {
+                    enemy.DeductAP(apPenalty);
+                    Debug.Log($"[CRUX] 적 사기 패널티: -{apPenalty} AP (사기={enemy.Crew.Morale})");
+                }
+            }
+
             yield return new WaitForSeconds(0.2f);
 
             // 메인 행동 루프 — 생존 유닛만 순차 진행
