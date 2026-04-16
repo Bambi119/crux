@@ -133,8 +133,8 @@ namespace Crux.Data
                     return CompatibilityResult.Fail($"알 수 없는 카테고리: {category}");
             }
 
-            // 호환성 검증
-            var result = Validate();
+            // 호환성 검증 (필수 슬롯 체크 제외)
+            var result = ValidateCompatibilityOnly();
             if (!result.isValid)
             {
                 // 원복 — 단일 슬롯
@@ -205,6 +205,24 @@ namespace Crux.Data
         }
 
         /// <summary>
+        /// 호환성 검증만 수행 (필수 슬롯 null 체크 제외) — TryEquip 내부용.
+        /// 부분 장착 상태에서도 현재 장착분의 무게·출력·규격 호환성만 검사.
+        /// </summary>
+        private CompatibilityResult ValidateCompatibilityOnly()
+        {
+            // CompatibilityChecker.CheckAll 호출 (필수 슬롯 체크 제외)
+            var equippedParts = AllEquipped().Select(p => p.data);
+            var result = CompatibilityChecker.CheckAll(
+                hullClass,
+                turret?.data as TurretPartSO,
+                mainGun?.data as MainGunPartSO,
+                ammoRack?.data as AmmoRackPartSO,
+                equippedParts);
+
+            return result;
+        }
+
+        /// <summary>
         /// 현재 상태 전체 검증 — 필수 슬롯 + 호환성 3축 검사.
         /// 편성 확정 전 마지막 체크.
         /// </summary>
@@ -221,16 +239,8 @@ namespace Crux.Data
             if (violations.Count > 0)
                 return CompatibilityResult.Fail(violations.ToArray());
 
-            // CompatibilityChecker.CheckAll 호출
-            var equippedParts = AllEquipped().Select(p => p.data);
-            var result = CompatibilityChecker.CheckAll(
-                hullClass,
-                turret?.data as TurretPartSO,
-                mainGun?.data as MainGunPartSO,
-                ammoRack?.data as AmmoRackPartSO,
-                equippedParts);
-
-            return result;
+            // 호환성 검증 (필수 슬롯은 이미 확인)
+            return ValidateCompatibilityOnly();
         }
 
         /// <summary>모든 장착 파츠 총 무게</summary>

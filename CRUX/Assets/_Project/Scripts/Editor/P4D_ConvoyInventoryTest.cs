@@ -143,8 +143,7 @@ public static class P4D_ConvoyInventoryTest
         var gunInst = new PartInstance(gunSO);
         var ammoInst = new PartInstance(ammoSO);
 
-        // 재고에 필수 파츠 세트 추가
-        Assert(convoy.Add(engineInst2), "Re-add engine 2 for EquipTo test");
+        // 재고에 필수 파츠 세트 추가 (engineInst2는 line 103에서 이미 추가됨)
         Assert(convoy.Add(turretInst), "Add turret for EquipTo test");
         Assert(convoy.Add(gunInst), "Add gun for EquipTo test");
         Assert(convoy.Add(ammoInst), "Add ammo for EquipTo test");

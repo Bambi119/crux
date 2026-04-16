@@ -27,8 +27,8 @@ public static class P6_TraitEffectsTest
         // ===== 1. 빈 effectKey =====
         Assert(TraitEffects.Get((string)null).initiativeBonus == 0, "Get(null).init=0");
         Assert(TraitEffects.Get("").aimBonus == 0, "Get(\"\").aim=0");
-        Assert(TraitEffects.Get(null).reactBonus == 0, "Get(null).react=0");
-        Assert(TraitEffects.Get(null).moraleFloor == 0, "Get(null).morale=0");
+        Assert(TraitEffects.Get((string)null).reactBonus == 0, "Get(null).react=0");
+        Assert(TraitEffects.Get((string)null).moraleFloor == 0, "Get(null).morale=0");
 
         // ===== 2. 미등록 effectKey =====
         var unknown = TraitEffects.Get("trait.nonexistent");

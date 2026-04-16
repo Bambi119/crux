@@ -48,8 +48,8 @@ namespace Crux.Unit
         private TankCrew crew;  // 승무원 시스템 캐시
 
         // ===== 승무원 바인딩 =====
-        /// <summary>승무원 컴포넌트 연결 (BattleController가 AddComponent 후 호출)</summary>
-        internal void BindCrew(TankCrew tankCrew)
+        /// <summary>승무원 컴포넌트 연결 (BattleController · 통합 테스트가 호출)</summary>
+        public void BindCrew(TankCrew tankCrew)
         {
             crew = tankCrew;
         }

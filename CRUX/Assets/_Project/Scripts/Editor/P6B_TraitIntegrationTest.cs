@@ -112,6 +112,7 @@ public static class P6B_TraitIntegrationTest
 
             var crew1 = unitGO1.AddComponent<TankCrew>();
             crew1.Initialize(null, null, null, null, null);
+            tank1.BindCrew(crew1);
 
             // 모두 null이므로 traitBonus=0, react=0 (기본)
             var input1 = InitiativeSetup.BuildForTest(tank1);
@@ -140,6 +141,7 @@ public static class P6B_TraitIntegrationTest
 
             var crew2 = unitGO2.AddComponent<TankCrew>();
             crew2.Initialize(donqSO, null, null, null, null);
+            tank2.BindCrew(crew2);
 
             var input2 = InitiativeSetup.BuildForTest(tank2);
             Assert(input2.traitBonus == 2, $"donquixote_dream traitBonus=+2 (got {input2.traitBonus})");
@@ -168,6 +170,7 @@ public static class P6B_TraitIntegrationTest
 
             var crew3 = unitGO3.AddComponent<TankCrew>();
             crew3.Initialize(prodigySO, null, null, null, null);
+            tank3.BindCrew(crew3);
 
             var input3 = InitiativeSetup.BuildForTest(tank3);
             Assert(input3.react == 62, $"little_hand_prodigy react=62 (60+2) (got {input3.react})");
@@ -197,11 +200,12 @@ public static class P6B_TraitIntegrationTest
 
             var crew4 = unitGO4.AddComponent<TankCrew>();
             crew4.Initialize(mixedSO, null, null, null, null);
+            tank4.BindCrew(crew4);
 
             var input4 = InitiativeSetup.BuildForTest(tank4);
             Assert(input4.traitBonus == 2, $"donquixote+spoiled traitBonus=+2 (got {input4.traitBonus})");
-            // TankCrew morale: 50 + (0)*3 + (+2-5) = 50-3 = 47
-            Assert(crew4.Morale == 47, $"donquixote+spoiled TankCrew morale=47 (got {crew4.Morale})");
+            // TankCrew morale: 50 + commanderMark(0)*3 + moraleFloor(donq=0, spoiled=-5) = 45
+            Assert(crew4.Morale == 45, $"donquixote+spoiled TankCrew morale=45 (got {crew4.Morale})");
 
             CleanupCrew(mixedSO);
             ScriptableObject.DestroyImmediate(data4);
