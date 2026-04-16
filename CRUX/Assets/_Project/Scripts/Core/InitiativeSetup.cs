@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Crux.Combat;
+using Crux.Data;
 using Crux.Unit;
 
 namespace Crux.Core
@@ -37,12 +38,20 @@ namespace Crux.Core
         /// <summary>유닛 정보로 InitiativeInput 구성</summary>
         static InitiativeInput BuildInitiativeInput(GridTankUnit unit)
         {
-            int react = 0, morale = 50;
+            int react = 0, morale = 50, traitInitBonus = 0;
             if (unit.Crew != null)
             {
                 morale = unit.Crew.Morale;
                 if (unit.Crew.commander?.data != null)
-                    react = unit.Crew.commander.data.react;
+                {
+                    var cmdr = unit.Crew.commander.data;
+                    react = cmdr.react;
+
+                    // 전차장 특성 보정 적용
+                    var traitMod = TraitEffects.SumForCrewMember(cmdr.traitPositive, cmdr.traitNegative);
+                    react += traitMod.reactBonus;
+                    traitInitBonus = traitMod.initiativeBonus;
+                }
             }
             return new InitiativeInput
             {
@@ -50,7 +59,7 @@ namespace Crux.Core
                 side = unit.side,
                 react = react,
                 morale = morale,
-                traitBonus = 0,
+                traitBonus = traitInitBonus,
                 hullClass = unit.Data != null ? unit.Data.hullClass : default
             };
         }

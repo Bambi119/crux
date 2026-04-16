@@ -117,6 +117,9 @@ namespace Crux.EditorTools
             RunOne("P4D", P4D_ConvoyInventoryTest.Execute);
             totalPassed += passedCount; totalFailed += failedCount;
 
+            RunOne("P6", P6_TraitEffectsTest.Execute);
+            totalPassed += passedCount; totalFailed += failedCount;
+
             Append($"[RUNNER] ===== TOTAL passed={totalPassed} failed={totalFailed} =====");
             Debug.Log($"[RUNNER] wrote {LogPath} — passed={totalPassed} failed={totalFailed}");
         }
@@ -167,6 +170,14 @@ namespace Crux.EditorTools
             ResetLog();
             RunOne("P4D", P4D_ConvoyInventoryTest.Execute);
             Debug.Log($"[RUNNER] wrote {LogPath} — P4D passed={passedCount} failed={failedCount}");
+        }
+
+        [MenuItem("Crux/Test/Run P6")]
+        public static void RunP6()
+        {
+            ResetLog();
+            RunOne("P6", P6_TraitEffectsTest.Execute);
+            Debug.Log($"[RUNNER] wrote {LogPath} — P6 passed={passedCount} failed={failedCount}");
         }
     }
 }
