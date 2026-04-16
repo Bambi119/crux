@@ -15,6 +15,7 @@
 
 # Local dev artifacts (작업 참조용, 리포 비포함)
 /feedback/
+/tmp/
 
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
