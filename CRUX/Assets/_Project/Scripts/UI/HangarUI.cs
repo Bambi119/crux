@@ -101,11 +101,11 @@ namespace Crux.UI
 
         public void UpdateTopBar()
         {
-            if (moneyText != null)
-                moneyText.text = "₩0";  // ConvoyInventory에 자금 필드 없음 — 향후 추가
+            if (convoyRef != null && moneyText != null)
+                moneyText.text = $"자금: ₩{convoyRef.Money}";
 
-            if (moraleText != null)
-                moraleText.text = "0";  // 사기 점수 — 향후 추가
+            if (convoyRef != null && moraleText != null)
+                moraleText.text = $"사기: {convoyRef.Morale}";
         }
 
         public void OnUnitSelected(TankInstance tank)

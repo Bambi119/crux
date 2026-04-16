@@ -34,9 +34,9 @@ namespace Crux.UI
             if (nameText != null)
                 nameText.text = tank.tankName ?? "—";
 
-            // HP 표시 (향후 HP 필드 추가 시 갱신)
+            // HP 표시
             if (hpText != null)
-                hpText.text = "HP —/—";
+                hpText.text = $"HP {tank.CurrentHP}/{tank.MaxHP}";
 
             // 장갑 표시 (장착된 Armor 파츠 나열)
             if (armorText != null)

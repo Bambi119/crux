@@ -30,6 +30,10 @@ namespace Crux.Data
         public List<PartInstance> armor;
         public List<PartInstance> auxiliary;
 
+        // HP 관리 — 차체 기본값(HullClass) + 장갑 파츠 기여
+        public int CurrentHP { get; set; }
+        public int MaxHP { get; private set; }
+
         /// <summary>
         /// TankInstance 생성.
         /// </summary>
@@ -54,6 +58,10 @@ namespace Crux.Data
             // 복수 슬롯 초기화 — 카테고리별 슬롯 개수만큼 null 원소
             armor = new List<PartInstance>(new PartInstance[slotTable.armor]);
             auxiliary = new List<PartInstance>(new PartInstance[slotTable.auxiliary]);
+
+            // HP 초기화 — 차체 기본값으로 시작
+            RecalculateMaxHP();
+            CurrentHP = MaxHP;
         }
 
         /// <summary>
@@ -152,6 +160,9 @@ namespace Crux.Data
                 return result;
             }
 
+            // 장착 성공 — MaxHP 재계산
+            RecalculateMaxHP();
+
             return CompatibilityResult.Ok;
         }
 
@@ -200,6 +211,10 @@ namespace Crux.Data
                     }
                     break;
             }
+
+            // 장착 해제 성공 — MaxHP 재계산
+            if (removed != null)
+                RecalculateMaxHP();
 
             return removed;
         }
@@ -278,5 +293,25 @@ namespace Crux.Data
 
         /// <summary>차체 하중 용량</summary>
         public int WeightCapacity => HullClassDefaults.WeightCapacityFor(hullClass);
+
+        /// <summary>
+        /// MaxHP 재계산 — 차체 기본값 + 장갑 파츠 기여분.
+        /// 차체 기본값: Scout=60, Assault=100, Support=110, Heavy=160, Siege=220
+        /// 장갑 기여: 차체별 슬롯별로 소정 값 가산 (첫 빌드 임시값)
+        /// </summary>
+        private void RecalculateMaxHP()
+        {
+            // 차체 기본 HP — 하중 용량의 일부로 임시 계산
+            MaxHP = HullClassDefaults.WeightCapacityFor(hullClass) / 2;
+
+            // 장갑 슬롯별 기여 — 장갑 파츠 개수 × 기본 기여도
+            int armorCount = armor.Count(a => a != null);
+            if (armorCount > 0)
+                MaxHP += armorCount * 5;  // 슬롯당 +5 HP 임시값
+
+            // CurrentHP가 최대값 초과 시 cap (파츠 제거로 MaxHP 감소할 경우)
+            if (CurrentHP > MaxHP)
+                CurrentHP = MaxHP;
+        }
     }
 }

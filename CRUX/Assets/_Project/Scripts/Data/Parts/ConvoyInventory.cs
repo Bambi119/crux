@@ -15,11 +15,19 @@ namespace Crux.Data
         // 카테고리별 분류 저장 — 조회 효율 + 인덱스 안정성
         private readonly Dictionary<PartCategory, List<PartInstance>> buckets;
 
+        // 자원 관리 — 첫 빌드 임시값, docs/09 §5 자원 관리 기반으로 추후 수정
+        public int Money { get; set; }
+        public int Morale { get; set; }
+
         public ConvoyInventory()
         {
             buckets = new Dictionary<PartCategory, List<PartInstance>>();
             foreach (PartCategory cat in System.Enum.GetValues(typeof(PartCategory)))
                 buckets[cat] = new List<PartInstance>();
+
+            // 초기값
+            Money = 1000;
+            Morale = 80;
         }
 
         /// <summary>전체 재고 수량 (모든 카테고리 합)</summary>
@@ -102,6 +110,20 @@ namespace Crux.Data
             var removed = tank.Unequip(category, slotIndex);
             if (removed != null) Add(removed);
             return removed;
+        }
+
+        /// <summary>자금 변동 — 양수는 획득, 음수는 소비</summary>
+        public void AddMoney(int delta)
+        {
+            Money += delta;
+        }
+
+        /// <summary>사기 변동 — 0~100 범위로 자동 clamp</summary>
+        public void ChangeMorale(int delta)
+        {
+            Morale += delta;
+            if (Morale < 0) Morale = 0;
+            if (Morale > 100) Morale = 100;
         }
     }
 }
