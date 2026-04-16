@@ -253,7 +253,11 @@ namespace Crux.Core
             moraleRouter.Attach(playerUnit, enemyUnits);
 
             // 전투 시작 선공 판정
-            ResolveInitiative();
+            var firstSide = InitiativeSetup.Resolve(playerUnit, enemyUnits);
+            if (firstSide == PlayerSide.Enemy)
+                StartEnemyTurn();
+            else
+                StartPlayerTurn();
         }
 
         private void Update()
@@ -369,44 +373,6 @@ namespace Crux.Core
 
             turnCount++;
             Debug.Log($"[CRUX] === 플레이어 턴 {turnCount} ===");
-        }
-
-        /// <summary>전투 시작 이니셔티브 판정 — 유닛별 React/사기/차체로 선공 결정</summary>
-        private void ResolveInitiative()
-        {
-            var inputs = new List<Crux.Combat.InitiativeInput>();
-            if (playerUnit != null && !playerUnit.IsDestroyed)
-                inputs.Add(BuildInitiativeInput(playerUnit));
-            foreach (var e in enemyUnits)
-                if (e != null && !e.IsDestroyed)
-                    inputs.Add(BuildInitiativeInput(e));
-            var outcome = Crux.Combat.EngagementResolver.Resolve(inputs);
-            Debug.Log($"[CRUX] 이니셔티브: 아군={outcome.allyAvg:F1} 적군={outcome.enemyAvg:F1} 선공={outcome.firstSide}");
-            if (outcome.firstSide == Crux.Core.PlayerSide.Enemy)
-                StartEnemyTurn();
-            else
-                StartPlayerTurn();
-        }
-
-        /// <summary>유닛 정보로 InitiativeInput 구성</summary>
-        private Crux.Combat.InitiativeInput BuildInitiativeInput(GridTankUnit unit)
-        {
-            int react = 0, morale = 50;
-            if (unit.Crew != null)
-            {
-                morale = unit.Crew.Morale;
-                if (unit.Crew.commander?.data != null)
-                    react = unit.Crew.commander.data.react;
-            }
-            return new Crux.Combat.InitiativeInput
-            {
-                unitId = unit.Data?.tankName ?? unit.name,
-                side = unit.side,
-                react = react,
-                morale = morale,
-                traitBonus = 0,
-                hullClass = unit.Data != null ? unit.Data.hullClass : default
-            };
         }
 
         private void StartEnemyTurn()
