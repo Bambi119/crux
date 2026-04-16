@@ -92,28 +92,25 @@ namespace Crux.UI
 
         private void CreateCrewEntry(CrewClass klass, CrewMemberRuntime crew)
         {
-            // 동적 생성 — GameObject + Text
             GameObject entryObj = new GameObject($"CrewEntry_{klass}");
             entryObj.transform.SetParent(crewListRoot, false);
 
-            RectTransform rt = entryObj.AddComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = new Vector2(1f, 0f);
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = new Vector2(0f, 20f);
+            entryObj.AddComponent<RectTransform>();
 
             Text textComponent = entryObj.AddComponent<Text>();
-            textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            textComponent.font = Resources.Load<Font>("Arial") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             textComponent.fontSize = 14;
-            textComponent.fontStyle = FontStyle.Normal;
             textComponent.alignment = TextAnchor.MiddleLeft;
+            textComponent.color = crew != null ? new Color(0.9f, 0.9f, 0.9f) : new Color(0.5f, 0.5f, 0.5f);
 
-            // 텍스트 포맷
             if (crew != null)
                 textComponent.text = $"{klass}: {crew.DisplayName} (Aim {crew.BaseAim})";
             else
                 textComponent.text = $"{klass}: (공석)";
+
+            var le = entryObj.AddComponent<LayoutElement>();
+            le.minHeight = 20;
+            le.preferredHeight = 22;
         }
 
         private void ClearList(Transform listRoot)

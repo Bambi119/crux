@@ -34,6 +34,9 @@ namespace Crux.UI
         [SerializeField] private Text moneyText;
         [SerializeField] private Text moraleText;
 
+        [Header("샘플 부대 시드 (MVP — 임시)")]
+        [SerializeField] private Crux.Data.CrewMemberSO[] crewRoster;  // 5개 SO 에셋 Inspector 할당
+
         private HangarTab currentTab = HangarTab.Composition;
         private Dictionary<HangarTab, GameObject> instantiatedTabs = new();
 
@@ -44,11 +47,15 @@ namespace Crux.UI
 
             // ConvoyInventory는 POCO — SerializeField 직렬화 불가. MVP 폴백 인스턴스.
             if (convoyRef == null)
-                convoyRef = new ConvoyInventory();
+                convoyRef = BuildSampleConvoy();
 
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
             UpdateTopBar();
+
+            // 첫 탱크 자동 선택 → RightPanel 표시
+            if (rightPanel != null && convoyRef.tanks.Count > 0)
+                rightPanel.SetUnit(convoyRef.tanks[0]);
         }
 
         private void BuildTabMenu()
@@ -80,6 +87,60 @@ namespace Crux.UI
                     btn.onClick.AddListener(() => SelectTab(tabCopy));
                 }
             }
+        }
+
+        private ConvoyInventory BuildSampleConvoy()
+        {
+            var convoy = new ConvoyInventory();
+
+#if UNITY_EDITOR
+            // Editor fallback — Inspector 미할당 시 AssetDatabase로 5명 자동 로드 (MVP 편의)
+            if (crewRoster == null || crewRoster.Length == 0)
+            {
+                string[] ids = { "astra", "ririd", "grin", "pretena", "iris" };
+                var list = new List<Crux.Data.CrewMemberSO>();
+                foreach (var id in ids)
+                {
+                    var path = $"Assets/_Project/Data/Crew/Members/Crew_{id}.asset";
+                    var so = UnityEditor.AssetDatabase.LoadAssetAtPath<Crux.Data.CrewMemberSO>(path);
+                    if (so != null) list.Add(so);
+                }
+                crewRoster = list.ToArray();
+            }
+#endif
+
+            // 1) 승무원 풀 시드 — Inspector 할당 에셋으로
+            if (crewRoster != null)
+            {
+                foreach (var so in crewRoster)
+                {
+                    if (so == null) continue;
+                    convoy.availableCrew.Add(new Crux.Data.CrewMemberRuntime(so));
+                }
+            }
+
+            // 2) 샘플 탱크 1대 — 로시난테
+            var rocinante = new Crux.Data.TankInstance("로시난테", Crux.Data.HullClass.Assault);
+            rocinante.isRocinante = true;
+            convoy.tanks.Add(rocinante);
+
+            // 3) 5명 자동 할당 — 풀에 있는 승무원의 Class로 직책 판정
+            var classes = new[] {
+                Crux.Data.CrewClass.Commander,
+                Crux.Data.CrewClass.Gunner,
+                Crux.Data.CrewClass.Loader,
+                Crux.Data.CrewClass.Driver,
+                Crux.Data.CrewClass.GunnerMech
+            };
+            foreach (var klass in classes)
+            {
+                // 풀에서 해당 직책의 첫 승무원 id 찾아 할당
+                var c = convoy.availableCrew.Find(cr => cr.Class == klass);
+                if (c != null && c.data != null)
+                    convoy.AssignCrewTo(rocinante, klass, c.data.id);
+            }
+
+            return convoy;
         }
 
         public void SelectTab(HangarTab tab)
@@ -139,19 +200,24 @@ namespace Crux.UI
 
         private void OnDisable()
         {
-            // 탭 버튼 이벤트 해제
-            foreach (Transform child in leftMenuRoot)
+            // 씬 언로드 시 타겟이 이미 파괴됐을 수 있어 null 가드 필수
+            if (leftMenuRoot != null)
             {
-                Button btn = child.GetComponent<Button>();
-                if (btn != null)
-                    btn.onClick.RemoveAllListeners();
-                Destroy(child.gameObject);
+                foreach (Transform child in leftMenuRoot)
+                {
+                    Button btn = child.GetComponent<Button>();
+                    if (btn != null)
+                        btn.onClick.RemoveAllListeners();
+                    Destroy(child.gameObject);
+                }
             }
 
-            // 중앙 콘텐츠 정리
-            foreach (Transform child in centerContentSlot)
+            if (centerContentSlot != null)
             {
-                Destroy(child.gameObject);
+                foreach (Transform child in centerContentSlot)
+                {
+                    Destroy(child.gameObject);
+                }
             }
             instantiatedTabs.Clear();
         }

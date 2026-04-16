@@ -15,6 +15,9 @@ namespace Crux.Data
         // 카테고리별 분류 저장 — 조회 효율 + 인덱스 안정성
         private readonly Dictionary<PartCategory, List<PartInstance>> buckets;
 
+        // 부대 보유 탱크 풀 (출격/보관 구분은 후속 커밋)
+        public readonly List<TankInstance> tanks = new();
+
         // 승무원 풀 — ID별 조회 가능하도록 저장
         public readonly List<CrewMemberRuntime> availableCrew = new();
 
