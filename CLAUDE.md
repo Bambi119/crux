@@ -19,9 +19,9 @@ Crux.Grid       /Scripts/Grid        hex 좌표·셀·경로·LOS
 Crux.Unit       /Scripts/Unit        GridTankUnit·모듈 시스템·상태 오버레이
 Crux.Combat     /Scripts/Combat      관통 계산·VFX·피격 효과
 Crux.AI         /Scripts/AI          적 의사결정 (Context/Role/Scoring/Decision/Controller)
-Crux.Camera     /Scripts/Camera      [비어있음, P-S2] 카메라 제어 (줌·팬·프레이밍)
-Crux.Input      /Scripts/Input       [비어있음, P-S3] 플레이어 입력 핸들러
-Crux.UI         /Scripts/UI          [비어있음, P-S1] OnGUI HUD·패널·배너
+Crux.Camera     /Scripts/Camera      BattleCamera — 줌·팬·프레이밍·반응 시퀀스 제어권 양보
+Crux.Input      /Scripts/Input       PlayerInputHandler — 키 입력·상태 전이
+Crux.UI         /Scripts/UI          BattleHUD + 패널 분리(UnitPanel/FirePreview/TerrainOverlay 등)
 Crux.Cinematic  /Scripts/Cinematic   연출 씬·DamagePopup
 Crux.Core       /Scripts/Core        전투 상태·턴 오케스트레이션만. HUD/입력/카메라 포함 금지
 ```
@@ -130,6 +130,32 @@ Data ──┐
 - 로그 레이블: `[CRUX]` (게임 이벤트) / `[AI]` (의사결정) / `[FIRE]` (사격)
 - 프로덕션 로그는 `Debug.Log` 허용, 단 튜닝용 verbose는 `#if UNITY_EDITOR` 가드 고려
 
+### 7.6 자율 검증 루프 (사용자 개입 없는 커밋)
+
+사용자는 하루 대부분 외부 활동 중. 수동 플레이 테스트로 개발 루프가 병목되면 안 됨.
+**모든 코드 변경 커밋 전 `crux-test` 스킬로 자체 검증**을 수행한다.
+
+**의무 검증 3단계**:
+
+1. **컴파일 체크** — `mcp__unity__execute_menu_item(menuPath="Assets/Refresh")` → Unity 재컴파일 완료 대기. 또는 Coplay MCP 정상 시 `mcp__coplay-mcp__check_compile_errors` 직접 호출
+2. **정적 테스트** — `mcp__unity__execute_menu_item(menuPath="Crux/Test/Run All Static")` → `CRUX/Temp/crux-tests.log` 에서 `failed=0` 확인
+3. **플레이 스모크** — `mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")` → `CRUX/Temp/crux-playsmoke.log` 에서 Exception/Error 없음 + 필요한 `[CRUX]` 로그 출현 확인
+
+**실패 시**: 즉시 구현 에이전트(시그마/픽셀)에 재작업 위임. 루프는 최대 2회.
+
+**자동 검증 불가 항목** (시각·입력·감각): 별도 목록에 누적. 사용자 귀가 시 일괄 요청.
+보고서 말미에 `## 사용자 수동 확인 요청` 섹션 필수.
+
+**하네스 소스**:
+- `CRUX/Assets/_Project/Scripts/Editor/CruxPlaySmoke.cs` — PlayMode 스모크
+- `CRUX/Assets/_Project/Scripts/Editor/CruxTestRunner.cs` — 정적 테스트 오케스트레이션
+- `.claude/skills/crux-test/SKILL.md` — 에이전트 실행 가이드
+
+**MCP 연결 실패 시**:
+- `claude mcp list` 로 상태 확인
+- 실패 시 파일 감사·Read/Grep 기반 정적 검증까지만 수행
+- 런타임 검증이 필수인 항목은 "MCP 복구 대기" 로 기록, 커밋은 사용자 지시 때까지 보류
+
 ## 8. 에이전트 사용 정책
 
 | 에이전트 | 언제 |
@@ -145,11 +171,11 @@ Data ──┐
 - **구현과 검증의 분리** — 리팩토링도 도메인에 따라 시그마(백엔드)/픽셀(프론트엔드)가 실행. 모나미는 DoD 검증만. 시타가 검증 불합격 시 구현 에이전트에 재작업 지시 루프
 - **모호하면 사용자에게 질문** — 특히 밸런스·게임 디자인 관련
 
-## 9. BattleController 분할 로드맵 (P-S1 ~ P-S7)
+## 9. BattleController 분할 로드맵 (P-S1 ~ P-S7) — ✅ 완료
 
-현 `BattleController.cs`: **2,532 LOC**. 목표: **~500 LOC** 순수 오케스트레이터.
+`BattleController.cs`: 2,532 LOC → **671 LOC** (2026-04-15 시점). 목표치 500 LOC에는 미달이지만 P-S7까지 전 스케줄 완료. 후속 잔여 정리는 Tech Debt로 추적.
 
-**각 스케줄은 독립 세션·독립 커밋**. 시타가 오케스트레이션, 도메인 에이전트(시그마/픽셀)가 구현, 모나미가 DoD 검증. 통과해야 다음 스케줄로.
+아래 스케줄 기록은 **이력 보존용**. 신규 리팩토링 필요 시 §4 리팩토링 트리거에 따라 새 항목 생성.
 
 ### P-S1 — HUD 추출 (예상 감소: −900 LOC)
 - **추출 대상**: `OnGUI`·`DrawBanner`·`DrawTurnInfo`·`DrawUnitInfo`·`DrawUnitInfoPanel`·`DrawFireTargetPreview`·`DrawInputModeInfo`·`DrawMoveDirectionUI`·`DrawWeaponSelectUI`·`DrawModuleStatus`·`DrawControls`·`DrawGameResult`·`DrawReactionAlert`·`DrawTerrainOverlay`·`DrawTerrainHoverInfo`
@@ -202,10 +228,10 @@ Data ──┐
 
 | ID | 부채 | 심각도 | 해결 경로 |
 |---|---|---|---|
-| TD-01 | `BattleController.cs` 2,532 LOC god class | 🔴 P0 | P-S1~S7 로드맵 |
+| TD-01 | `BattleController.cs` 671 LOC — 목표 500 LOC 미달, 잔여 P-S7+ 정리 후속 | 🟢 P3 | §4 트리거 재발동 시 |
 | TD-02 | `FireSequenceController.cs` 1,137 LOC 단일 파일 | 🟡 P2 | 시퀀스 단계별 분할 (후속) |
-| TD-03 | `FireActionContext.cs`에 4개 타입 혼재 | 🟢 P3 | P-S6에서 함께 정리 |
-| TD-04 | 빈 의도 폴더 5개 (Camera/Enemy/Input/Loot/Vision) | 🟡 P2 | P-S2/S3에서 Camera/Input 채움, 나머지는 P3+ |
+| TD-03 | `FireActionContext.cs`에 4개 타입 혼재 | 🟢 P3 | 부가 정리 |
+| TD-04 | 빈 의도 폴더 Enemy/Loot/Vision (Camera/Input/UI는 채워짐) | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
 | TD-05 | `HitEffects`/`MuzzleFlash`/VFX 렌더 상수 하드코드 | 🟢 P4 | 밸런스 패스 때 Data SO로 |
 | TD-06 | 지형 플로어 스프라이트가 다크톤 multiply라 틴트 약함 | 🟡 P2 | Pixel 에이전트 타일 변형 생성 |
 
@@ -214,3 +240,4 @@ Data ──┐
 | 날짜 | 변경 |
 |---|---|
 | 2026-04-14 | 초판. 아키텍처·예산·레이어·리팩토링 트리거·S1~S7 스케줄·부채 원장 수립 |
+| 2026-04-16 | §1 Camera/Input/UI 폴더 상태 갱신 · §9 P-S1~S7 완료 표시 · §10 TD-01/TD-04 현재 상태 반영 |
