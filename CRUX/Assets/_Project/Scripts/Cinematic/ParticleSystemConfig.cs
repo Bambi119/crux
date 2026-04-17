@@ -25,7 +25,7 @@ namespace Crux.Cinematic
             main.loop = false;
             main.playOnAwake = true;
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.15f, 0.35f);  // 매우 짧음 (번쩍)
-            main.startSpeed = new ParticleSystem.MinMaxCurve(25f, 55f);        // 탄환급
+            main.startSpeed = new ParticleSystem.MinMaxCurve(40f, 85f);        // 탄환급 + 폭발 상향
             main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.09f);     // 얇은 불꽃 입자
             main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
 
