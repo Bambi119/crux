@@ -322,7 +322,19 @@ namespace Crux.UI
                 Debug.LogWarning("[Hangar] battleSceneName 미설정");
                 return;
             }
-            Debug.Log($"[Hangar] 출격 — {battleSceneName} 로드");
+
+            // BattleEntryData에 편성 데이터 저장 — BattleController가 수신
+            if (convoyRef != null)
+            {
+                Crux.Core.BattleEntryData.Convoy = convoyRef;
+                Crux.Core.BattleEntryData.SortieTanks = convoyRef.tanks.FindAll(t => t.inSortie);
+                Debug.Log($"[Hangar] 출격 편성: {Crux.Core.BattleEntryData.SortieTanks.Count}대 → {battleSceneName}");
+            }
+            else
+            {
+                Debug.Log($"[Hangar] 출격 — convoyRef null, 기본 전투 씬 로드");
+            }
+
             SceneManager.LoadScene(battleSceneName);
         }
 

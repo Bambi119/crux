@@ -145,6 +145,10 @@ namespace Crux.Core
             }
             else
             {
+                // Hangar에서 편성 데이터 입수 (Scene-3 스켈레톤 — 수신 로그만)
+                if (BattleEntryData.HasEntry)
+                    UnityEngine.Debug.Log($"[Battle] Hangar 편성 입수: {BattleEntryData.SortieTanks.Count}대 (실 생성은 후속 커밋)");
+
                 // 최초 시작
                 InitializeBattle();
             }
