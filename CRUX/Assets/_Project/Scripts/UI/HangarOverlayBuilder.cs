@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections.Generic;
 using Crux.Data;
 
 namespace Crux.UI
@@ -168,6 +169,8 @@ namespace Crux.UI
         {
             if (part == null || part.data == null) return;
 
+            bool compatible = PredictSwap(tank, part);
+
             // 수평 배치 row
             var rowObj = new GameObject($"Spare_{part.data.partName}");
             rowObj.transform.SetParent(parent, false);
@@ -181,16 +184,19 @@ namespace Crux.UI
             var rowLe = rowObj.AddComponent<LayoutElement>();
             rowLe.preferredHeight = 28;
 
-            // 왼쪽: 파츠 이름 + 카테고리 Text
+            // 왼쪽: 파츠 이름 + 카테고리 + 호환 ✓/✗
             var labelObj = new GameObject("Label");
             labelObj.transform.SetParent(rowObj.transform, false);
             labelObj.AddComponent<RectTransform>();
             var labelText = labelObj.AddComponent<Text>();
             labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             labelText.fontSize = 14;
-            labelText.color = new Color(0.85f, 0.85f, 0.85f);
+            labelText.color = compatible
+                ? new Color(0.85f, 0.9f, 0.85f)
+                : new Color(0.7f, 0.45f, 0.45f);
             labelText.alignment = TextAnchor.MiddleLeft;
-            labelText.text = $"{part.data.partName}  ({part.data.category})";
+            string mark = compatible ? "✓" : "✗";
+            labelText.text = $"{mark} {part.data.partName}  ({part.data.category})";
             var labelLe = labelObj.AddComponent<LayoutElement>();
             labelLe.flexibleWidth = 1;
 
@@ -199,8 +205,11 @@ namespace Crux.UI
             btnObj.transform.SetParent(rowObj.transform, false);
             btnObj.AddComponent<RectTransform>();
             var btnImg = btnObj.AddComponent<Image>();
-            btnImg.color = new Color(0.3f, 0.35f, 0.42f, 1f);
+            btnImg.color = compatible
+                ? new Color(0.3f, 0.35f, 0.42f, 1f)
+                : new Color(0.22f, 0.22f, 0.24f, 1f);
             var btn = btnObj.AddComponent<Button>();
+            btn.interactable = compatible;
             var btnLe = btnObj.AddComponent<LayoutElement>();
             btnLe.preferredWidth = 60;
 
@@ -219,8 +228,50 @@ namespace Crux.UI
             btnLabelText.color = Color.white;
             btnLabelText.text = "교체";
 
-            var captured = part;
-            btn.onClick.AddListener(() => SwapPart(tank, captured));
+            if (compatible)
+            {
+                var captured = part;
+                btn.onClick.AddListener(() => SwapPart(tank, captured));
+            }
+        }
+
+        /// <summary>
+        /// 파츠 교체 후 호환성만 예측 (상태 변경 없음).
+        /// 기존 같은 카테고리 파츠를 제외한 equipped 목록에 newPart를 더해
+        /// CompatibilityChecker.CheckAll 호출.
+        /// </summary>
+        private bool PredictSwap(TankInstance tank, PartInstance newPart)
+        {
+            if (tank == null || newPart?.data == null) return false;
+
+            var cat = newPart.Category;
+            var equipped = new List<PartDataSO>();
+
+            if (tank.engine != null && tank.engine.Category != cat) equipped.Add(tank.engine.data);
+            if (tank.turret != null && tank.turret.Category != cat) equipped.Add(tank.turret.data);
+            if (tank.mainGun != null && tank.mainGun.Category != cat) equipped.Add(tank.mainGun.data);
+            if (tank.ammoRack != null && tank.ammoRack.Category != cat) equipped.Add(tank.ammoRack.data);
+            if (tank.track != null && tank.track.Category != cat) equipped.Add(tank.track.data);
+            if (tank.armor != null)
+                foreach (var a in tank.armor)
+                    if (a != null && a.Category != cat) equipped.Add(a.data);
+            if (tank.auxiliary != null)
+                foreach (var x in tank.auxiliary)
+                    if (x != null && x.Category != cat) equipped.Add(x.data);
+            equipped.Add(newPart.data);
+
+            var turret = (cat == PartCategory.Turret)
+                ? newPart.data as TurretPartSO
+                : tank.turret?.data as TurretPartSO;
+            var mainGun = (cat == PartCategory.MainGun)
+                ? newPart.data as MainGunPartSO
+                : tank.mainGun?.data as MainGunPartSO;
+            var ammoRack = (cat == PartCategory.AmmoRack)
+                ? newPart.data as AmmoRackPartSO
+                : tank.ammoRack?.data as AmmoRackPartSO;
+
+            var result = CompatibilityChecker.CheckAll(tank.hullClass, turret, mainGun, ammoRack, equipped);
+            return result.isValid;
         }
 
         private void AddCrewCandidateRow(Transform parent, TankInstance tank, CrewClass klass, CrewMemberRuntime crew, bool enabled = true)
