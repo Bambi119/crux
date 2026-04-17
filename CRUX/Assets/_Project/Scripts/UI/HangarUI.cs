@@ -48,6 +48,7 @@ namespace Crux.UI
         private GameObject activeOverlay;  // 중복 생성 방지
         private TankInstance selectedTank; // 가장 최근 선택된 탱크
         private HangarOverlayBuilder overlayBuilder; // 오버레이 생성 담당
+        private HangarCompositionBinder compositionBinder; // 편성 탭 슬롯 바인딩 담당
 
         private void OnEnable()
         {
@@ -72,6 +73,9 @@ namespace Crux.UI
             // 오버레이 빌더 초기화
             if (overlayBuilder == null)
                 overlayBuilder = new HangarOverlayBuilder(this, convoyRef);
+            // 편성 바인더 초기화
+            if (compositionBinder == null)
+                compositionBinder = new HangarCompositionBinder(this, convoyRef);
 
             // 직전 전투 결과 소비 (Victory 보상 / Defeat 피해)
             ApplyBattleResult();
@@ -79,7 +83,10 @@ namespace Crux.UI
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
             UpdateTopBar();
-            AttachSortieButton();
+
+            // TopBar ▶출격 버튼 (헬퍼 위임)
+            if (moneyText != null)
+                HangarButtonHelpers.AttachSortieButton(moneyText.transform.parent, StartBattle);
 
             // 첫 탱크 자동 선택 → RightPanel 표시
             if (rightPanel != null && convoyRef.tanks.Count > 0)
@@ -138,47 +145,9 @@ namespace Crux.UI
                 GameObject instance = Instantiate(prefabToUse, centerContentSlot);
                 instantiatedTabs[tab] = instance;
 
-                if (tab == HangarTab.Composition)
-                    BindTankSlots(instance);
+                if (tab == HangarTab.Composition && compositionBinder != null)
+                    compositionBinder.Bind(instance, selectedTank);
             }
-        }
-
-        /// <summary>
-        /// TopBar 오른쪽에 "출격" 버튼을 런타임 추가. 클릭 시 battleSceneName 로드.
-        /// 중복 생성 방지. HorizontalLayoutGroup이 자동 배치.
-        /// </summary>
-        private void AttachSortieButton()
-        {
-            if (moneyText == null) return;
-            Transform topBar = moneyText.transform.parent;
-            if (topBar == null) return;
-            if (topBar.Find("SortieButton") != null) return;
-
-            var btnObj = new GameObject("SortieButton");
-            btnObj.transform.SetParent(topBar, false);
-            btnObj.AddComponent<RectTransform>();
-            var img = btnObj.AddComponent<Image>();
-            img.color = new Color(0.7f, 0.35f, 0.2f, 1f);
-            var btn = btnObj.AddComponent<Button>();
-            var le = btnObj.AddComponent<LayoutElement>();
-            le.preferredWidth = 120;
-            le.preferredHeight = 42;
-
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(btnObj.transform, false);
-            var labelRt = labelObj.AddComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 18;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
-            text.text = "▶ 출격";
-
-            btn.onClick.AddListener(StartBattle);
         }
 
         public void StartBattle()
@@ -245,10 +214,10 @@ namespace Crux.UI
                 rightPanel.SetUnit(tank);
 
             // 편성 탭의 슬롯 하이라이트 갱신
-            if (currentTab == HangarTab.Composition &&
+            if (currentTab == HangarTab.Composition && compositionBinder != null &&
                 instantiatedTabs.TryGetValue(HangarTab.Composition, out var compTab) && compTab != null)
             {
-                BindTankSlots(compTab);
+                compositionBinder.Bind(compTab, selectedTank);
             }
         }
 
@@ -285,78 +254,6 @@ namespace Crux.UI
         {
             if (rightPanel != null)
                 rightPanel.Clear();
-        }
-
-        private void BindTankSlots(GameObject compositionTabInstance)
-        {
-            if (convoyRef == null) return;
-
-            // SortieGrid, StorageGrid는 프리팹 안에 이름으로 찾는다
-            Transform sortieGrid = compositionTabInstance.transform.Find("SortieGrid");
-            Transform storageGrid = compositionTabInstance.transform.Find("StorageGrid");
-
-            // tank.inSortie 플래그 기반으로 출격/보관 분리 배치
-            var sortieTanks = convoyRef.tanks.FindAll(t => t.inSortie);
-            var storageTanks = convoyRef.tanks.FindAll(t => !t.inSortie);
-            int sortieCount = 5, storageCount = 5;
-
-            // 카운트 라벨 갱신
-            var sortieLabel = compositionTabInstance.transform.Find("SortieLabel")?.GetComponent<Text>();
-            if (sortieLabel != null) sortieLabel.text = $"출격 ({sortieTanks.Count}/5)";
-            var storageLabel = compositionTabInstance.transform.Find("StorageLabel")?.GetComponent<Text>();
-            if (storageLabel != null) storageLabel.text = $"보관 ({storageTanks.Count}/5)";
-
-            for (int i = 0; i < sortieCount; i++)
-            {
-                if (sortieGrid == null || i >= sortieGrid.childCount) break;
-                Transform slot = sortieGrid.GetChild(i);
-                TankInstance tank = (i < sortieTanks.Count) ? sortieTanks[i] : null;
-                BindOneSlot(slot, tank);
-            }
-
-            for (int i = 0; i < storageCount; i++)
-            {
-                if (storageGrid == null || i >= storageGrid.childCount) break;
-                Transform slot = storageGrid.GetChild(i);
-                TankInstance tank = (i < storageTanks.Count) ? storageTanks[i] : null;
-                BindOneSlot(slot, tank);
-            }
-
-            AttachOpenPartsButton(compositionTabInstance);
-        }
-
-        private void BindOneSlot(Transform slot, TankInstance tank)
-        {
-            if (slot == null) return;
-
-            // SlotLabel Text 갱신
-            Text label = slot.GetComponentInChildren<Text>();
-            if (label != null)
-                label.text = (tank != null) ? tank.tankName : "없음";
-
-            // 배경색: 선택된 탱크 슬롯은 강조, 빈 슬롯은 어두운 회색
-            Image bg = slot.GetComponent<Image>();
-            if (bg != null)
-            {
-                bool isSelected = (tank != null && tank == selectedTank);
-                bg.color = isSelected
-                    ? new Color(0.55f, 0.45f, 0.25f, 1f)  // 골드 하이라이트
-                    : (tank != null
-                        ? new Color(0.25f, 0.25f, 0.25f, 1f)   // 일반 탱크
-                        : new Color(0.18f, 0.18f, 0.18f, 1f)); // 빈 슬롯
-            }
-
-            // Button 확보 (없으면 AddComponent) + 기존 리스너 제거 + 신규 연결
-            Button btn = slot.GetComponent<Button>();
-            if (btn == null)
-                btn = slot.gameObject.AddComponent<Button>();
-            btn.onClick.RemoveAllListeners();
-
-            if (tank != null)
-            {
-                var captured = tank;  // 클로저 캡처 보호
-                btn.onClick.AddListener(() => OnUnitSelected(captured));
-            }
         }
 
         private string FormatTabName(HangarTab tab)
@@ -399,42 +296,6 @@ namespace Crux.UI
             }
             instantiatedTabs.Clear();
             CloseOverlay();
-        }
-
-        private void AttachOpenPartsButton(GameObject compositionTab)
-        {
-            if (compositionTab == null) return;
-            if (compositionTab.transform.Find("OpenPartsButton") != null) return;
-
-            var btnObj = new GameObject("OpenPartsButton");
-            btnObj.transform.SetParent(compositionTab.transform, false);
-            btnObj.AddComponent<RectTransform>();
-            var img = btnObj.AddComponent<Image>();
-            img.color = new Color(0.3f, 0.35f, 0.42f, 1f);
-            var btn = btnObj.AddComponent<Button>();
-            var le = btnObj.AddComponent<LayoutElement>();
-            le.preferredHeight = 36;
-            le.flexibleWidth = 1;
-
-            // Label 자식
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(btnObj.transform, false);
-            var labelRt = labelObj.AddComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 16;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
-            text.text = "파츠 인벤토리 열기";
-
-            btn.onClick.AddListener(() => {
-                if (selectedTank != null)
-                    OpenPartsInventory(selectedTank);
-            });
         }
 
         public void OpenPartsInventory(TankInstance tank)
