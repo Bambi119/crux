@@ -166,35 +166,70 @@ namespace Crux.UI
 
         private void SeedSampleParts(ConvoyInventory convoy)
         {
-            var engine = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
-            engine.partName = "V8 디젤";
-            engine.weight = 500f;
-            engine.powerOutput = 400f;
-            convoy.Add(new Crux.Data.PartInstance(engine));
+            // 엔진 2개
+            var engine1 = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
+            engine1.partName = "V8 디젤";
+            engine1.weight = 500f;
+            engine1.powerOutput = 400f;
+            convoy.Add(new Crux.Data.PartInstance(engine1));
 
-            var turret = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
-            turret.partName = "중형 터렛";
-            turret.weight = 300f;
-            turret.caliberLimit = 75;
-            convoy.Add(new Crux.Data.PartInstance(turret));
+            var engine2 = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
+            engine2.partName = "V6 가솔린";
+            engine2.weight = 380f;
+            engine2.powerOutput = 280f;
+            convoy.Add(new Crux.Data.PartInstance(engine2));
 
-            var mainGun = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
-            mainGun.partName = "76mm 장포신";
-            mainGun.weight = 250f;
-            mainGun.caliber = 75;
-            mainGun.basePenetration = 120f;
-            convoy.Add(new Crux.Data.PartInstance(mainGun));
+            // 터렛 2개
+            var turret1 = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
+            turret1.partName = "중형 터렛";
+            turret1.weight = 300f;
+            turret1.caliberLimit = 75;
+            convoy.Add(new Crux.Data.PartInstance(turret1));
 
-            var ammoRack = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
-            ammoRack.partName = "표준 탄약고";
-            ammoRack.weight = 100f;
-            ammoRack.maxMainGunAmmo = 30;
-            convoy.Add(new Crux.Data.PartInstance(ammoRack));
+            var turret2 = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
+            turret2.partName = "대형 터렛";
+            turret2.weight = 450f;
+            turret2.caliberLimit = 120;
+            convoy.Add(new Crux.Data.PartInstance(turret2));
 
-            var track = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
-            track.partName = "표준궤";
-            track.weight = 200f;
-            convoy.Add(new Crux.Data.PartInstance(track));
+            // 주포 2개
+            var mainGun1 = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
+            mainGun1.partName = "76mm 장포신";
+            mainGun1.weight = 250f;
+            mainGun1.caliber = 75;
+            mainGun1.basePenetration = 120f;
+            convoy.Add(new Crux.Data.PartInstance(mainGun1));
+
+            var mainGun2 = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
+            mainGun2.partName = "88mm 단포신";
+            mainGun2.weight = 350f;
+            mainGun2.caliber = 88;
+            mainGun2.basePenetration = 150f;
+            convoy.Add(new Crux.Data.PartInstance(mainGun2));
+
+            // 탄약고 2개
+            var ammoRack1 = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
+            ammoRack1.partName = "표준 탄약고";
+            ammoRack1.weight = 100f;
+            ammoRack1.maxMainGunAmmo = 30;
+            convoy.Add(new Crux.Data.PartInstance(ammoRack1));
+
+            var ammoRack2 = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
+            ammoRack2.partName = "대용량 탄약고";
+            ammoRack2.weight = 160f;
+            ammoRack2.maxMainGunAmmo = 50;
+            convoy.Add(new Crux.Data.PartInstance(ammoRack2));
+
+            // 궤도 2개
+            var track1 = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
+            track1.partName = "표준궤";
+            track1.weight = 200f;
+            convoy.Add(new Crux.Data.PartInstance(track1));
+
+            var track2 = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
+            track2.partName = "광궤";
+            track2.weight = 280f;
+            convoy.Add(new Crux.Data.PartInstance(track2));
         }
 
         private void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
@@ -429,14 +464,14 @@ namespace Crux.UI
             var bgImg = root.AddComponent<Image>();
             bgImg.color = new Color(0f, 0f, 0f, 0.75f);
 
-            // 내부 패널 (가운데 640x480 박스)
+            // 내부 패널 (가운데 640x600 박스 — 높이 증가)
             var panel = new GameObject("Panel");
             panel.transform.SetParent(root.transform, false);
             var panelRt = panel.AddComponent<RectTransform>();
             panelRt.anchorMin = new Vector2(0.5f, 0.5f);
             panelRt.anchorMax = new Vector2(0.5f, 0.5f);
             panelRt.pivot = new Vector2(0.5f, 0.5f);
-            panelRt.sizeDelta = new Vector2(640f, 480f);
+            panelRt.sizeDelta = new Vector2(640f, 600f);
             panelRt.anchoredPosition = Vector2.zero;
             var panelImg = panel.AddComponent<Image>();
             panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
@@ -459,6 +494,25 @@ namespace Crux.UI
             AddSlotRow(panel.transform, "엔진", tank.engine);
             AddSlotRow(panel.transform, "탄약고", tank.ammoRack);
             AddSlotRow(panel.transform, "궤도", tank.track);
+
+            // "보유 파츠 (여분)" 섹션 라벨
+            AddText(panel.transform, "SpareHeaderText", "보유 파츠 (여분)", 18, new Color(0.95f, 0.85f, 0.55f), 28);
+
+            // 카테고리별 여분 파츠 표시
+            foreach (var cat in new[] {
+                Crux.Data.PartCategory.Engine,
+                Crux.Data.PartCategory.Turret,
+                Crux.Data.PartCategory.MainGun,
+                Crux.Data.PartCategory.AmmoRack,
+                Crux.Data.PartCategory.Track,
+            })
+            {
+                var parts = convoyRef.GetByCategory(cat);
+                foreach (var p in parts)
+                {
+                    AddSparePartRow(panel.transform, p, tank);
+                }
+            }
 
             // 닫기 버튼 (하단)
             var closeObj = new GameObject("CloseButton");
@@ -508,6 +562,83 @@ namespace Crux.UI
             string value = (part != null && part.data != null) ? part.data.partName : "(비어있음)";
             Color color = (part != null) ? new Color(0.85f, 0.9f, 0.85f) : new Color(0.6f, 0.6f, 0.6f);
             AddText(parent, $"Slot_{label}", $"{label}: {value}", 16, color, 24);
+        }
+
+        private void AddSparePartRow(Transform parent, Crux.Data.PartInstance part, Crux.Data.TankInstance tank)
+        {
+            if (part == null || part.data == null) return;
+
+            // 수평 배치 row (HorizontalLayoutGroup)
+            var rowObj = new GameObject($"Spare_{part.data.partName}");
+            rowObj.transform.SetParent(parent, false);
+            rowObj.AddComponent<RectTransform>();
+            var hlg = rowObj.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 8;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+            var rowLe = rowObj.AddComponent<LayoutElement>();
+            rowLe.preferredHeight = 28;
+
+            // 왼쪽: 파츠 이름 + 카테고리 Text (flexibleWidth=1)
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(rowObj.transform, false);
+            labelObj.AddComponent<RectTransform>();
+            var labelText = labelObj.AddComponent<Text>();
+            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            labelText.fontSize = 14;
+            labelText.color = new Color(0.85f, 0.85f, 0.85f);
+            labelText.alignment = TextAnchor.MiddleLeft;
+            labelText.text = $"{part.data.partName}  ({part.data.category})";
+            var labelLe = labelObj.AddComponent<LayoutElement>();
+            labelLe.flexibleWidth = 1;
+
+            // 오른쪽: [교체] 버튼 (preferredWidth=60, preferredHeight=28)
+            var btnObj = new GameObject("SwapButton");
+            btnObj.transform.SetParent(rowObj.transform, false);
+            btnObj.AddComponent<RectTransform>();
+            var btnImg = btnObj.AddComponent<Image>();
+            btnImg.color = new Color(0.3f, 0.35f, 0.42f, 1f);
+            var btn = btnObj.AddComponent<Button>();
+            var btnLe = btnObj.AddComponent<LayoutElement>();
+            btnLe.preferredWidth = 60;
+
+            // Button label
+            var btnLabelObj = new GameObject("Text");
+            btnLabelObj.transform.SetParent(btnObj.transform, false);
+            var btnLabelRt = btnLabelObj.AddComponent<RectTransform>();
+            btnLabelRt.anchorMin = Vector2.zero;
+            btnLabelRt.anchorMax = Vector2.one;
+            btnLabelRt.offsetMin = Vector2.zero;
+            btnLabelRt.offsetMax = Vector2.zero;
+            var btnLabelText = btnLabelObj.AddComponent<Text>();
+            btnLabelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            btnLabelText.fontSize = 14;
+            btnLabelText.alignment = TextAnchor.MiddleCenter;
+            btnLabelText.color = Color.white;
+            btnLabelText.text = "교체";
+
+            var captured = part;
+            btn.onClick.AddListener(() => SwapPart(tank, captured));
+        }
+
+        private void SwapPart(Crux.Data.TankInstance tank, Crux.Data.PartInstance newPart)
+        {
+            if (tank == null || newPart == null) return;
+            convoyRef.ReturnFrom(tank, newPart.Category);
+            convoyRef.EquipTo(tank, newPart.instanceId, newPart.Category);
+            RefreshPartsOverlay();
+            if (rightPanel != null) rightPanel.SetUnit(tank);
+        }
+
+        public void RefreshPartsOverlay()
+        {
+            if (activeOverlay != null && selectedTank != null)
+            {
+                CloseOverlay();
+                OpenPartsInventory(selectedTank);
+            }
         }
     }
 }
