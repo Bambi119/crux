@@ -11,6 +11,12 @@ namespace Crux.UI
     /// </summary>
     public class HangarRightPanel : MonoBehaviour
     {
+        private void Awake()
+        {
+            if (hangarUI == null)
+                hangarUI = FindObjectOfType<HangarUI>();
+        }
+
         [SerializeField] private Text nameText;
         [SerializeField] private Text hpText;
         [SerializeField] private Text armorText;
@@ -20,6 +26,7 @@ namespace Crux.UI
         [SerializeField] private GameObject listEntryPrefab;
 
         private TankInstance currentUnit;
+        private HangarUI hangarUI;
 
         public void SetUnit(TankInstance tank)
         {
@@ -97,20 +104,51 @@ namespace Crux.UI
 
             entryObj.AddComponent<RectTransform>();
 
+            // 텍스트 (raycastTarget=true로 Button의 targetGraphic 역할)
             Text textComponent = entryObj.AddComponent<Text>();
             textComponent.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             textComponent.fontSize = 14;
             textComponent.alignment = TextAnchor.MiddleLeft;
             textComponent.color = crew != null ? new Color(0.9f, 0.9f, 0.9f) : new Color(0.5f, 0.5f, 0.5f);
+            textComponent.raycastTarget = true;
 
             if (crew != null)
                 textComponent.text = $"{klass}: {crew.DisplayName} (Aim {crew.BaseAim})";
             else
                 textComponent.text = $"{klass}: (공석)";
 
+            // 버튼 추가 — Text를 targetGraphic으로 사용
+            var btn = entryObj.AddComponent<Button>();
+            btn.targetGraphic = textComponent;
+            var capturedKlass = klass;
+            var capturedTank = currentUnit;
+
+            if (crew != null)
+            {
+                // 장착된 크루 → 클릭 시 해제
+                btn.onClick.AddListener(() => UnassignCrew(capturedKlass));
+            }
+            else
+            {
+                // 공석 → 클릭 시 풀 팝업
+                btn.onClick.AddListener(() => RequestCrewPool(capturedKlass));
+            }
+
             var le = entryObj.AddComponent<LayoutElement>();
             le.minHeight = 20;
             le.preferredHeight = 22;
+        }
+
+        private void UnassignCrew(CrewClass klass)
+        {
+            if (currentUnit == null || hangarUI == null) return;
+            hangarUI.UnassignCrewAndRefresh(currentUnit, klass);
+        }
+
+        private void RequestCrewPool(CrewClass klass)
+        {
+            if (currentUnit == null || hangarUI == null) return;
+            hangarUI.OpenCrewPool(currentUnit, klass);
         }
 
         private void ClearList(Transform listRoot)
