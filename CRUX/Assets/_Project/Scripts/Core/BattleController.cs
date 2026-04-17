@@ -738,12 +738,31 @@ namespace Crux.Core
 
             if (isPlayer)
             {
-                // playerCrew 배열에서 5명 할당 (부족분은 null)
-                var cmd = playerCrew.Length > 0 ? playerCrew[0] : null;
-                var gun = playerCrew.Length > 1 ? playerCrew[1] : null;
-                var load = playerCrew.Length > 2 ? playerCrew[2] : null;
-                var drv = playerCrew.Length > 3 ? playerCrew[3] : null;
-                var mg = playerCrew.Length > 4 ? playerCrew[4] : null;
+                Crux.Data.CrewMemberSO cmd, gun, load, drv, mg;
+
+                // 1순위: Hangar BattleEntryData 편성 크루
+                var entryTank = (BattleEntryData.HasEntry && BattleEntryData.SortieTanks.Count > 0)
+                    ? BattleEntryData.SortieTanks[0]
+                    : null;
+
+                if (entryTank != null && entryTank.crew != null)
+                {
+                    cmd = entryTank.crew.commander?.data;
+                    gun = entryTank.crew.gunner?.data;
+                    load = entryTank.crew.loader?.data;
+                    drv = entryTank.crew.driver?.data;
+                    mg = entryTank.crew.gunnerMech?.data;
+                    Debug.Log($"[CRUX] 편성 크루 주입: {entryTank.tankName} ({cmd?.displayName}/{gun?.displayName}/{load?.displayName}/{drv?.displayName}/{mg?.displayName})");
+                }
+                else
+                {
+                    // 2순위: Inspector playerCrew 배열
+                    cmd = playerCrew.Length > 0 ? playerCrew[0] : null;
+                    gun = playerCrew.Length > 1 ? playerCrew[1] : null;
+                    load = playerCrew.Length > 2 ? playerCrew[2] : null;
+                    drv = playerCrew.Length > 3 ? playerCrew[3] : null;
+                    mg = playerCrew.Length > 4 ? playerCrew[4] : null;
+                }
 
                 string hullClassAxis = unit.tankData?.hullClass.ToString();
                 crew.Initialize(cmd, gun, load, drv, mg, hullClassAxis);
