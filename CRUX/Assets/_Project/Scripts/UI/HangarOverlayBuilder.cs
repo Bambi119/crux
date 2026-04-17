@@ -114,16 +114,26 @@ namespace Crux.UI
             // 제목
             AddText(panel.transform, "TitleText", $"{klass} 후보", 20, Color.white, 32);
 
-            // 풀에서 같은 klass 필터
-            var candidates = convoy.availableCrew.FindAll(c => c.Class == klass);
-            if (candidates.Count == 0)
+            // 풀 전체 순회 — 직책 일치: 활성 / 불일치: 회색 disabled
+            if (convoy.availableCrew.Count == 0)
             {
-                AddText(panel.transform, "EmptyText", $"사용 가능한 {klass} 없음", 14, new Color(0.6f, 0.6f, 0.6f), 26);
+                AddText(panel.transform, "EmptyText", "풀에 승무원 없음", 14, new Color(0.6f, 0.6f, 0.6f), 26);
             }
             else
             {
-                foreach (var c in candidates)
-                    AddCrewCandidateRow(panel.transform, tank, klass, c);
+                // 일치 후보 우선 표시
+                foreach (var c in convoy.availableCrew)
+                    if (c != null && c.Class == klass)
+                        AddCrewCandidateRow(panel.transform, tank, klass, c, enabled: true);
+
+                // 불일치 후보 구분선 + disabled
+                var mismatched = convoy.availableCrew.FindAll(c => c != null && c.Class != klass);
+                if (mismatched.Count > 0)
+                {
+                    AddText(panel.transform, "MismatchHeader", "— 다른 직책 (할당 불가) —", 12, new Color(0.5f, 0.5f, 0.5f), 22);
+                    foreach (var c in mismatched)
+                        AddCrewCandidateRow(panel.transform, tank, klass, c, enabled: false);
+                }
             }
 
             // 닫기 버튼 (하단)
@@ -213,14 +223,17 @@ namespace Crux.UI
             btn.onClick.AddListener(() => SwapPart(tank, captured));
         }
 
-        private void AddCrewCandidateRow(Transform parent, TankInstance tank, CrewClass klass, CrewMemberRuntime crew)
+        private void AddCrewCandidateRow(Transform parent, TankInstance tank, CrewClass klass, CrewMemberRuntime crew, bool enabled = true)
         {
             var row = new GameObject($"Candidate_{crew.DisplayName}");
             row.transform.SetParent(parent, false);
             row.AddComponent<RectTransform>();
             var img = row.AddComponent<Image>();
-            img.color = new Color(0.2f, 0.22f, 0.26f, 1f);
+            img.color = enabled
+                ? new Color(0.2f, 0.22f, 0.26f, 1f)
+                : new Color(0.14f, 0.14f, 0.16f, 1f);
             var btn = row.AddComponent<Button>();
+            btn.interactable = enabled;
             var le = row.AddComponent<LayoutElement>();
             le.preferredHeight = 32;
 
@@ -235,8 +248,14 @@ namespace Crux.UI
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = 14;
             text.alignment = TextAnchor.MiddleLeft;
-            text.color = new Color(0.9f, 0.9f, 0.9f);
-            text.text = $"{crew.DisplayName}  (Aim {crew.BaseAim} · React {crew.BaseReact} · Tech {crew.BaseTech})";
+            text.color = enabled
+                ? new Color(0.9f, 0.9f, 0.9f)
+                : new Color(0.45f, 0.45f, 0.45f);
+            text.text = enabled
+                ? $"{crew.DisplayName}  (Aim {crew.BaseAim} · React {crew.BaseReact} · Tech {crew.BaseTech})"
+                : $"{crew.DisplayName}  [{crew.Class}]";
+
+            if (!enabled) return;  // 불일치 후보는 리스너 연결하지 않음
 
             var captured = crew;
             btn.onClick.AddListener(() => {
