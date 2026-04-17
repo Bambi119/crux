@@ -175,7 +175,7 @@ namespace Crux.Core
                 : setupObj.AddComponent<GridMapSetup>();
 
             // Scene-5-Mini: 편성 탱크가 있으면 TankDataSO 복사본에 기본 스탯 주입
-            mapSetup.playerTankData = BuildPlayerTankDataFromEntry() ?? playerTankData;
+            mapSetup.playerTankData = SortieDataBuilder.BuildPlayerTankData(playerTankData) ?? playerTankData;
             mapSetup.lightEnemyData = lightEnemyData;
             mapSetup.heavyEnemyData = heavyEnemyData;
             mapSetup.playerAmmo = playerAmmo;
@@ -252,7 +252,7 @@ namespace Crux.Core
                 if (e != null) e.OnMoveStepComplete += reactionFireSeq.HandleEnemyMoveStep;
 
             // 승무원 부착 — 모든 유닛에 TankCrew 초기화
-            AttachCrews();
+            BattleCrewBinder.AttachAll(playerUnit, enemyUnits, playerCrew);
 
             // 사기 라우터 초기화 (피격 → 사기 이벤트)
             moraleRouter = new Crux.Combat.CombatMoraleRouter();
@@ -280,31 +280,6 @@ namespace Crux.Core
             // 지형 디버그 토글
             if (Input.GetKeyDown(KeyCode.F1))
                 showTerrainDebug = !showTerrainDebug;
-        }
-
-        /// <summary>
-        /// BattleEntryData.SortieTanks[0] 편성 정보를 TankDataSO 복사본에 반영.
-        /// Inspector playerTankData 원본 유지 + 편성 값(이름/차체/HP)만 덮어쓰기.
-        /// 편성 데이터 없으면 null 반환 — 호출 측이 원본 Fallback.
-        /// </summary>
-        private Crux.Data.TankDataSO BuildPlayerTankDataFromEntry()
-        {
-            if (!BattleEntryData.HasEntry || playerTankData == null) return null;
-            var entry = BattleEntryData.SortieTanks[0];
-            if (entry == null) return null;
-
-            var copy = ScriptableObject.Instantiate(playerTankData);
-            copy.name = playerTankData.name + " (Sortie)";
-            copy.tankName = entry.tankName;
-            copy.hullClass = entry.hullClass;
-            copy.isRocinante = entry.isRocinante;
-            if (entry.MaxHP > 0)
-                copy.maxHP = entry.MaxHP;
-            if (entry.mainGun?.data is Crux.Data.MainGunPartSO mg)
-                copy.mainGunCaliber = mg.caliber;
-
-            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} (HP={copy.maxHP}, 구경={copy.mainGunCaliber})");
-            return copy;
         }
 
         /// <summary>승리/패배 판정 — 플레이어 파괴 시 패배, 전 적 파괴 시 승리</summary>
@@ -744,71 +719,6 @@ namespace Crux.Core
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
 
-        // ===== 승무원 부착 =====
-
-        /// <summary>
-        /// 모든 유닛에 승무원 컴포넌트 부착 및 초기화.
-        /// 플레이어 유닛: playerCrew 배열에서 취득
-        /// 적 유닛: 모두 null로 초기화 (사기 50 시작)
-        /// </summary>
-        private void AttachCrews()
-        {
-            AttachCrewTo(playerUnit, true);
-            foreach (var e in enemyUnits)
-                if (e != null) AttachCrewTo(e, false);
-        }
-
-        /// <summary>
-        /// 한 유닛에 TankCrew 컴포넌트 부착 및 초기화.
-        /// </summary>
-        private void AttachCrewTo(GridTankUnit unit, bool isPlayer)
-        {
-            var crew = unit.gameObject.GetComponent<Crux.Unit.TankCrew>();
-            if (crew == null)
-                crew = unit.gameObject.AddComponent<Crux.Unit.TankCrew>();
-
-            if (isPlayer)
-            {
-                Crux.Data.CrewMemberSO cmd, gun, load, drv, mg;
-
-                // 1순위: Hangar BattleEntryData 편성 크루
-                var entryTank = (BattleEntryData.HasEntry && BattleEntryData.SortieTanks.Count > 0)
-                    ? BattleEntryData.SortieTanks[0]
-                    : null;
-
-                if (entryTank != null && entryTank.crew != null)
-                {
-                    cmd = entryTank.crew.commander?.data;
-                    gun = entryTank.crew.gunner?.data;
-                    load = entryTank.crew.loader?.data;
-                    drv = entryTank.crew.driver?.data;
-                    mg = entryTank.crew.gunnerMech?.data;
-                    Debug.Log($"[CRUX] 편성 크루 주입: {entryTank.tankName} ({cmd?.displayName}/{gun?.displayName}/{load?.displayName}/{drv?.displayName}/{mg?.displayName})");
-                }
-                else
-                {
-                    // 2순위: Inspector playerCrew 배열
-                    cmd = playerCrew.Length > 0 ? playerCrew[0] : null;
-                    gun = playerCrew.Length > 1 ? playerCrew[1] : null;
-                    load = playerCrew.Length > 2 ? playerCrew[2] : null;
-                    drv = playerCrew.Length > 3 ? playerCrew[3] : null;
-                    mg = playerCrew.Length > 4 ? playerCrew[4] : null;
-                }
-
-                string hullClassAxis = unit.tankData?.hullClass.ToString();
-                crew.Initialize(cmd, gun, load, drv, mg, hullClassAxis);
-            }
-            else
-            {
-                // 적 유닛: 모두 null로 호출해 기본 사기 50 시작
-                crew.Initialize(null, null, null, null, null, null);
-            }
-
-            // GridTankUnit이 TankCrew를 캐시하도록 바인딩
-            unit.BindCrew(crew);
-
-            Debug.Log($"[CRUX] TankCrew 초기화 — {(isPlayer ? "player" : "enemy")} {unit.Data?.tankName} morale={crew.Morale}");
-        }
 
         // ===== UI (OnGUI) =====
 
