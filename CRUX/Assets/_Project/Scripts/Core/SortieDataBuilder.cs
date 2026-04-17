@@ -25,12 +25,27 @@ namespace Crux.Core
             copy.tankName = entry.tankName;
             copy.hullClass = entry.hullClass;
             copy.isRocinante = entry.isRocinante;
+
+            // HP (장갑 파츠 기여 포함된 계산값)
             if (entry.MaxHP > 0)
                 copy.maxHP = entry.MaxHP;
+
+            // 주포 — 구경
             if (entry.mainGun?.data is MainGunPartSO mg)
                 copy.mainGunCaliber = mg.caliber;
 
-            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} (HP={copy.maxHP}, 구경={copy.mainGunCaliber})");
+            // 포탑 — 회전 속도
+            if (entry.turret?.data is TurretPartSO tr)
+                copy.turretRotationSpeed = tr.rotationSpeed;
+
+            // 탄약고 — 최대 적재량
+            if (entry.ammoRack?.data is AmmoRackPartSO ar)
+            {
+                copy.maxMainGunAmmo = ar.maxMainGunAmmo;
+                copy.maxMGAmmo = ar.maxMGAmmo;
+            }
+
+            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} · HP={copy.maxHP} · 구경={copy.mainGunCaliber} · 포탑회전={copy.turretRotationSpeed:F0}° · 주포탄={copy.maxMainGunAmmo}");
             return copy;
         }
     }
