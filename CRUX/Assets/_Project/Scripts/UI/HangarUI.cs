@@ -55,8 +55,19 @@ namespace Crux.UI
                 return;
 
             // ConvoyInventory는 POCO — SerializeField 직렬화 불가. MVP 폴백 인스턴스.
+            // 전투 씬에서 복귀한 경우 BattleEntryData.Convoy 재사용 (편성 상태 유지).
             if (convoyRef == null)
-                convoyRef = HangarBootstrap.BuildSampleConvoy(ref crewRoster);
+            {
+                if (Crux.Core.BattleEntryData.Convoy != null)
+                {
+                    convoyRef = Crux.Core.BattleEntryData.Convoy;
+                    Debug.Log("[Hangar] 이전 세션 Convoy 복원");
+                }
+                else
+                {
+                    convoyRef = HangarBootstrap.BuildSampleConvoy(ref crewRoster);
+                }
+            }
 
             // 오버레이 빌더 초기화
             if (overlayBuilder == null)
