@@ -45,8 +45,35 @@ namespace Crux.Core
                 copy.maxMGAmmo = ar.maxMGAmmo;
             }
 
-            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} · HP={copy.maxHP} · 구경={copy.mainGunCaliber} · 포탑회전={copy.turretRotationSpeed:F0}° · 주포탄={copy.maxMainGunAmmo}");
+            // 장갑 — armor 리스트 순서로 front/side/rear/turret 매핑
+            ApplyArmorProfile(entry, ref copy.armor);
+
+            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} · HP={copy.maxHP} · 구경={copy.mainGunCaliber} · 포탑회전={copy.turretRotationSpeed:F0}° · 주포탄={copy.maxMainGunAmmo} · 장갑 F/S/R/T={copy.armor.front:F0}/{copy.armor.side:F0}/{copy.armor.rear:F0}/{copy.armor.turret:F0}");
             return copy;
+        }
+
+        /// <summary>
+        /// TankInstance.armor 리스트를 TankDataSO.armor ArmorProfile에 매핑.
+        /// 슬롯 순서 규약: [0]=front, [1]=side, [2]=rear, [3]=turret.
+        /// 비어있는 슬롯은 Inspector 원본 값 유지.
+        /// </summary>
+        private static void ApplyArmorProfile(TankInstance entry, ref ArmorProfile profile)
+        {
+            if (entry.armor == null) return;
+            for (int i = 0; i < entry.armor.Count; i++)
+            {
+                var part = entry.armor[i];
+                if (part?.data is ArmorPartSO armor)
+                {
+                    switch (i)
+                    {
+                        case 0: profile.front = armor.baseProtection; break;
+                        case 1: profile.side = armor.baseProtection; break;
+                        case 2: profile.rear = armor.baseProtection; break;
+                        case 3: profile.turret = armor.baseProtection; break;
+                    }
+                }
+            }
         }
     }
 }

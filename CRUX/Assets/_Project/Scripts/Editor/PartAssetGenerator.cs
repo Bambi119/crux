@@ -40,9 +40,13 @@ namespace Crux.EditorTools
             CreateTrack("track_standard", "표준궤", 200f);
             CreateTrack("track_wide", "광궤", 280f);
 
+            // Armor 2
+            CreateArmor("armor_light", "경장갑판", 20f, 60f, ArmorType.Light, 1.4f);
+            CreateArmor("armor_heavy", "중장갑판", 60f, 140f, ArmorType.Heavy, 1.0f);
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[CRUX] 샘플 파츠 10개 생성 완료 (Assets/_Project/Data/Parts/Samples)");
+            Debug.Log("[CRUX] 샘플 파츠 12개 생성 완료 (Assets/_Project/Data/Parts/Samples)");
         }
 
         static void EnsureFolder(string path)
@@ -123,6 +127,22 @@ namespace Crux.EditorTools
             var so = ScriptableObject.CreateInstance<TrackPartSO>();
             so.partName = displayName;
             so.weight = weight;
+            AssetDatabase.CreateAsset(so, assetPath);
+            return so;
+        }
+
+        static ArmorPartSO CreateArmor(string id, string displayName, float weight, float baseProtection, ArmorType type, float angleModifier)
+        {
+            string assetPath = $"{SamplesPath}/{id}.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<ArmorPartSO>(assetPath);
+            if (existing != null) { Debug.LogWarning($"[CRUX] {assetPath} 존재 — 스킵"); return existing; }
+
+            var so = ScriptableObject.CreateInstance<ArmorPartSO>();
+            so.partName = displayName;
+            so.weight = weight;
+            so.baseProtection = baseProtection;
+            so.armorType = type;
+            so.angleModifier = angleModifier;
             AssetDatabase.CreateAsset(so, assetPath);
             return so;
         }

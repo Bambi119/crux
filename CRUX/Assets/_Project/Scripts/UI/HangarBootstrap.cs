@@ -180,6 +180,23 @@ namespace Crux.UI
             track2.partName = "광궤";
             track2.weight = 280f;
             convoy.Add(new PartInstance(track2));
+
+            // 장갑 2개
+            var armor1 = ScriptableObject.CreateInstance<ArmorPartSO>();
+            armor1.partName = "경장갑판";
+            armor1.weight = 20f;
+            armor1.baseProtection = 60f;
+            armor1.armorType = ArmorType.Light;
+            armor1.angleModifier = 1.4f;
+            convoy.Add(new PartInstance(armor1));
+
+            var armor2 = ScriptableObject.CreateInstance<ArmorPartSO>();
+            armor2.partName = "중장갑판";
+            armor2.weight = 60f;
+            armor2.baseProtection = 140f;
+            armor2.armorType = ArmorType.Heavy;
+            armor2.angleModifier = 1.0f;
+            convoy.Add(new PartInstance(armor2));
         }
 
 #if UNITY_EDITOR
@@ -194,7 +211,8 @@ namespace Crux.UI
                 "turret_medium", "turret_large",
                 "maingun_76mm", "maingun_88mm",
                 "ammorack_standard", "ammorack_large",
-                "track_standard", "track_wide"
+                "track_standard", "track_wide",
+                "armor_light", "armor_heavy"
             };
             int loaded = 0;
             foreach (var id in ids)
@@ -208,8 +226,8 @@ namespace Crux.UI
                 }
             }
             if (loaded > 0)
-                Debug.Log($"[Hangar] 파츠 에셋 로드: {loaded}/10");
-            return loaded == 10;
+                Debug.Log($"[Hangar] 파츠 에셋 로드: {loaded}/{ids.Length}");
+            return loaded == ids.Length;
         }
 #endif
 
@@ -242,6 +260,7 @@ namespace Crux.UI
 
         private static void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
         {
+            // 단일 슬롯 5종
             var categories = new[] {
                 PartCategory.Engine,
                 PartCategory.Turret,
@@ -255,6 +274,31 @@ namespace Crux.UI
                 if (parts.Count > 0)
                     convoy.EquipTo(tank, parts[0].instanceId, cat);
             }
+
+            // 장갑 — armor 슬롯 수만큼 중장갑판부터 장착 (여러 개면 같은 것 반복 장착은 못함)
+            // MVP: 0번 슬롯(전면)에 중장갑판, 1번 슬롯(측면)에 경장갑판
+            var armorParts = convoy.GetByCategory(PartCategory.Armor);
+            if (tank.armor != null && tank.armor.Count > 0 && armorParts.Count > 0)
+            {
+                // 0번 슬롯: 중장갑판(heavy) 우선
+                var heavy = FindByName(armorParts, "중장갑판");
+                if (heavy != null) convoy.EquipTo(tank, heavy.instanceId, PartCategory.Armor, 0);
+
+                // 1번 슬롯: 경장갑판(light)
+                if (tank.armor.Count > 1)
+                {
+                    var light = FindByName(convoy.GetByCategory(PartCategory.Armor), "경장갑판");
+                    if (light != null) convoy.EquipTo(tank, light.instanceId, PartCategory.Armor, 1);
+                }
+            }
+        }
+
+        private static PartInstance FindByName(System.Collections.Generic.IReadOnlyList<PartInstance> parts, string partName)
+        {
+            for (int i = 0; i < parts.Count; i++)
+                if (parts[i]?.data != null && parts[i].data.partName == partName)
+                    return parts[i];
+            return null;
         }
     }
 }
