@@ -1,0 +1,285 @@
+using UnityEngine;
+using UnityEngine.UI;
+using Crux.Data;
+
+namespace Crux.UI
+{
+    /// <summary>
+    /// Hangar 오버레이(파츠 인벤토리 / 크루 풀 팝업) GameObject 조립 전담.
+    /// HangarUI가 활성 오버레이 참조를 관리하고, 이 클래스는 GameObject 생성과 레이아웃을 담당.
+    /// </summary>
+    public class HangarOverlayBuilder
+    {
+        private readonly HangarUI owner;
+        private readonly ConvoyInventory convoy;
+
+        public HangarOverlayBuilder(HangarUI owner, ConvoyInventory convoy)
+        {
+            this.owner = owner;
+            this.convoy = convoy;
+        }
+
+        public GameObject BuildPartsOverlay(TankInstance tank)
+        {
+            // 배경 panel (반투명 검정 전체 스크린)
+            var root = new GameObject("PartsInventoryOverlay");
+            root.AddComponent<RectTransform>();
+            var bgImg = root.AddComponent<Image>();
+            bgImg.color = new Color(0f, 0f, 0f, 0.75f);
+
+            // 내부 패널 (가운데 640x600 박스)
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var panelRt = panel.AddComponent<RectTransform>();
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+            panelRt.sizeDelta = new Vector2(640f, 600f);
+            panelRt.anchoredPosition = Vector2.zero;
+            var panelImg = panel.AddComponent<Image>();
+            panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
+
+            var vlg = panel.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(16, 16, 16, 16);
+            vlg.spacing = 8;
+            vlg.childAlignment = TextAnchor.UpperLeft;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+
+            // 제목
+            AddText(panel.transform, "TitleText", $"파츠 인벤토리 · {tank.tankName}", 20, new Color(1f, 1f, 1f), 32);
+
+            // 5개 슬롯 라벨 + 장착 파츠
+            AddSlotRow(panel.transform, "주포", tank.mainGun);
+            AddSlotRow(panel.transform, "터렛", tank.turret);
+            AddSlotRow(panel.transform, "엔진", tank.engine);
+            AddSlotRow(panel.transform, "탄약고", tank.ammoRack);
+            AddSlotRow(panel.transform, "궤도", tank.track);
+
+            // "보유 파츠 (여분)" 섹션 라벨
+            AddText(panel.transform, "SpareHeaderText", "보유 파츠 (여분)", 18, new Color(0.95f, 0.85f, 0.55f), 28);
+
+            // 카테고리별 여분 파츠 표시
+            foreach (var cat in new[] {
+                PartCategory.Engine,
+                PartCategory.Turret,
+                PartCategory.MainGun,
+                PartCategory.AmmoRack,
+                PartCategory.Track,
+            })
+            {
+                var parts = convoy.GetByCategory(cat);
+                foreach (var p in parts)
+                {
+                    AddSparePartRow(panel.transform, p, tank);
+                }
+            }
+
+            // 닫기 버튼 (하단)
+            AddCloseButton(panel.transform);
+
+            return root;
+        }
+
+        public GameObject BuildCrewPoolPopup(TankInstance tank, CrewClass klass)
+        {
+            // 반투명 풀스크린 배경
+            var root = new GameObject("CrewPoolPopup");
+            root.AddComponent<RectTransform>();
+            var bgImg = root.AddComponent<Image>();
+            bgImg.color = new Color(0f, 0f, 0f, 0.75f);
+
+            // 중앙 패널 420 x 400
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var panelRt = panel.AddComponent<RectTransform>();
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+            panelRt.sizeDelta = new Vector2(420f, 400f);
+            panelRt.anchoredPosition = Vector2.zero;
+            var panelImg = panel.AddComponent<Image>();
+            panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
+
+            var vlg = panel.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(16, 16, 16, 16);
+            vlg.spacing = 6;
+            vlg.childAlignment = TextAnchor.UpperLeft;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+
+            // 제목
+            AddText(panel.transform, "TitleText", $"{klass} 후보", 20, Color.white, 32);
+
+            // 풀에서 같은 klass 필터
+            var candidates = convoy.availableCrew.FindAll(c => c.Class == klass);
+            if (candidates.Count == 0)
+            {
+                AddText(panel.transform, "EmptyText", $"사용 가능한 {klass} 없음", 14, new Color(0.6f, 0.6f, 0.6f), 26);
+            }
+            else
+            {
+                foreach (var c in candidates)
+                    AddCrewCandidateRow(panel.transform, tank, klass, c);
+            }
+
+            // 닫기 버튼 (하단)
+            AddCloseButton(panel.transform);
+
+            return root;
+        }
+
+        private void AddText(Transform parent, string name, string text, int fontSize, Color color, float preferredHeight)
+        {
+            var obj = new GameObject(name);
+            obj.transform.SetParent(parent, false);
+            obj.AddComponent<RectTransform>();
+            var t = obj.AddComponent<Text>();
+            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            t.fontSize = fontSize;
+            t.color = color;
+            t.alignment = TextAnchor.MiddleLeft;
+            t.text = text;
+            var le = obj.AddComponent<LayoutElement>();
+            le.preferredHeight = preferredHeight;
+        }
+
+        private void AddSlotRow(Transform parent, string label, PartInstance part)
+        {
+            string value = (part != null && part.data != null) ? part.data.partName : "(비어있음)";
+            Color color = (part != null) ? new Color(0.85f, 0.9f, 0.85f) : new Color(0.6f, 0.6f, 0.6f);
+            AddText(parent, $"Slot_{label}", $"{label}: {value}", 16, color, 24);
+        }
+
+        private void AddSparePartRow(Transform parent, PartInstance part, TankInstance tank)
+        {
+            if (part == null || part.data == null) return;
+
+            // 수평 배치 row
+            var rowObj = new GameObject($"Spare_{part.data.partName}");
+            rowObj.transform.SetParent(parent, false);
+            rowObj.AddComponent<RectTransform>();
+            var hlg = rowObj.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 8;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+            var rowLe = rowObj.AddComponent<LayoutElement>();
+            rowLe.preferredHeight = 28;
+
+            // 왼쪽: 파츠 이름 + 카테고리 Text
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(rowObj.transform, false);
+            labelObj.AddComponent<RectTransform>();
+            var labelText = labelObj.AddComponent<Text>();
+            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            labelText.fontSize = 14;
+            labelText.color = new Color(0.85f, 0.85f, 0.85f);
+            labelText.alignment = TextAnchor.MiddleLeft;
+            labelText.text = $"{part.data.partName}  ({part.data.category})";
+            var labelLe = labelObj.AddComponent<LayoutElement>();
+            labelLe.flexibleWidth = 1;
+
+            // 오른쪽: [교체] 버튼
+            var btnObj = new GameObject("SwapButton");
+            btnObj.transform.SetParent(rowObj.transform, false);
+            btnObj.AddComponent<RectTransform>();
+            var btnImg = btnObj.AddComponent<Image>();
+            btnImg.color = new Color(0.3f, 0.35f, 0.42f, 1f);
+            var btn = btnObj.AddComponent<Button>();
+            var btnLe = btnObj.AddComponent<LayoutElement>();
+            btnLe.preferredWidth = 60;
+
+            // Button label
+            var btnLabelObj = new GameObject("Text");
+            btnLabelObj.transform.SetParent(btnObj.transform, false);
+            var btnLabelRt = btnLabelObj.AddComponent<RectTransform>();
+            btnLabelRt.anchorMin = Vector2.zero;
+            btnLabelRt.anchorMax = Vector2.one;
+            btnLabelRt.offsetMin = Vector2.zero;
+            btnLabelRt.offsetMax = Vector2.zero;
+            var btnLabelText = btnLabelObj.AddComponent<Text>();
+            btnLabelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            btnLabelText.fontSize = 14;
+            btnLabelText.alignment = TextAnchor.MiddleCenter;
+            btnLabelText.color = Color.white;
+            btnLabelText.text = "교체";
+
+            var captured = part;
+            btn.onClick.AddListener(() => SwapPart(tank, captured));
+        }
+
+        private void AddCrewCandidateRow(Transform parent, TankInstance tank, CrewClass klass, CrewMemberRuntime crew)
+        {
+            var row = new GameObject($"Candidate_{crew.DisplayName}");
+            row.transform.SetParent(parent, false);
+            row.AddComponent<RectTransform>();
+            var img = row.AddComponent<Image>();
+            img.color = new Color(0.2f, 0.22f, 0.26f, 1f);
+            var btn = row.AddComponent<Button>();
+            var le = row.AddComponent<LayoutElement>();
+            le.preferredHeight = 32;
+
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(row.transform, false);
+            var labelRt = labelObj.AddComponent<RectTransform>();
+            labelRt.anchorMin = Vector2.zero;
+            labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = new Vector2(8, 0);
+            labelRt.offsetMax = Vector2.zero;
+            var text = labelObj.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 14;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = new Color(0.9f, 0.9f, 0.9f);
+            text.text = $"{crew.DisplayName}  (Aim {crew.BaseAim} · React {crew.BaseReact} · Tech {crew.BaseTech})";
+
+            var captured = crew;
+            btn.onClick.AddListener(() => {
+                convoy.AssignCrewTo(tank, klass, captured.data.id);
+                owner.CloseOverlay();
+                owner.NotifyUnitSelected(tank);
+            });
+        }
+
+        private void AddCloseButton(Transform parent)
+        {
+            var closeObj = new GameObject("CloseButton");
+            closeObj.transform.SetParent(parent, false);
+            closeObj.AddComponent<RectTransform>();
+            var closeImg = closeObj.AddComponent<Image>();
+            closeImg.color = new Color(0.45f, 0.2f, 0.2f, 1f);
+            var closeBtn = closeObj.AddComponent<Button>();
+            closeBtn.onClick.AddListener(() => owner.CloseOverlay());
+            var le = closeObj.AddComponent<LayoutElement>();
+            le.preferredHeight = 32;
+
+            var labelObj = new GameObject("Text");
+            labelObj.transform.SetParent(closeObj.transform, false);
+            var labelRt = labelObj.AddComponent<RectTransform>();
+            labelRt.anchorMin = Vector2.zero;
+            labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+            var text = labelObj.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 14;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.text = "닫기";
+        }
+
+        private void SwapPart(TankInstance tank, PartInstance newPart)
+        {
+            if (tank == null || newPart == null) return;
+            convoy.ReturnFrom(tank, newPart.Category);
+            convoy.EquipTo(tank, newPart.instanceId, newPart.Category);
+            owner.RefreshPartsOverlay();
+            owner.NotifyUnitSelected(tank);
+        }
+    }
+}

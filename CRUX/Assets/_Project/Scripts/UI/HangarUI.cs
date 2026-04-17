@@ -9,6 +9,8 @@ namespace Crux.UI
     /// <summary>
     /// Hangar 씬 메인 오케스트레이터.
     /// 상단바(자금·사기), 좌측 탭 메뉴(6종), 중앙 탭 콘텐츠, 우측 유닛 정보 패널 관리.
+    /// 오버레이(파츠·크루) 생성·소멸은 HangarOverlayBuilder로 위임.
+    /// 부대 시드는 HangarBootstrap으로 위임.
     /// </summary>
     public class HangarUI : MonoBehaviour
     {
@@ -45,6 +47,7 @@ namespace Crux.UI
         private Dictionary<HangarTab, GameObject> instantiatedTabs = new();
         private GameObject activeOverlay;  // 중복 생성 방지
         private TankInstance selectedTank; // 가장 최근 선택된 탱크
+        private HangarOverlayBuilder overlayBuilder; // 오버레이 생성 담당
 
         private void OnEnable()
         {
@@ -53,7 +56,11 @@ namespace Crux.UI
 
             // ConvoyInventory는 POCO — SerializeField 직렬화 불가. MVP 폴백 인스턴스.
             if (convoyRef == null)
-                convoyRef = BuildSampleConvoy();
+                convoyRef = HangarBootstrap.BuildSampleConvoy(ref crewRoster);
+
+            // 오버레이 빌더 초기화
+            if (overlayBuilder == null)
+                overlayBuilder = new HangarOverlayBuilder(this, convoyRef);
 
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
@@ -96,161 +103,6 @@ namespace Crux.UI
                     HangarTab tabCopy = tab;
                     btn.onClick.AddListener(() => SelectTab(tabCopy));
                 }
-            }
-        }
-
-        private ConvoyInventory BuildSampleConvoy()
-        {
-            var convoy = new ConvoyInventory();
-
-#if UNITY_EDITOR
-            // Editor fallback — Inspector 미할당 시 AssetDatabase로 5명 자동 로드 (MVP 편의)
-            if (crewRoster == null || crewRoster.Length == 0)
-            {
-                string[] ids = { "astra", "ririd", "grin", "pretena", "iris" };
-                var list = new List<Crux.Data.CrewMemberSO>();
-                foreach (var id in ids)
-                {
-                    var path = $"Assets/_Project/Data/Crew/Members/Crew_{id}.asset";
-                    var so = UnityEditor.AssetDatabase.LoadAssetAtPath<Crux.Data.CrewMemberSO>(path);
-                    if (so != null) list.Add(so);
-                }
-                crewRoster = list.ToArray();
-            }
-#endif
-
-            // 1) 승무원 풀 시드 — Inspector 할당 에셋으로
-            if (crewRoster != null)
-            {
-                foreach (var so in crewRoster)
-                {
-                    if (so == null) continue;
-                    convoy.availableCrew.Add(new Crux.Data.CrewMemberRuntime(so));
-                }
-            }
-
-            // 2) 샘플 탱크 1대 — 로시난테 (출격 슬롯 기본)
-            var rocinante = new Crux.Data.TankInstance("로시난테", Crux.Data.HullClass.Assault);
-            rocinante.isRocinante = true;
-            rocinante.inSortie = true;
-            convoy.tanks.Add(rocinante);
-
-            // 2-b) 샘플 탱크 2대 (보관 예시) — T-34 Scout / 셔먼 Support
-            var t34 = new Crux.Data.TankInstance("T-34", Crux.Data.HullClass.Scout);
-            t34.inSortie = false;
-            convoy.tanks.Add(t34);
-
-            var sherman = new Crux.Data.TankInstance("셔먼", Crux.Data.HullClass.Support);
-            sherman.inSortie = false;
-            convoy.tanks.Add(sherman);
-
-            // 3) 5명 자동 할당 — 풀에 있는 승무원의 Class로 직책 판정
-            var classes = new[] {
-                Crux.Data.CrewClass.Commander,
-                Crux.Data.CrewClass.Gunner,
-                Crux.Data.CrewClass.Loader,
-                Crux.Data.CrewClass.Driver,
-                Crux.Data.CrewClass.GunnerMech
-            };
-            foreach (var klass in classes)
-            {
-                // 풀에서 해당 직책의 첫 승무원 id 찾아 할당
-                var c = convoy.availableCrew.Find(cr => cr.Class == klass);
-                if (c != null && c.data != null)
-                    convoy.AssignCrewTo(rocinante, klass, c.data.id);
-            }
-
-            // 4) 샘플 파츠 시드 + 로시난테 기본 장착
-            //    ScriptableObject.CreateInstance로 SO 에셋 없이 런타임 생성.
-            //    각 PartSO는 OnEnable에서 category 자동 설정됨.
-            SeedSampleParts(convoy);
-            EquipSamplePartsToTank(convoy, rocinante);
-
-            return convoy;
-        }
-
-        private void SeedSampleParts(ConvoyInventory convoy)
-        {
-            // 엔진 2개
-            var engine1 = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
-            engine1.partName = "V8 디젤";
-            engine1.weight = 500f;
-            engine1.powerOutput = 400f;
-            convoy.Add(new Crux.Data.PartInstance(engine1));
-
-            var engine2 = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
-            engine2.partName = "V6 가솔린";
-            engine2.weight = 380f;
-            engine2.powerOutput = 280f;
-            convoy.Add(new Crux.Data.PartInstance(engine2));
-
-            // 터렛 2개
-            var turret1 = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
-            turret1.partName = "중형 터렛";
-            turret1.weight = 300f;
-            turret1.caliberLimit = 75;
-            convoy.Add(new Crux.Data.PartInstance(turret1));
-
-            var turret2 = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
-            turret2.partName = "대형 터렛";
-            turret2.weight = 450f;
-            turret2.caliberLimit = 120;
-            convoy.Add(new Crux.Data.PartInstance(turret2));
-
-            // 주포 2개
-            var mainGun1 = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
-            mainGun1.partName = "76mm 장포신";
-            mainGun1.weight = 250f;
-            mainGun1.caliber = 75;
-            mainGun1.basePenetration = 120f;
-            convoy.Add(new Crux.Data.PartInstance(mainGun1));
-
-            var mainGun2 = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
-            mainGun2.partName = "88mm 단포신";
-            mainGun2.weight = 350f;
-            mainGun2.caliber = 88;
-            mainGun2.basePenetration = 150f;
-            convoy.Add(new Crux.Data.PartInstance(mainGun2));
-
-            // 탄약고 2개
-            var ammoRack1 = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
-            ammoRack1.partName = "표준 탄약고";
-            ammoRack1.weight = 100f;
-            ammoRack1.maxMainGunAmmo = 30;
-            convoy.Add(new Crux.Data.PartInstance(ammoRack1));
-
-            var ammoRack2 = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
-            ammoRack2.partName = "대용량 탄약고";
-            ammoRack2.weight = 160f;
-            ammoRack2.maxMainGunAmmo = 50;
-            convoy.Add(new Crux.Data.PartInstance(ammoRack2));
-
-            // 궤도 2개
-            var track1 = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
-            track1.partName = "표준궤";
-            track1.weight = 200f;
-            convoy.Add(new Crux.Data.PartInstance(track1));
-
-            var track2 = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
-            track2.partName = "광궤";
-            track2.weight = 280f;
-            convoy.Add(new Crux.Data.PartInstance(track2));
-        }
-
-        private void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
-        {
-            var categories = new[] {
-                Crux.Data.PartCategory.Engine,
-                Crux.Data.PartCategory.Turret,
-                Crux.Data.PartCategory.MainGun,
-                Crux.Data.PartCategory.AmmoRack,
-                Crux.Data.PartCategory.Track,
-            };
-            foreach (var cat in categories)
-            {
-                var parts = convoy.GetByCategory(cat);
-                if (parts.Count > 0)
-                    convoy.EquipTo(tank, parts[0].instanceId, cat);
             }
         }
 
@@ -497,14 +349,13 @@ namespace Crux.UI
 
         public void OpenPartsInventory(TankInstance tank)
         {
-            if (tank == null) return;
+            if (tank == null || overlayBuilder == null) return;
             if (activeOverlay != null) Destroy(activeOverlay);
 
-            // OverlayCanvas 찾기 (씬 루트)
             var overlayCanvas = GameObject.Find("OverlayCanvas");
             if (overlayCanvas == null) return;
 
-            activeOverlay = BuildPartsOverlay(tank);
+            activeOverlay = overlayBuilder.BuildPartsOverlay(tank);
             activeOverlay.transform.SetParent(overlayCanvas.transform, false);
             var rt = activeOverlay.GetComponent<RectTransform>();
             rt.anchorMin = Vector2.zero;
@@ -520,182 +371,6 @@ namespace Crux.UI
                 Destroy(activeOverlay);
                 activeOverlay = null;
             }
-        }
-
-        private GameObject BuildPartsOverlay(TankInstance tank)
-        {
-            // 배경 panel (반투명 검정 전체 스크린)
-            var root = new GameObject("PartsInventoryOverlay");
-            root.AddComponent<RectTransform>();
-            var bgImg = root.AddComponent<Image>();
-            bgImg.color = new Color(0f, 0f, 0f, 0.75f);
-
-            // 내부 패널 (가운데 640x600 박스 — 높이 증가)
-            var panel = new GameObject("Panel");
-            panel.transform.SetParent(root.transform, false);
-            var panelRt = panel.AddComponent<RectTransform>();
-            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
-            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-            panelRt.pivot = new Vector2(0.5f, 0.5f);
-            panelRt.sizeDelta = new Vector2(640f, 600f);
-            panelRt.anchoredPosition = Vector2.zero;
-            var panelImg = panel.AddComponent<Image>();
-            panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
-
-            var vlg = panel.AddComponent<VerticalLayoutGroup>();
-            vlg.padding = new RectOffset(16, 16, 16, 16);
-            vlg.spacing = 8;
-            vlg.childAlignment = TextAnchor.UpperLeft;
-            vlg.childControlWidth = true;
-            vlg.childControlHeight = false;
-            vlg.childForceExpandWidth = true;
-            vlg.childForceExpandHeight = false;
-
-            // 제목
-            AddText(panel.transform, "TitleText", $"파츠 인벤토리 · {tank.tankName}", 20, new Color(1f, 1f, 1f), 32);
-
-            // 5개 슬롯 라벨 + 장착 파츠
-            AddSlotRow(panel.transform, "주포", tank.mainGun);
-            AddSlotRow(panel.transform, "터렛", tank.turret);
-            AddSlotRow(panel.transform, "엔진", tank.engine);
-            AddSlotRow(panel.transform, "탄약고", tank.ammoRack);
-            AddSlotRow(panel.transform, "궤도", tank.track);
-
-            // "보유 파츠 (여분)" 섹션 라벨
-            AddText(panel.transform, "SpareHeaderText", "보유 파츠 (여분)", 18, new Color(0.95f, 0.85f, 0.55f), 28);
-
-            // 카테고리별 여분 파츠 표시
-            foreach (var cat in new[] {
-                Crux.Data.PartCategory.Engine,
-                Crux.Data.PartCategory.Turret,
-                Crux.Data.PartCategory.MainGun,
-                Crux.Data.PartCategory.AmmoRack,
-                Crux.Data.PartCategory.Track,
-            })
-            {
-                var parts = convoyRef.GetByCategory(cat);
-                foreach (var p in parts)
-                {
-                    AddSparePartRow(panel.transform, p, tank);
-                }
-            }
-
-            // 닫기 버튼 (하단)
-            var closeObj = new GameObject("CloseButton");
-            closeObj.transform.SetParent(panel.transform, false);
-            closeObj.AddComponent<RectTransform>();
-            var closeImg = closeObj.AddComponent<Image>();
-            closeImg.color = new Color(0.45f, 0.2f, 0.2f, 1f);
-            var closeBtn = closeObj.AddComponent<Button>();
-            closeBtn.onClick.AddListener(CloseOverlay);
-            var closeLe = closeObj.AddComponent<LayoutElement>();
-            closeLe.preferredHeight = 36;
-            // Label
-            var closeLabelObj = new GameObject("Label");
-            closeLabelObj.transform.SetParent(closeObj.transform, false);
-            var closeLabelRt = closeLabelObj.AddComponent<RectTransform>();
-            closeLabelRt.anchorMin = Vector2.zero;
-            closeLabelRt.anchorMax = Vector2.one;
-            closeLabelRt.offsetMin = Vector2.zero;
-            closeLabelRt.offsetMax = Vector2.zero;
-            var closeText = closeLabelObj.AddComponent<Text>();
-            closeText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            closeText.fontSize = 16;
-            closeText.alignment = TextAnchor.MiddleCenter;
-            closeText.color = Color.white;
-            closeText.text = "닫기";
-
-            return root;
-        }
-
-        private void AddText(Transform parent, string name, string text, int fontSize, Color color, float preferredHeight)
-        {
-            var obj = new GameObject(name);
-            obj.transform.SetParent(parent, false);
-            obj.AddComponent<RectTransform>();
-            var t = obj.AddComponent<Text>();
-            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            t.fontSize = fontSize;
-            t.color = color;
-            t.alignment = TextAnchor.MiddleLeft;
-            t.text = text;
-            var le = obj.AddComponent<LayoutElement>();
-            le.preferredHeight = preferredHeight;
-        }
-
-        private void AddSlotRow(Transform parent, string label, Crux.Data.PartInstance part)
-        {
-            string value = (part != null && part.data != null) ? part.data.partName : "(비어있음)";
-            Color color = (part != null) ? new Color(0.85f, 0.9f, 0.85f) : new Color(0.6f, 0.6f, 0.6f);
-            AddText(parent, $"Slot_{label}", $"{label}: {value}", 16, color, 24);
-        }
-
-        private void AddSparePartRow(Transform parent, Crux.Data.PartInstance part, Crux.Data.TankInstance tank)
-        {
-            if (part == null || part.data == null) return;
-
-            // 수평 배치 row (HorizontalLayoutGroup)
-            var rowObj = new GameObject($"Spare_{part.data.partName}");
-            rowObj.transform.SetParent(parent, false);
-            rowObj.AddComponent<RectTransform>();
-            var hlg = rowObj.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 8;
-            hlg.childControlWidth = true;
-            hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
-            hlg.childForceExpandHeight = true;
-            var rowLe = rowObj.AddComponent<LayoutElement>();
-            rowLe.preferredHeight = 28;
-
-            // 왼쪽: 파츠 이름 + 카테고리 Text (flexibleWidth=1)
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(rowObj.transform, false);
-            labelObj.AddComponent<RectTransform>();
-            var labelText = labelObj.AddComponent<Text>();
-            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            labelText.fontSize = 14;
-            labelText.color = new Color(0.85f, 0.85f, 0.85f);
-            labelText.alignment = TextAnchor.MiddleLeft;
-            labelText.text = $"{part.data.partName}  ({part.data.category})";
-            var labelLe = labelObj.AddComponent<LayoutElement>();
-            labelLe.flexibleWidth = 1;
-
-            // 오른쪽: [교체] 버튼 (preferredWidth=60, preferredHeight=28)
-            var btnObj = new GameObject("SwapButton");
-            btnObj.transform.SetParent(rowObj.transform, false);
-            btnObj.AddComponent<RectTransform>();
-            var btnImg = btnObj.AddComponent<Image>();
-            btnImg.color = new Color(0.3f, 0.35f, 0.42f, 1f);
-            var btn = btnObj.AddComponent<Button>();
-            var btnLe = btnObj.AddComponent<LayoutElement>();
-            btnLe.preferredWidth = 60;
-
-            // Button label
-            var btnLabelObj = new GameObject("Text");
-            btnLabelObj.transform.SetParent(btnObj.transform, false);
-            var btnLabelRt = btnLabelObj.AddComponent<RectTransform>();
-            btnLabelRt.anchorMin = Vector2.zero;
-            btnLabelRt.anchorMax = Vector2.one;
-            btnLabelRt.offsetMin = Vector2.zero;
-            btnLabelRt.offsetMax = Vector2.zero;
-            var btnLabelText = btnLabelObj.AddComponent<Text>();
-            btnLabelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            btnLabelText.fontSize = 14;
-            btnLabelText.alignment = TextAnchor.MiddleCenter;
-            btnLabelText.color = Color.white;
-            btnLabelText.text = "교체";
-
-            var captured = part;
-            btn.onClick.AddListener(() => SwapPart(tank, captured));
-        }
-
-        private void SwapPart(Crux.Data.TankInstance tank, Crux.Data.PartInstance newPart)
-        {
-            if (tank == null || newPart == null) return;
-            convoyRef.ReturnFrom(tank, newPart.Category);
-            convoyRef.EquipTo(tank, newPart.instanceId, newPart.Category);
-            RefreshPartsOverlay();
-            if (rightPanel != null) rightPanel.SetUnit(tank);
         }
 
         public void RefreshPartsOverlay()
@@ -716,13 +391,13 @@ namespace Crux.UI
 
         public void OpenCrewPool(TankInstance tank, CrewClass klass)
         {
-            if (tank == null || convoyRef == null) return;
+            if (tank == null || overlayBuilder == null) return;
             if (activeOverlay != null) Destroy(activeOverlay);
 
             var overlayCanvas = GameObject.Find("OverlayCanvas");
             if (overlayCanvas == null) return;
 
-            activeOverlay = BuildCrewPoolPopup(tank, klass);
+            activeOverlay = overlayBuilder.BuildCrewPoolPopup(tank, klass);
             activeOverlay.transform.SetParent(overlayCanvas.transform, false);
             var rt = activeOverlay.GetComponent<RectTransform>();
             rt.anchorMin = Vector2.zero;
@@ -731,113 +406,12 @@ namespace Crux.UI
             rt.offsetMax = Vector2.zero;
         }
 
-        private GameObject BuildCrewPoolPopup(TankInstance tank, CrewClass klass)
+        /// <summary>
+        /// Overlay 내부 콜백이 우측 패널을 갱신하도록 호출할 공개 메서드.
+        /// </summary>
+        public void NotifyUnitSelected(TankInstance tank)
         {
-            // 반투명 풀스크린 배경
-            var root = new GameObject("CrewPoolPopup");
-            root.AddComponent<RectTransform>();
-            var bgImg = root.AddComponent<Image>();
-            bgImg.color = new Color(0f, 0f, 0f, 0.75f);
-
-            // 중앙 패널 420 x 400
-            var panel = new GameObject("Panel");
-            panel.transform.SetParent(root.transform, false);
-            var panelRt = panel.AddComponent<RectTransform>();
-            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
-            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-            panelRt.pivot = new Vector2(0.5f, 0.5f);
-            panelRt.sizeDelta = new Vector2(420f, 400f);
-            panelRt.anchoredPosition = Vector2.zero;
-            var panelImg = panel.AddComponent<Image>();
-            panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
-
-            var vlg = panel.AddComponent<VerticalLayoutGroup>();
-            vlg.padding = new RectOffset(16, 16, 16, 16);
-            vlg.spacing = 6;
-            vlg.childAlignment = TextAnchor.UpperLeft;
-            vlg.childControlWidth = true;
-            vlg.childControlHeight = false;
-            vlg.childForceExpandWidth = true;
-
-            // 제목
-            AddText(panel.transform, "TitleText", $"{klass} 후보", 20, Color.white, 32);
-
-            // 풀에서 같은 klass 필터
-            var candidates = convoyRef.availableCrew.FindAll(c => c.Class == klass);
-            if (candidates.Count == 0)
-            {
-                AddText(panel.transform, "EmptyText", $"사용 가능한 {klass} 없음", 14, new Color(0.6f, 0.6f, 0.6f), 26);
-            }
-            else
-            {
-                foreach (var c in candidates)
-                    AddCrewCandidateRow(panel.transform, tank, klass, c);
-            }
-
-            // 닫기 버튼 (하단)
-            AddCloseButton(panel.transform);
-
-            return root;
-        }
-
-        private void AddCrewCandidateRow(Transform parent, TankInstance tank, CrewClass klass, CrewMemberRuntime crew)
-        {
-            var row = new GameObject($"Candidate_{crew.DisplayName}");
-            row.transform.SetParent(parent, false);
-            row.AddComponent<RectTransform>();
-            var img = row.AddComponent<Image>();
-            img.color = new Color(0.2f, 0.22f, 0.26f, 1f);
-            var btn = row.AddComponent<Button>();
-            var le = row.AddComponent<LayoutElement>();
-            le.preferredHeight = 32;
-
-            var labelObj = new GameObject("Label");
-            labelObj.transform.SetParent(row.transform, false);
-            var labelRt = labelObj.AddComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = new Vector2(8, 0);
-            labelRt.offsetMax = Vector2.zero;
-            var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 14;
-            text.alignment = TextAnchor.MiddleLeft;
-            text.color = new Color(0.9f, 0.9f, 0.9f);
-            text.text = $"{crew.DisplayName}  (Aim {crew.BaseAim} · React {crew.BaseReact} · Tech {crew.BaseTech})";
-
-            var captured = crew;
-            btn.onClick.AddListener(() => {
-                convoyRef.AssignCrewTo(tank, klass, captured.data.id);
-                CloseOverlay();
-                if (rightPanel != null) rightPanel.SetUnit(tank);
-            });
-        }
-
-        private void AddCloseButton(Transform parent)
-        {
-            var closeObj = new GameObject("CloseButton");
-            closeObj.transform.SetParent(parent, false);
-            closeObj.AddComponent<RectTransform>();
-            var closeImg = closeObj.AddComponent<Image>();
-            closeImg.color = new Color(0.45f, 0.2f, 0.2f, 1f);
-            var closeBtn = closeObj.AddComponent<Button>();
-            closeBtn.onClick.AddListener(CloseOverlay);
-            var le = closeObj.AddComponent<LayoutElement>();
-            le.preferredHeight = 32;
-
-            var labelObj = new GameObject("Text");
-            labelObj.transform.SetParent(closeObj.transform, false);
-            var labelRt = labelObj.AddComponent<RectTransform>();
-            labelRt.anchorMin = Vector2.zero;
-            labelRt.anchorMax = Vector2.one;
-            labelRt.offsetMin = Vector2.zero;
-            labelRt.offsetMax = Vector2.zero;
-            var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 14;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
-            text.text = "닫기";
+            if (rightPanel != null) rightPanel.SetUnit(tank);
         }
     }
 }
