@@ -3,18 +3,159 @@ using UnityEngine;
 namespace Crux.Cinematic
 {
     /// <summary>
-    /// ConcreteImpact VFX 파티클 시스템 런타임 구성.
-    /// Unity Inspector 조작 없이 코드로 모든 주요 속성 세팅 (MCP 단독 환경 대응).
-    /// v2: 색상 Gradient · Cone 방향성 · 속도·버스트 상향.
+    /// 폭발 VFX 파티클 시스템 런타임 구성 — v4 4단 구조.
+    /// Sparks · Flash · Fire · Smoke 각각 전담 Configure 메서드.
+    /// 사용자 지정 구체 수치 준수.
     /// </summary>
     public static class ParticleSystemConfig
     {
+        // ---------- 공용 헬퍼 ----------
+
+        /// <summary>주황 발광 근사 머티리얼. HDR 색상 intensity로 Default-Particle 대체.</summary>
+        private static Material _orangeEmissiveMat;
+        public static Material GetOrangeEmissiveMaterial()
+        {
+            if (_orangeEmissiveMat != null) return _orangeEmissiveMat;
+            var shader = Shader.Find("Sprites/Default");
+            if (shader == null) return null;
+            _orangeEmissiveMat = new Material(shader);
+            _orangeEmissiveMat.mainTexture = Texture2D.whiteTexture;
+            // Sprites/Default는 HDR intensity 직접 지원 안함 → Color만 밝은 주황으로
+            _orangeEmissiveMat.color = new Color(1.2f, 0.6f, 0.15f, 1f);
+            return _orangeEmissiveMat;
+        }
+
+        /// <summary>검은 연기 근사 머티리얼 (발광 없음).</summary>
+        private static Material _smokeMat;
+        public static Material GetSmokeMaterial()
+        {
+            if (_smokeMat != null) return _smokeMat;
+            var shader = Shader.Find("Sprites/Default");
+            if (shader == null) return null;
+            _smokeMat = new Material(shader);
+            _smokeMat.mainTexture = Texture2D.whiteTexture;
+            _smokeMat.color = new Color(0.1f, 0.1f, 0.1f, 1f);
+            return _smokeMat;
+        }
+
+        // ---------- 1. Sparks (불꽃) ----------
+
         /// <summary>
-        /// 금속 스파크 — 그라인더 불꽃 톤. 탄환급 속도 + 중력≈0 + 짧은 수명.
-        /// 해머로 금속 측면을 때린 순간 사방으로 번쩍 비산하는 효과.
-        /// Cone forward = transform.forward (+Z), VFXTestRunner에서 방향 지정.
+        /// Sparks — Burst 15~25, Sphere Shape, Stretched Billboard.
+        /// Lifetime 0.2~0.8 / Speed 2~20 / Size 0.05~0.4.
+        /// 크기 감쇠 커브 적용.
         /// </summary>
-        public static void ConfigureDebris(ParticleSystem ps)
+        public static void ConfigureSparks(ParticleSystem ps)
+        {
+            if (ps == null) return;
+            ps.Stop();
+            ps.Clear();
+
+            var main = ps.main;
+            main.duration = 1.0f;
+            main.loop = false;
+            main.playOnAwake = true;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(2f, 20f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.4f);
+            main.startColor = new Color(1f, 0.7f, 0.2f, 1f);
+            main.gravityModifier = 0f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 60;
+
+            var emit = ps.emission;
+            emit.enabled = true;
+            emit.rateOverTime = 0;
+            emit.SetBursts(new[] {
+                new ParticleSystem.Burst(0f, new ParticleSystem.MinMaxCurve(15f, 25f))
+            });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
+
+            // Size over Lifetime — 시간에 따라 작아지는 곡선
+            var size = ps.sizeOverLifetime;
+            size.enabled = true;
+            var sizeCurve = new AnimationCurve(
+                new Keyframe(0f, 1f),
+                new Keyframe(1f, 0f));
+            size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+            // Renderer — Stretched Billboard + Speed Scale 0.03
+            var renderer = ps.GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
+            {
+                renderer.renderMode = ParticleSystemRenderMode.Stretch;
+                renderer.velocityScale = 0.03f;
+                renderer.lengthScale = 1f;
+                renderer.sortingOrder = 100;
+                renderer.sharedMaterial = GetOrangeEmissiveMaterial();
+            }
+
+            ps.Play();
+        }
+
+        // ---------- 2. Flash (번쩍임) ----------
+
+        /// <summary>
+        /// Flash — Burst 1, Shape 비활성, Lifetime 0.1, Speed 0, Size 5.
+        /// 크게 시작해 빠르게 작아짐.
+        /// </summary>
+        public static void ConfigureFlash(ParticleSystem ps)
+        {
+            if (ps == null) return;
+            ps.Stop();
+            ps.Clear();
+
+            var main = ps.main;
+            main.duration = 0.15f;
+            main.loop = false;
+            main.playOnAwake = true;
+            main.startLifetime = 0.1f;
+            main.startSpeed = 0f;
+            main.startSize = 5f;
+            main.startColor = new Color(1.5f, 0.9f, 0.4f, 1f);
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 2;
+
+            var emit = ps.emission;
+            emit.enabled = true;
+            emit.rateOverTime = 0;
+            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 1) });
+
+            // Shape 비활성 — 제자리 스폰
+            var shape = ps.shape;
+            shape.enabled = false;
+
+            // Size over Lifetime — 크게 시작 → 빠르게 축소
+            var size = ps.sizeOverLifetime;
+            size.enabled = true;
+            var sizeCurve = new AnimationCurve(
+                new Keyframe(0f, 1f),
+                new Keyframe(0.3f, 0.5f),
+                new Keyframe(1f, 0f));
+            size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+            var renderer = ps.GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
+            {
+                renderer.renderMode = ParticleSystemRenderMode.Billboard;
+                renderer.sortingOrder = 102;  // Sparks 위
+                renderer.sharedMaterial = GetOrangeEmissiveMaterial();
+            }
+
+            ps.Play();
+        }
+
+        // ---------- 3. Fire (화염) ----------
+
+        /// <summary>
+        /// Fire — Burst 10, Sphere Radius 0.2.
+        /// Lifetime 0.2~0.4 / Speed 0.5~3 / Size 0.5~1.5. 크기 감쇠.
+        /// </summary>
+        public static void ConfigureFire(ParticleSystem ps)
         {
             if (ps == null) return;
             ps.Stop();
@@ -24,94 +165,50 @@ namespace Crux.Cinematic
             main.duration = 0.5f;
             main.loop = false;
             main.playOnAwake = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.15f, 0.35f);  // 매우 짧음 (번쩍)
-            main.startSpeed = new ParticleSystem.MinMaxCurve(40f, 85f);        // 탄환급 + 폭발 상향
-            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.09f);     // 얇은 불꽃 입자
-            main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-
-            // 그라인더 불꽃 색 — 진한 오렌지 ↔ 밝은 노랑 ↔ 백열
-            var colorGrad = new Gradient();
-            colorGrad.SetKeys(
-                new[] {
-                    new GradientColorKey(new Color(1f, 0.9f, 0.6f), 0f),    // 흰노랑 (중심 최고열)
-                    new GradientColorKey(new Color(1f, 0.75f, 0.2f), 0.5f), // 밝은 노랑
-                    new GradientColorKey(new Color(1f, 0.45f, 0.05f), 1f)   // 오렌지
-                },
-                new[] {
-                    new GradientAlphaKey(1f, 0f),
-                    new GradientAlphaKey(1f, 1f)
-                });
-            main.startColor = new ParticleSystem.MinMaxGradient(colorGrad) {
-                mode = ParticleSystemGradientMode.RandomColor
-            };
-
-            main.gravityModifier = 0.05f;   // 거의 0 — 직선 비산
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.2f, 0.4f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 3f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 1.5f);
+            main.startColor = new Color(1.3f, 0.55f, 0.15f, 1f);
+            main.gravityModifier = 0f;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 120;
+            main.maxParticles = 30;
 
-            // Emission — 1회 강한 버스트
             var emit = ps.emission;
             emit.enabled = true;
             emit.rateOverTime = 0;
-            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 50) });
+            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 10) });
 
-            // Shape — Cone 방향성 (부채꼴 넓게)
             var shape = ps.shape;
             shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Cone;
-            shape.angle = 60f;
-            shape.radius = 0.03f;
-            shape.radiusThickness = 1f;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
 
-            // Color over Lifetime — 흰노랑 → 오렌지 → 빨강 → 투명 (식는 불꽃)
-            var col = ps.colorOverLifetime;
-            col.enabled = true;
-            var fadeGrad = new Gradient();
-            fadeGrad.SetKeys(
-                new[] {
-                    new GradientColorKey(new Color(1f, 1f, 0.85f), 0f),   // 흰노랑 (최고열)
-                    new GradientColorKey(new Color(1f, 0.7f, 0.15f), 0.4f), // 밝은 노랑
-                    new GradientColorKey(new Color(0.9f, 0.3f, 0.05f), 0.85f), // 오렌지
-                    new GradientColorKey(new Color(0.4f, 0.1f, 0.05f), 1f)  // 진한 빨강
-                },
-                new[] {
-                    new GradientAlphaKey(1f, 0f),
-                    new GradientAlphaKey(1f, 0.7f),
-                    new GradientAlphaKey(0f, 1f)
-                });
-            col.color = fadeGrad;
-
-            // Rotation 유지 — 뾰족 입자가 돌면서 반짝
-            var rot = ps.rotationOverLifetime;
-            rot.enabled = true;
-            rot.z = new ParticleSystem.MinMaxCurve(-Mathf.PI * 4f, Mathf.PI * 4f);
-
-            // Size over Lifetime — 빠르게 작아짐 (번쩍 후 감쇠)
             var size = ps.sizeOverLifetime;
             size.enabled = true;
             var sizeCurve = new AnimationCurve(
                 new Keyframe(0f, 1f),
-                new Keyframe(1f, 0.2f));
+                new Keyframe(1f, 0f));
             size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
-            // Renderer — Additive 느낌 위해 가산 효과 근사 (Sprites/Default로는 한계. 흰 텍스처 오버)
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
                 renderer.renderMode = ParticleSystemRenderMode.Billboard;
-                renderer.sortingOrder = 100;
-                if (renderer.sharedMaterial == null || renderer.sharedMaterial.mainTexture == null)
-                    renderer.sharedMaterial = GetDefaultParticleMaterial();
+                renderer.sortingOrder = 101;  // Sparks 뒤, Flash 앞
+                renderer.sharedMaterial = GetOrangeEmissiveMaterial();
             }
 
             ps.Play();
         }
 
+        // ---------- 4. Smoke (연기) ----------
+
         /// <summary>
-        /// 연기 퍼프 — 불꽃 후 짧게 남는 흰/회 연기. 금속 타격 잔향.
-        /// 빠르게 팽창하며 희미해짐. 콘크리트 먼지 구름과 달리 짧고 얇음.
+        /// Smoke — Burst 10, Sphere Radius 0.2.
+        /// Lifetime 0.4~0.6 / Speed 0.5~2 / Size 1.5~2.0. 어두운 검정.
+        /// sortingOrder -1 — 다른 이펙트 뒤에 렌더링 (Sorting Fudge 근사).
         /// </summary>
-        public static void ConfigureDust(ParticleSystem ps)
+        public static void ConfigureSmoke(ParticleSystem ps)
         {
             if (ps == null) return;
             ps.Stop();
@@ -121,85 +218,64 @@ namespace Crux.Cinematic
             main.duration = 0.8f;
             main.loop = false;
             main.playOnAwake = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);   // 짧음
-            main.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 1.0f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.3f, 0.7f);
-
-            // 흰/연노랑 (금속 타격 연기)
-            var dustGrad = new Gradient();
-            dustGrad.SetKeys(
-                new[] {
-                    new GradientColorKey(new Color(0.95f, 0.92f, 0.80f), 0f),
-                    new GradientColorKey(new Color(0.80f, 0.78f, 0.72f), 1f)
-                },
-                new[] {
-                    new GradientAlphaKey(0.5f, 0f),
-                    new GradientAlphaKey(0.5f, 1f)
-                });
-            main.startColor = new ParticleSystem.MinMaxGradient(dustGrad) {
-                mode = ParticleSystemGradientMode.RandomColor
-            };
-
-            main.gravityModifier = 0f;  // 공중 잔향
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.6f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 2f);
+            main.startSize = new ParticleSystem.MinMaxCurve(1.5f, 2.0f);
+            main.startColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+            main.gravityModifier = -0.05f;  // 살짝 상승
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 20;
+            main.maxParticles = 30;
 
             var emit = ps.emission;
             emit.enabled = true;
             emit.rateOverTime = 0;
-            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 6) });
+            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 10) });
 
             var shape = ps.shape;
             shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = 0.15f;
-            shape.radiusThickness = 1f;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
 
-            var col = ps.colorOverLifetime;
-            col.enabled = true;
-            var fadeGrad = new Gradient();
-            fadeGrad.SetKeys(
-                new[] {
-                    new GradientColorKey(Color.white, 0f),
-                    new GradientColorKey(Color.white, 1f)
-                },
-                new[] {
-                    new GradientAlphaKey(0.45f, 0f),
-                    new GradientAlphaKey(0.25f, 0.5f),
-                    new GradientAlphaKey(0f, 1f)
-                });
-            col.color = fadeGrad;
-
+            // Size over Lifetime — 서서히 커지며 페이드
             var size = ps.sizeOverLifetime;
             size.enabled = true;
             var sizeCurve = new AnimationCurve(
                 new Keyframe(0f, 0.8f),
-                new Keyframe(1f, 2.0f));
+                new Keyframe(1f, 1.3f));
             size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+            // Color over Lifetime — 어두운 회색으로 페이드 아웃
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] {
+                    new GradientColorKey(new Color(0.12f, 0.12f, 0.12f), 0f),
+                    new GradientColorKey(new Color(0.18f, 0.18f, 0.18f), 1f)
+                },
+                new[] {
+                    new GradientAlphaKey(0.75f, 0f),
+                    new GradientAlphaKey(0.3f, 0.7f),
+                    new GradientAlphaKey(0f, 1f)
+                });
+            col.color = grad;
 
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
                 renderer.renderMode = ParticleSystemRenderMode.Billboard;
-                renderer.sortingOrder = 99;
-                if (renderer.sharedMaterial == null || renderer.sharedMaterial.mainTexture == null)
-                    renderer.sharedMaterial = GetDefaultParticleMaterial();
+                renderer.sortingOrder = -1;  // 다른 이펙트 뒤 (요구사항 준수)
+                renderer.sharedMaterial = GetSmokeMaterial();
             }
 
             ps.Play();
         }
 
-        private static Material _defaultMat;
-        private static Material GetDefaultParticleMaterial()
-        {
-            if (_defaultMat != null) return _defaultMat;
-            var shader = Shader.Find("Sprites/Default");
-            if (shader != null)
-            {
-                _defaultMat = new Material(shader);
-                _defaultMat.mainTexture = Texture2D.whiteTexture;
-            }
-            return _defaultMat;
-        }
+        // ---------- Legacy 유지 (이전 버전 호환) ----------
+
+        /// <summary>v3 호환 — 이전 Debris 호출 경로. Sparks로 위임.</summary>
+        public static void ConfigureDebris(ParticleSystem ps) => ConfigureSparks(ps);
+        /// <summary>v3 호환 — 이전 Dust 호출 경로. Smoke로 위임.</summary>
+        public static void ConfigureDust(ParticleSystem ps) => ConfigureSmoke(ps);
     }
 }

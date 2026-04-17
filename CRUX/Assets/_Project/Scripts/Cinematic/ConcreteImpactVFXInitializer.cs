@@ -2,34 +2,49 @@ using UnityEngine;
 
 namespace Crux.Cinematic
 {
-    /// <summary>ConcreteImpactVFX 루트에서 Debris/Dust 파티클 시스템 초기화 및 자동 제거.</summary>
+    /// <summary>
+    /// 폭발 VFX 루트 — Sparks/Flash/Fire/Smoke 4개 자식 파티클 초기화 + 자동 제거.
+    /// Legacy 이름(Debris/Dust)도 Fallback 지원.
+    /// </summary>
     public class ConcreteImpactVFXInitializer : MonoBehaviour
     {
-        private ParticleSystem debrisPS;
-        private ParticleSystem dustPS;
         private float maxLifetime;
 
         private void Start()
         {
-            // 자식 파티클 시스템 찾기
-            debrisPS = transform.Find("Debris")?.GetComponent<ParticleSystem>();
-            dustPS = transform.Find("Dust")?.GetComponent<ParticleSystem>();
+            // 우선 신규 4단 구조
+            var sparks = FindPS("Sparks") ?? FindPS("Debris");
+            var flash = FindPS("Flash");
+            var fire = FindPS("Fire");
+            var smoke = FindPS("Smoke") ?? FindPS("Dust");
 
-            if (debrisPS != null)
-                ParticleSystemConfig.ConfigureDebris(debrisPS);
+            if (sparks != null) ParticleSystemConfig.ConfigureSparks(sparks);
+            if (flash != null) ParticleSystemConfig.ConfigureFlash(flash);
+            if (fire != null) ParticleSystemConfig.ConfigureFire(fire);
+            if (smoke != null) ParticleSystemConfig.ConfigureSmoke(smoke);
 
-            if (dustPS != null)
-                ParticleSystemConfig.ConfigureDust(dustPS);
-
-            // 둘 다의 lifetime 중 최대값으로 제거 시간 계산
+            // 최대 수명 계산
             maxLifetime = 0;
-            if (debrisPS != null)
-                maxLifetime = Mathf.Max(maxLifetime, debrisPS.main.duration + 1f);
-            if (dustPS != null)
-                maxLifetime = Mathf.Max(maxLifetime, dustPS.main.duration + 1f);
+            AccumulateMaxLifetime(sparks);
+            AccumulateMaxLifetime(flash);
+            AccumulateMaxLifetime(fire);
+            AccumulateMaxLifetime(smoke);
+            if (maxLifetime <= 0) maxLifetime = 1.5f;
 
-            // 자동 제거 예약
-            Destroy(gameObject, maxLifetime);
+            Destroy(gameObject, maxLifetime + 0.3f);
+        }
+
+        private ParticleSystem FindPS(string name)
+        {
+            var t = transform.Find(name);
+            return t != null ? t.GetComponent<ParticleSystem>() : null;
+        }
+
+        private void AccumulateMaxLifetime(ParticleSystem ps)
+        {
+            if (ps == null) return;
+            var main = ps.main;
+            maxLifetime = Mathf.Max(maxLifetime, main.duration + main.startLifetime.constantMax);
         }
     }
 }
