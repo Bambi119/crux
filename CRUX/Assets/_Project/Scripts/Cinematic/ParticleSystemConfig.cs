@@ -10,8 +10,9 @@ namespace Crux.Cinematic
     public static class ParticleSystemConfig
     {
         /// <summary>
-        /// 파편 — Cone shape으로 피격 반대 방향 부채꼴 비산. 중력 영향.
-        /// Transform rotation으로 피격 방향 제어 (Cone 방향 = transform.forward).
+        /// 금속 스파크 — 그라인더 불꽃 톤. 탄환급 속도 + 중력≈0 + 짧은 수명.
+        /// 해머로 금속 측면을 때린 순간 사방으로 번쩍 비산하는 효과.
+        /// Cone forward = transform.forward (+Z), VFXTestRunner에서 방향 지정.
         /// </summary>
         public static void ConfigureDebris(ParticleSystem ps)
         {
@@ -20,21 +21,21 @@ namespace Crux.Cinematic
             ps.Clear();
 
             var main = ps.main;
-            main.duration = 1.2f;
+            main.duration = 0.5f;
             main.loop = false;
             main.playOnAwake = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.2f);
-            main.startSpeed = new ParticleSystem.MinMaxCurve(8f, 18f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.08f, 0.22f);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.15f, 0.35f);  // 매우 짧음 (번쩍)
+            main.startSpeed = new ParticleSystem.MinMaxCurve(25f, 55f);        // 탄환급
+            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.09f);     // 얇은 불꽃 입자
             main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
 
-            // 흰/회/진회색 Random Color — 콘크리트 파편 톤 분산
+            // 그라인더 불꽃 색 — 진한 오렌지 ↔ 밝은 노랑 ↔ 백열
             var colorGrad = new Gradient();
             colorGrad.SetKeys(
                 new[] {
-                    new GradientColorKey(new Color(0.92f, 0.90f, 0.85f), 0f),  // 밝은 흰회
-                    new GradientColorKey(new Color(0.62f, 0.58f, 0.52f), 0.5f), // 중간 회
-                    new GradientColorKey(new Color(0.28f, 0.25f, 0.22f), 1f)   // 짙은 회갈
+                    new GradientColorKey(new Color(1f, 0.9f, 0.6f), 0f),    // 흰노랑 (중심 최고열)
+                    new GradientColorKey(new Color(1f, 0.75f, 0.2f), 0.5f), // 밝은 노랑
+                    new GradientColorKey(new Color(1f, 0.45f, 0.05f), 1f)   // 오렌지
                 },
                 new[] {
                     new GradientAlphaKey(1f, 0f),
@@ -44,33 +45,34 @@ namespace Crux.Cinematic
                 mode = ParticleSystemGradientMode.RandomColor
             };
 
-            main.gravityModifier = 2.0f;
+            main.gravityModifier = 0.05f;   // 거의 0 — 직선 비산
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 100;
+            main.maxParticles = 120;
 
             // Emission — 1회 강한 버스트
             var emit = ps.emission;
             emit.enabled = true;
             emit.rateOverTime = 0;
-            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 35) });
+            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 50) });
 
-            // Shape — Cone 방향성
+            // Shape — Cone 방향성 (부채꼴 넓게)
             var shape = ps.shape;
             shape.enabled = true;
             shape.shapeType = ParticleSystemShapeType.Cone;
-            shape.angle = 55f;        // 부채꼴 넓이 (55도)
-            shape.radius = 0.05f;
+            shape.angle = 60f;
+            shape.radius = 0.03f;
             shape.radiusThickness = 1f;
-            // Cone forward: transform.forward (+Z). 2D에선 Transform z-rotation으로 방향 조정.
 
-            // Color over Lifetime — 페이드아웃
+            // Color over Lifetime — 흰노랑 → 오렌지 → 빨강 → 투명 (식는 불꽃)
             var col = ps.colorOverLifetime;
             col.enabled = true;
             var fadeGrad = new Gradient();
             fadeGrad.SetKeys(
                 new[] {
-                    new GradientColorKey(Color.white, 0f),
-                    new GradientColorKey(Color.white, 1f)
+                    new GradientColorKey(new Color(1f, 1f, 0.85f), 0f),   // 흰노랑 (최고열)
+                    new GradientColorKey(new Color(1f, 0.7f, 0.15f), 0.4f), // 밝은 노랑
+                    new GradientColorKey(new Color(0.9f, 0.3f, 0.05f), 0.85f), // 오렌지
+                    new GradientColorKey(new Color(0.4f, 0.1f, 0.05f), 1f)  // 진한 빨강
                 },
                 new[] {
                     new GradientAlphaKey(1f, 0f),
@@ -79,20 +81,20 @@ namespace Crux.Cinematic
                 });
             col.color = fadeGrad;
 
-            // Rotation over Lifetime
+            // Rotation 유지 — 뾰족 입자가 돌면서 반짝
             var rot = ps.rotationOverLifetime;
             rot.enabled = true;
-            rot.z = new ParticleSystem.MinMaxCurve(-Mathf.PI * 3f, Mathf.PI * 3f);
+            rot.z = new ParticleSystem.MinMaxCurve(-Mathf.PI * 4f, Mathf.PI * 4f);
 
-            // Size over Lifetime — 살짝 작아짐 (떨어지면서 작아보임)
+            // Size over Lifetime — 빠르게 작아짐 (번쩍 후 감쇠)
             var size = ps.sizeOverLifetime;
             size.enabled = true;
             var sizeCurve = new AnimationCurve(
                 new Keyframe(0f, 1f),
-                new Keyframe(1f, 0.6f));
+                new Keyframe(1f, 0.2f));
             size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
-            // Renderer
+            // Renderer — Additive 느낌 위해 가산 효과 근사 (Sprites/Default로는 한계. 흰 텍스처 오버)
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
@@ -106,7 +108,8 @@ namespace Crux.Cinematic
         }
 
         /// <summary>
-        /// 먼지 구름 — 부풀며 페이드. 피격 방향과 무관하게 전방향 퍼짐.
+        /// 연기 퍼프 — 불꽃 후 짧게 남는 흰/회 연기. 금속 타격 잔향.
+        /// 빠르게 팽창하며 희미해짐. 콘크리트 먼지 구름과 달리 짧고 얇음.
         /// </summary>
         public static void ConfigureDust(ParticleSystem ps)
         {
@@ -115,41 +118,41 @@ namespace Crux.Cinematic
             ps.Clear();
 
             var main = ps.main;
-            main.duration = 2.0f;
+            main.duration = 0.8f;
             main.loop = false;
             main.playOnAwake = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(1.5f, 2.2f);
-            main.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 1.5f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.8f, 1.8f);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);   // 짧음
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.3f, 1.0f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.3f, 0.7f);
 
-            // 베이지 ~ 흰 범위 Random
+            // 흰/연노랑 (금속 타격 연기)
             var dustGrad = new Gradient();
             dustGrad.SetKeys(
                 new[] {
-                    new GradientColorKey(new Color(0.95f, 0.92f, 0.85f), 0f),
-                    new GradientColorKey(new Color(0.75f, 0.70f, 0.60f), 1f)
+                    new GradientColorKey(new Color(0.95f, 0.92f, 0.80f), 0f),
+                    new GradientColorKey(new Color(0.80f, 0.78f, 0.72f), 1f)
                 },
                 new[] {
-                    new GradientAlphaKey(0.7f, 0f),
-                    new GradientAlphaKey(0.7f, 1f)
+                    new GradientAlphaKey(0.5f, 0f),
+                    new GradientAlphaKey(0.5f, 1f)
                 });
             main.startColor = new ParticleSystem.MinMaxGradient(dustGrad) {
                 mode = ParticleSystemGradientMode.RandomColor
             };
 
-            main.gravityModifier = -0.15f;
+            main.gravityModifier = 0f;  // 공중 잔향
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 30;
+            main.maxParticles = 20;
 
             var emit = ps.emission;
             emit.enabled = true;
             emit.rateOverTime = 0;
-            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 10) });
+            emit.SetBursts(new[] { new ParticleSystem.Burst(0f, 6) });
 
             var shape = ps.shape;
             shape.enabled = true;
             shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = 0.3f;
+            shape.radius = 0.15f;
             shape.radiusThickness = 1f;
 
             var col = ps.colorOverLifetime;
@@ -161,18 +164,17 @@ namespace Crux.Cinematic
                     new GradientColorKey(Color.white, 1f)
                 },
                 new[] {
-                    new GradientAlphaKey(0.6f, 0f),
-                    new GradientAlphaKey(0.4f, 0.4f),
+                    new GradientAlphaKey(0.45f, 0f),
+                    new GradientAlphaKey(0.25f, 0.5f),
                     new GradientAlphaKey(0f, 1f)
                 });
             col.color = fadeGrad;
 
-            // Size over Lifetime — 크게 부풀음
             var size = ps.sizeOverLifetime;
             size.enabled = true;
             var sizeCurve = new AnimationCurve(
-                new Keyframe(0f, 0.6f),
-                new Keyframe(1f, 2.5f));
+                new Keyframe(0f, 0.8f),
+                new Keyframe(1f, 2.0f));
             size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
