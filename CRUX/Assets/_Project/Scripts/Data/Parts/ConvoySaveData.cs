@@ -89,19 +89,22 @@ namespace Crux.Data
                     existing.inSortie = entry.inSortie;
             }
 
-            // 2) 크루 전면 재배치 — 현 할당을 풀로 회수
-            foreach (var t in convoy.tanks)
+            // 2) 크루 전면 재배치 — 저장된 매핑 있을 때만 수행 (빈 리스트면 현 상태 유지)
+            if (crewAssignments != null && crewAssignments.Count > 0)
             {
-                if (t?.crew == null) continue;
-                foreach (CrewClass klass in System.Enum.GetValues(typeof(CrewClass)))
+                foreach (var t in convoy.tanks)
                 {
-                    if (klass == CrewClass.None) continue;
-                    var c = t.crew.Get(klass);
-                    if (c != null)
+                    if (t?.crew == null) continue;
+                    foreach (CrewClass klass in System.Enum.GetValues(typeof(CrewClass)))
                     {
-                        t.crew.Set(klass, null);
-                        if (!convoy.availableCrew.Contains(c))
-                            convoy.availableCrew.Add(c);
+                        if (klass == CrewClass.None) continue;
+                        var c = t.crew.Get(klass);
+                        if (c != null)
+                        {
+                            t.crew.Set(klass, null);
+                            if (!convoy.availableCrew.Contains(c))
+                                convoy.availableCrew.Add(c);
+                        }
                     }
                 }
             }
@@ -120,7 +123,9 @@ namespace Crux.Data
                 convoy.availableCrew.Remove(crew);
             }
 
-            // 4) 파츠 재배치 (Phase 3) — 현 장착 파츠 회수 후 저장된 매핑 적용
+            // 4) 파츠 재배치 (Phase 3) — 저장된 매핑 있을 때만 수행
+            if (tankParts == null || tankParts.Count == 0) return;
+
             var singleSlotCategories = new[] {
                 PartCategory.Engine, PartCategory.Turret, PartCategory.MainGun,
                 PartCategory.AmmoRack, PartCategory.Track
