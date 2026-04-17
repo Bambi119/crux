@@ -9,6 +9,19 @@ namespace Crux.Combat
         private static Sprite _cachedCircle;
         private static Sprite[] _ricochetFrames;
         private static Sprite[] _hitFrames;
+        private static GameObject _cachedImpactPrefab;
+        private static bool _impactPrefabProbed;
+
+        /// <summary>ConcreteImpactVFX 프리팹 지연 로드 (Resources/VFX/ConcreteImpactVFX).</summary>
+        private static GameObject GetImpactPrefab()
+        {
+            if (_impactPrefabProbed) return _cachedImpactPrefab;
+            _cachedImpactPrefab = Resources.Load<GameObject>("VFX/ConcreteImpactVFX");
+            _impactPrefabProbed = true;
+            if (_cachedImpactPrefab == null)
+                Debug.LogWarning("[CRUX] ConcreteImpactVFX 프리팹 로드 실패 — 레거시 SpawnImpact로 폴백");
+            return _cachedImpactPrefab;
+        }
 
         /// <summary>피격 이펙트 진입점</summary>
         /// <param name="caliberScale">무기 구경 스케일 — 1.0=주포 표준, 0.4=기관총, 1.5=대구경</param>
@@ -244,10 +257,27 @@ namespace Crux.Combat
             return _ricochetFrames;
         }
 
-        /// <summary>피격/관통 공통 — 화구 + 방사형 불꽃줄기 + 파편 + 연기</summary>
+        /// <summary>피격/관통 — ConcreteImpactVFX 프리팹 사용. 없으면 레거시 스프라이트 VFX로 폴백.</summary>
         /// <param name="intensity">결과별 강도 (Hit=1, Penetration=1.6)</param>
         /// <param name="caliberScale">무기 구경 (1=주포 표준, 0.4=MG)</param>
         private static void SpawnImpact(Vector3 position, Vector2 shellDir, float intensity, float caliberScale = 1f)
+        {
+            var prefab = GetImpactPrefab();
+            if (prefab != null)
+            {
+                Vector2 splashDir = -shellDir.normalized;
+                if (splashDir == Vector2.zero) splashDir = Vector2.right;
+                float angleDeg = Mathf.Atan2(splashDir.y, splashDir.x) * Mathf.Rad2Deg;
+                Quaternion rot = Quaternion.Euler(-90f, 0f, angleDeg);
+                var vfx = Object.Instantiate(prefab, position, rot);
+                vfx.transform.localScale = Vector3.one * (intensity * caliberScale);
+                return;
+            }
+            SpawnImpactLegacy(position, shellDir, intensity, caliberScale);
+        }
+
+        /// <summary>레거시 스프라이트 기반 피격 VFX — 프리팹 누락 시 폴백용.</summary>
+        private static void SpawnImpactLegacy(Vector3 position, Vector2 shellDir, float intensity, float caliberScale = 1f)
         {
             // 두 스케일을 결합 — 화구·파편·연기 전체 크기에 적용
             float effectScale = intensity * caliberScale;

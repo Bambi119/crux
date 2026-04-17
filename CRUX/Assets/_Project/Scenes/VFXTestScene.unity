@@ -661,7 +661,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 644986353129245768, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: EmissionModule.m_Bursts.Array.data[0].repeatInterval
-      value: 0.0001
+      value: 0.01
       objectReference: {fileID: 0}
     - target: {fileID: 644986353129245768, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: SizeModule.curve.maxCurve.m_Curve.Array.data[0].time
@@ -801,7 +801,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2659645164241270403, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: EmissionModule.m_Bursts.Array.data[0].repeatInterval
-      value: 0.0001
+      value: 0.01
       objectReference: {fileID: 0}
     - target: {fileID: 4572425392544654187, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: m_RenderMode
@@ -945,7 +945,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5169388361753578719, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: EmissionModule.m_Bursts.Array.data[0].repeatInterval
-      value: 0.0001
+      value: 0.01
       objectReference: {fileID: 0}
     - target: {fileID: 5169388361753578719, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: SizeModule.curve.maxCurve.m_Curve.Array.data[0].value
@@ -1137,7 +1137,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 1c40e8c6a5da6c44aa8d02d0efa3ce83, type: 2}
     - target: {fileID: 8182709606912547561, guid: 95d2f3906d56e194f966a96aa3ca161b, type: 3}
       propertyPath: EmissionModule.m_Bursts.Array.data[0].repeatInterval
-      value: 0.0001
+      value: 0.01
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
