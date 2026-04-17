@@ -10,8 +10,10 @@ namespace Crux.Cinematic
     /// </summary>
     public class ConcreteImpactVFXInitializer : MonoBehaviour
     {
-        [Tooltip("체크 시 코드 기본값으로 세팅(Inspector 값 덮어씀). 끄면 Inspector 값 그대로 재생.")]
-        [SerializeField] private bool useCodeDefaults = false;
+        [Tooltip("체크 시 코드 기본값으로 세팅(Inspector 값 덮어씀). 끄면 Inspector 값 그대로 재생. " +
+                 "기본 true — 씬의 파티클이 Unity 기본값(연속 방출)이라 꺼두면 뭉개뭉개 피어남. " +
+                 "Inspector 튜닝을 원하면 먼저 'Crux/VFX/Apply All Presets' 메뉴로 씬 저장 후 체크 해제.")]
+        [SerializeField] private bool useCodeDefaults = true;
 
         [Tooltip("체크 시 URP 2D 비호환 머티리얼을 Sprites/Default 기반으로 자동 교체 (핑크 방지).")]
         [SerializeField] private bool autoFixMaterial = true;
