@@ -340,6 +340,10 @@ namespace Crux.UI
 
         private void DrawGameResult()
         {
+            // 상시 우상단 "Hangar로" 복귀 버튼 (전투 중에도 허용 — 루프 폐곡용)
+            if (GUI.Button(new Rect(ScaledW - 130, 10, 120, 32), "Hangar로"))
+                UnityEngine.SceneManagement.SceneManager.LoadScene("Hangar");
+
             // 승리/패배 체크는 BattleController에 맡김
             if (controller.CurrentPhase == Crux.Core.TurnPhase.GameOver || controller.CurrentPhase == Crux.Core.TurnPhase.Victory)
             {
@@ -351,11 +355,20 @@ namespace Crux.UI
                 bigStyle.fontSize = 36;
                 bigStyle.alignment = TextAnchor.MiddleCenter;
 
-                GUI.Box(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 35, 360, 70), "", GetBoxStyle());
-                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 35, 360, 70), msg, bigStyle);
+                GUI.Box(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 55, 360, 110), "", GetBoxStyle());
+                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 50, 360, 50), msg, bigStyle);
+
+                var hintStyle = new GUIStyle(GetLabelStyle());
+                hintStyle.fontSize = 14;
+                hintStyle.alignment = TextAnchor.MiddleCenter;
+                hintStyle.normal.textColor = new Color(0.75f, 0.75f, 0.75f);
+                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 + 10, 360, 40),
+                          "R: 재시작  |  H: Hangar로 복귀", hintStyle);
 
                 if (Input.GetKeyDown(KeyCode.R))
                     UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+                if (Input.GetKeyDown(KeyCode.H))
+                    UnityEngine.SceneManagement.SceneManager.LoadScene("Hangar");
             }
         }
 
