@@ -9,11 +9,8 @@ namespace Crux.Cinematic
     /// </summary>
     public class ConcreteImpactVFXInitializer : MonoBehaviour
     {
-        [Tooltip("체크 시 코드 기본값으로 세팅(Inspector 값 덮어씀). 끄면 Inspector 값 그대로 재생. 기본 true — 첫 재생 시 폭발 프리셋.")]
-        [SerializeField] private bool useCodeDefaults = true;
-
-        [Tooltip("체크 시 URP 2D 비호환 머티리얼을 Sprites/Default로 자동 교체 (핑크 방지).")]
-        [SerializeField] private bool autoFixMaterial = true;
+        [Tooltip("체크 시 코드 기본값으로 세팅(Inspector 값 덮어씀). 끄면 Inspector 값 그대로 재생.")]
+        [SerializeField] private bool useCodeDefaults = false;
 
         [Tooltip("자동 제거까지 여유 시간(초)")]
         [SerializeField] private float destroyPadding = 0.5f;
@@ -33,20 +30,7 @@ namespace Crux.Cinematic
                 if (flash != null) ParticleSystemConfig.ConfigureFlash(flash);
                 if (fire != null) ParticleSystemConfig.ConfigureFire(fire);
                 if (smoke != null) ParticleSystemConfig.ConfigureSmoke(smoke);
-                if (core != null) ParticleSystemConfig.ConfigureCoreBlast(core);
-                if (shock != null) ParticleSystemConfig.ConfigureShockwave(shock);
-            }
-
-            if (autoFixMaterial)
-            {
-                var orange = ParticleSystemConfig.GetOrangeEmissiveMaterial();
-                var smokeMat = ParticleSystemConfig.GetSmokeMaterial();
-                FixMaterial(sparks, orange);
-                FixMaterial(flash, orange);
-                FixMaterial(fire, orange);
-                FixMaterial(smoke, smokeMat);
-                FixMaterial(core, orange);
-                FixMaterial(shock, orange);
+                // CoreBlast/Shockwave는 Inspector 전용 (코드 기본값 없음)
             }
 
             // 최대 수명 계산 → Destroy 예약
@@ -69,17 +53,6 @@ namespace Crux.Cinematic
             if (ps == null) return;
             var main = ps.main;
             maxLifetime = Mathf.Max(maxLifetime, main.duration + main.startLifetime.constantMax);
-        }
-
-        private void FixMaterial(ParticleSystem ps, Material fallback)
-        {
-            if (ps == null || fallback == null) return;
-            var renderer = ps.GetComponent<ParticleSystemRenderer>();
-            if (renderer == null) return;
-
-            // URP 2D에서는 Unity 기본 Default-Particle이 호환 안 되어 핑크 렌더.
-            // autoFixMaterial=true 면 무조건 fallback으로 덮어씀.
-            renderer.sharedMaterial = fallback;
         }
     }
 }
