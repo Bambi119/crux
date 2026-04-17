@@ -37,6 +37,9 @@ namespace Crux.Data
         // 승무원 매핑 — D 옵션 (하이브리드)
         public TankCrewInstance crew;
 
+        // 편성 상태 — true: 출격 슬롯, false: 보관 슬롯
+        public bool inSortie;
+
         /// <summary>
         /// TankInstance 생성.
         /// </summary>

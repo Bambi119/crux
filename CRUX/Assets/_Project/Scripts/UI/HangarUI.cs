@@ -124,10 +124,20 @@ namespace Crux.UI
                 }
             }
 
-            // 2) 샘플 탱크 1대 — 로시난테
+            // 2) 샘플 탱크 1대 — 로시난테 (출격 슬롯 기본)
             var rocinante = new Crux.Data.TankInstance("로시난테", Crux.Data.HullClass.Assault);
             rocinante.isRocinante = true;
+            rocinante.inSortie = true;
             convoy.tanks.Add(rocinante);
+
+            // 2-b) 샘플 탱크 2대 (보관 예시) — T-34 Scout / 셔먼 Support
+            var t34 = new Crux.Data.TankInstance("T-34", Crux.Data.HullClass.Scout);
+            t34.inSortie = false;
+            convoy.tanks.Add(t34);
+
+            var sherman = new Crux.Data.TankInstance("셔먼", Crux.Data.HullClass.Support);
+            sherman.inSortie = false;
+            convoy.tanks.Add(sherman);
 
             // 3) 5명 자동 할당 — 풀에 있는 승무원의 Class로 직책 판정
             var classes = new[] {
@@ -201,16 +211,22 @@ namespace Crux.UI
             Transform sortieGrid = compositionTabInstance.transform.Find("SortieGrid");
             Transform storageGrid = compositionTabInstance.transform.Find("StorageGrid");
 
-            // 현재 MVP: 출격/보관 구분 없음 → convoy.tanks를 순서대로 sortie 먼저 채우고 나머지는 storage
-            // 향후 tank.inSortie 플래그 도입 예정
-            var tanks = convoyRef.tanks;
+            // tank.inSortie 플래그 기반으로 출격/보관 분리 배치
+            var sortieTanks = convoyRef.tanks.FindAll(t => t.inSortie);
+            var storageTanks = convoyRef.tanks.FindAll(t => !t.inSortie);
             int sortieCount = 5, storageCount = 5;
+
+            // 카운트 라벨 갱신
+            var sortieLabel = compositionTabInstance.transform.Find("SortieLabel")?.GetComponent<Text>();
+            if (sortieLabel != null) sortieLabel.text = $"출격 ({sortieTanks.Count}/5)";
+            var storageLabel = compositionTabInstance.transform.Find("StorageLabel")?.GetComponent<Text>();
+            if (storageLabel != null) storageLabel.text = $"보관 ({storageTanks.Count}/5)";
 
             for (int i = 0; i < sortieCount; i++)
             {
                 if (sortieGrid == null || i >= sortieGrid.childCount) break;
                 Transform slot = sortieGrid.GetChild(i);
-                TankInstance tank = (i < tanks.Count) ? tanks[i] : null;
+                TankInstance tank = (i < sortieTanks.Count) ? sortieTanks[i] : null;
                 BindOneSlot(slot, tank);
             }
 
@@ -218,8 +234,7 @@ namespace Crux.UI
             {
                 if (storageGrid == null || i >= storageGrid.childCount) break;
                 Transform slot = storageGrid.GetChild(i);
-                int tankIdx = i + sortieCount;
-                TankInstance tank = (tankIdx < tanks.Count) ? tanks[tankIdx] : null;
+                TankInstance tank = (i < storageTanks.Count) ? storageTanks[i] : null;
                 BindOneSlot(slot, tank);
             }
 
