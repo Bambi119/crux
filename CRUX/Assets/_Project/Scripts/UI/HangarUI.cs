@@ -215,6 +215,13 @@ namespace Crux.UI
             selectedTank = tank;
             if (rightPanel != null)
                 rightPanel.SetUnit(tank);
+
+            // 편성 탭의 슬롯 하이라이트 갱신
+            if (currentTab == HangarTab.Composition &&
+                instantiatedTabs.TryGetValue(HangarTab.Composition, out var compTab) && compTab != null)
+            {
+                BindTankSlots(compTab);
+            }
         }
 
         /// <summary>
@@ -298,6 +305,18 @@ namespace Crux.UI
             Text label = slot.GetComponentInChildren<Text>();
             if (label != null)
                 label.text = (tank != null) ? tank.tankName : "없음";
+
+            // 배경색: 선택된 탱크 슬롯은 강조, 빈 슬롯은 어두운 회색
+            Image bg = slot.GetComponent<Image>();
+            if (bg != null)
+            {
+                bool isSelected = (tank != null && tank == selectedTank);
+                bg.color = isSelected
+                    ? new Color(0.55f, 0.45f, 0.25f, 1f)  // 골드 하이라이트
+                    : (tank != null
+                        ? new Color(0.25f, 0.25f, 0.25f, 1f)   // 일반 탱크
+                        : new Color(0.18f, 0.18f, 0.18f, 1f)); // 빈 슬롯
+            }
 
             // Button 확보 (없으면 AddComponent) + 기존 리스너 제거 + 신규 연결
             Button btn = slot.GetComponent<Button>();
