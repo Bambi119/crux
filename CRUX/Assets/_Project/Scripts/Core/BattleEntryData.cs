@@ -12,6 +12,27 @@ namespace Crux.Core
     }
 
     /// <summary>
+    /// 전투 결과별 Convoy 보상/피해 상수. HangarUI/BattleHUD 공용 단일 출처.
+    /// 향후 밸런스 튜닝 시 여기만 조정.
+    /// </summary>
+    public static class BattleResultRewards
+    {
+        public const int VictoryMoney = 200;
+        public const int VictoryMorale = 10;
+        public const int DefeatMoney = -100;
+        public const int DefeatMorale = -15;
+
+        public static (int money, int morale) For(BattleResult r) => r switch
+        {
+            BattleResult.Victory => (VictoryMoney, VictoryMorale),
+            BattleResult.Defeat => (DefeatMoney, DefeatMorale),
+            _ => (0, 0)
+        };
+
+        public static string FormatSigned(int v) => v >= 0 ? $"+{v}" : v.ToString();
+    }
+
+    /// <summary>
     /// Hangar ↔ BattleController 간 데이터 전달 통로.
     /// 정적 저장소 — 씬 전환 사이 유지. 복귀 시 소비/Clear.
     /// </summary>

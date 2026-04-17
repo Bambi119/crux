@@ -355,14 +355,29 @@ namespace Crux.UI
                 bigStyle.fontSize = 36;
                 bigStyle.alignment = TextAnchor.MiddleCenter;
 
-                GUI.Box(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 55, 360, 110), "", GetBoxStyle());
-                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 50, 360, 50), msg, bigStyle);
+                GUI.Box(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 75, 360, 150), "", GetBoxStyle());
+                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 70, 360, 50), msg, bigStyle);
+
+                // 보상/피해 프리뷰 (UX-10)
+                var rewardPhase = controller.CurrentPhase == Crux.Core.TurnPhase.Victory
+                    ? Crux.Core.BattleResult.Victory
+                    : Crux.Core.BattleResult.Defeat;
+                var (money, morale) = Crux.Core.BattleResultRewards.For(rewardPhase);
+                var rewardStyle = new GUIStyle(GetLabelStyle());
+                rewardStyle.fontSize = 18;
+                rewardStyle.alignment = TextAnchor.MiddleCenter;
+                rewardStyle.normal.textColor = rewardPhase == Crux.Core.BattleResult.Victory
+                    ? new Color(0.85f, 0.95f, 0.55f)
+                    : new Color(0.95f, 0.55f, 0.55f);
+                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 - 15, 360, 30),
+                          $"자금 ₩{Crux.Core.BattleResultRewards.FormatSigned(money)} · 사기 {Crux.Core.BattleResultRewards.FormatSigned(morale)}",
+                          rewardStyle);
 
                 var hintStyle = new GUIStyle(GetLabelStyle());
                 hintStyle.fontSize = 14;
                 hintStyle.alignment = TextAnchor.MiddleCenter;
                 hintStyle.normal.textColor = new Color(0.75f, 0.75f, 0.75f);
-                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 + 10, 360, 40),
+                GUI.Label(new Rect(ScaledW / 2 - 180, ScaledH / 2 + 30, 360, 40),
                           "R: 재시작  |  H: Hangar로 복귀", hintStyle);
 
                 if (Input.GetKeyDown(KeyCode.R))

@@ -191,18 +191,12 @@ namespace Crux.UI
             var result = Crux.Core.BattleEntryData.LastResult;
             if (result == Crux.Core.BattleResult.None || convoyRef == null) return;
 
-            if (result == Crux.Core.BattleResult.Victory)
-            {
-                convoyRef.AddMoney(200);
-                convoyRef.ChangeMorale(10);
-                Debug.Log("[Hangar] 승리 보상: +₩200 · +10 사기");
-            }
-            else if (result == Crux.Core.BattleResult.Defeat)
-            {
-                convoyRef.AddMoney(-100);
-                convoyRef.ChangeMorale(-15);
-                Debug.Log("[Hangar] 패배 피해: -₩100 · -15 사기");
-            }
+            var (money, morale) = Crux.Core.BattleResultRewards.For(result);
+            if (money != 0) convoyRef.AddMoney(money);
+            if (morale != 0) convoyRef.ChangeMorale(morale);
+
+            string verb = result == Crux.Core.BattleResult.Victory ? "승리 보상" : "패배 피해";
+            Debug.Log($"[Hangar] {verb}: ₩{Crux.Core.BattleResultRewards.FormatSigned(money)} · {Crux.Core.BattleResultRewards.FormatSigned(morale)} 사기");
 
             Crux.Core.BattleEntryData.LastResult = Crux.Core.BattleResult.None;
         }
