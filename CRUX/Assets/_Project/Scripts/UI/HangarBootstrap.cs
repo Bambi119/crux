@@ -11,13 +11,23 @@ namespace Crux.UI
     /// </summary>
     public static class HangarBootstrap
     {
+        const string KeyMoney = "Convoy.Money";
+        const string KeyMorale = "Convoy.Morale";
+        const int DefaultMoney = 1000;
+        const int DefaultMorale = 80;
+
         /// <summary>
         /// 샘플 부대 생성: 로시난테 1대(출격) + T-34, 셔먼 2대(보관) + 크루 5명 + 파츠 10개.
         /// crewRoster가 null/empty면 Editor에서 AssetDatabase 폴백 로드 시도.
+        /// Money/Morale은 PlayerPrefs에서 복원 (Save-Minimal).
         /// </summary>
         public static ConvoyInventory BuildSampleConvoy(ref CrewMemberSO[] crewRoster)
         {
             var convoy = new ConvoyInventory();
+
+            // PlayerPrefs 복원 — 없으면 기본값
+            convoy.Money = PlayerPrefs.GetInt(KeyMoney, DefaultMoney);
+            convoy.Morale = PlayerPrefs.GetInt(KeyMorale, DefaultMorale);
 
 #if UNITY_EDITOR
             // Editor fallback — Inspector 미할당 시 AssetDatabase로 5명 자동 로드 (MVP 편의)
@@ -185,6 +195,25 @@ namespace Crux.UI
             return loaded == 10;
         }
 #endif
+
+        /// <summary>
+        /// Money/Morale을 PlayerPrefs에 저장. HangarUI.OnDisable에서 호출.
+        /// </summary>
+        public static void SaveConvoyStats(ConvoyInventory convoy)
+        {
+            if (convoy == null) return;
+            PlayerPrefs.SetInt(KeyMoney, convoy.Money);
+            PlayerPrefs.SetInt(KeyMorale, convoy.Morale);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>PlayerPrefs 저장값 삭제 — 디버그/초기화용</summary>
+        public static void ResetSavedStats()
+        {
+            PlayerPrefs.DeleteKey(KeyMoney);
+            PlayerPrefs.DeleteKey(KeyMorale);
+            PlayerPrefs.Save();
+        }
 
         private static void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
         {

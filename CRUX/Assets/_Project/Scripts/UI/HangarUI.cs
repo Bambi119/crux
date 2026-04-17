@@ -375,6 +375,9 @@ namespace Crux.UI
 
         private void OnDisable()
         {
+            // Money/Morale PlayerPrefs 저장 (Save-Minimal)
+            HangarBootstrap.SaveConvoyStats(convoyRef);
+
             // 씬 언로드 시 타겟이 이미 파괴됐을 수 있어 null 가드 필수
             if (leftMenuRoot != null)
             {
