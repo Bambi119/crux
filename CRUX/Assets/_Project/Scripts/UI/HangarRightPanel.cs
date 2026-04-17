@@ -27,6 +27,8 @@ namespace Crux.UI
 
         private TankInstance currentUnit;
         private HangarUI hangarUI;
+        private Button sortieToggleBtn;
+        private Text sortieToggleLabel;
 
         public void SetUnit(TankInstance tank)
         {
@@ -54,6 +56,61 @@ namespace Crux.UI
 
             RefreshTraitList();
             RefreshCrewList();
+            EnsureSortieToggle();
+            UpdateSortieToggle();
+        }
+
+        /// <summary>
+        /// 런타임에 출격/보관 토글 버튼 생성. 중복 생성 방지.
+        /// RightPanel VerticalLayoutGroup 맨 아래에 배치됨.
+        /// </summary>
+        private void EnsureSortieToggle()
+        {
+            if (sortieToggleBtn != null) return;
+
+            var btnObj = new GameObject("SortieToggleButton");
+            btnObj.transform.SetParent(transform, false);
+            btnObj.AddComponent<RectTransform>();
+            var img = btnObj.AddComponent<Image>();
+            img.color = new Color(0.3f, 0.35f, 0.42f, 1f);
+            sortieToggleBtn = btnObj.AddComponent<Button>();
+            var le = btnObj.AddComponent<LayoutElement>();
+            le.preferredHeight = 36;
+
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(btnObj.transform, false);
+            var labelRt = labelObj.AddComponent<RectTransform>();
+            labelRt.anchorMin = Vector2.zero;
+            labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+            sortieToggleLabel = labelObj.AddComponent<Text>();
+            sortieToggleLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            sortieToggleLabel.fontSize = 14;
+            sortieToggleLabel.alignment = TextAnchor.MiddleCenter;
+            sortieToggleLabel.color = Color.white;
+            sortieToggleLabel.text = "편성 토글";
+
+            sortieToggleBtn.onClick.AddListener(() => {
+                if (currentUnit != null && hangarUI != null)
+                    hangarUI.ToggleSortie(currentUnit);
+            });
+        }
+
+        private void UpdateSortieToggle()
+        {
+            if (sortieToggleBtn == null || sortieToggleLabel == null || currentUnit == null) return;
+
+            if (currentUnit.inSortie)
+            {
+                sortieToggleLabel.text = "◀ 보관으로";
+                sortieToggleBtn.image.color = new Color(0.45f, 0.35f, 0.25f, 1f);
+            }
+            else
+            {
+                sortieToggleLabel.text = "▶ 출격에 배치";
+                sortieToggleBtn.image.color = new Color(0.25f, 0.45f, 0.35f, 1f);
+            }
         }
 
         public void Clear()

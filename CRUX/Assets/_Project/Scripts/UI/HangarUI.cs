@@ -206,6 +206,35 @@ namespace Crux.UI
                 rightPanel.SetUnit(tank);
         }
 
+        /// <summary>
+        /// 선택된 탱크의 inSortie 토글. 출격 한도 5 초과 시 보관으로만 허용.
+        /// 토글 후 편성 탭 재바인딩으로 슬롯 갱신.
+        /// </summary>
+        public void ToggleSortie(TankInstance tank)
+        {
+            if (tank == null || convoyRef == null) return;
+
+            if (!tank.inSortie)
+            {
+                // 보관 → 출격: 한도 체크 (기존 출격 4 이하여야 +1 가능)
+                int sortieCount = convoyRef.tanks.FindAll(t => t.inSortie).Count;
+                if (sortieCount >= 5)
+                {
+                    Debug.LogWarning("[Hangar] 출격 한도 5 초과 — 토글 거부");
+                    return;
+                }
+            }
+
+            tank.inSortie = !tank.inSortie;
+            Debug.Log($"[Hangar] {tank.tankName} inSortie={tank.inSortie}");
+
+            // 편성 탭 재바인딩 + RightPanel 갱신
+            if (currentTab == HangarTab.Composition)
+                SelectTab(HangarTab.Composition);
+            if (rightPanel != null)
+                rightPanel.SetUnit(tank);
+        }
+
         public void OnUnitDeselected()
         {
             if (rightPanel != null)
