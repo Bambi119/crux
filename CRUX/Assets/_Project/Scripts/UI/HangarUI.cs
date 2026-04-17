@@ -155,7 +155,63 @@ namespace Crux.UI
                     convoy.AssignCrewTo(rocinante, klass, c.data.id);
             }
 
+            // 4) 샘플 파츠 시드 + 로시난테 기본 장착
+            //    ScriptableObject.CreateInstance로 SO 에셋 없이 런타임 생성.
+            //    각 PartSO는 OnEnable에서 category 자동 설정됨.
+            SeedSampleParts(convoy);
+            EquipSamplePartsToTank(convoy, rocinante);
+
             return convoy;
+        }
+
+        private void SeedSampleParts(ConvoyInventory convoy)
+        {
+            var engine = ScriptableObject.CreateInstance<Crux.Data.EnginePartSO>();
+            engine.partName = "V8 디젤";
+            engine.weight = 500f;
+            engine.powerOutput = 400f;
+            convoy.Add(new Crux.Data.PartInstance(engine));
+
+            var turret = ScriptableObject.CreateInstance<Crux.Data.TurretPartSO>();
+            turret.partName = "중형 터렛";
+            turret.weight = 300f;
+            turret.caliberLimit = 75;
+            convoy.Add(new Crux.Data.PartInstance(turret));
+
+            var mainGun = ScriptableObject.CreateInstance<Crux.Data.MainGunPartSO>();
+            mainGun.partName = "76mm 장포신";
+            mainGun.weight = 250f;
+            mainGun.caliber = 75;
+            mainGun.basePenetration = 120f;
+            convoy.Add(new Crux.Data.PartInstance(mainGun));
+
+            var ammoRack = ScriptableObject.CreateInstance<Crux.Data.AmmoRackPartSO>();
+            ammoRack.partName = "표준 탄약고";
+            ammoRack.weight = 100f;
+            ammoRack.maxMainGunAmmo = 30;
+            convoy.Add(new Crux.Data.PartInstance(ammoRack));
+
+            var track = ScriptableObject.CreateInstance<Crux.Data.TrackPartSO>();
+            track.partName = "표준궤";
+            track.weight = 200f;
+            convoy.Add(new Crux.Data.PartInstance(track));
+        }
+
+        private void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
+        {
+            var categories = new[] {
+                Crux.Data.PartCategory.Engine,
+                Crux.Data.PartCategory.Turret,
+                Crux.Data.PartCategory.MainGun,
+                Crux.Data.PartCategory.AmmoRack,
+                Crux.Data.PartCategory.Track,
+            };
+            foreach (var cat in categories)
+            {
+                var parts = convoy.GetByCategory(cat);
+                if (parts.Count > 0)
+                    convoy.EquipTo(tank, parts[0].instanceId, cat);
+            }
         }
 
         public void SelectTab(HangarTab tab)
