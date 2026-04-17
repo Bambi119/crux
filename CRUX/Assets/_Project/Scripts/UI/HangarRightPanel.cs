@@ -74,11 +74,37 @@ namespace Crux.UI
         private void RefreshTraitList()
         {
             ClearList(traitListRoot);
-            if (currentUnit == null || traitListRoot == null)
-                return;
+            if (currentUnit == null || traitListRoot == null) return;
+            if (currentUnit.crew == null) return;
 
-            // Trait 정보는 TankInstance에 직접 저장되지 않음 — 향후 crew/composition 정보와 통합
-            // 지금은 플레이스홀더
+            foreach (var (klass, crew) in currentUnit.crew.All())
+            {
+                if (crew == null || crew.data == null) continue;
+                if (crew.data.traitPositive != null)
+                    CreateTraitEntry(klass, crew.data.traitPositive);
+                if (crew.data.traitNegative != null)
+                    CreateTraitEntry(klass, crew.data.traitNegative);
+            }
+        }
+
+        private void CreateTraitEntry(CrewClass klass, TraitSO trait)
+        {
+            GameObject entry = new GameObject($"Trait_{klass}_{trait.id}");
+            entry.transform.SetParent(traitListRoot, false);
+            entry.AddComponent<RectTransform>();
+
+            Text text = entry.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 12;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = trait.isPositive
+                ? new Color(0.7f, 0.95f, 0.7f)
+                : new Color(0.95f, 0.7f, 0.7f);
+            string mark = trait.isPositive ? "▲" : "▼";
+            text.text = $"{mark} {trait.displayName} ({klass})";
+
+            var le = entry.AddComponent<LayoutElement>();
+            le.preferredHeight = 18;
         }
 
         private void RefreshCrewList()
