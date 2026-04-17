@@ -39,6 +39,8 @@ namespace Crux.UI
 
         private HangarTab currentTab = HangarTab.Composition;
         private Dictionary<HangarTab, GameObject> instantiatedTabs = new();
+        private GameObject activeOverlay;  // 중복 생성 방지
+        private TankInstance selectedTank; // 가장 최근 선택된 탱크
 
         private void OnEnable()
         {
@@ -55,7 +57,10 @@ namespace Crux.UI
 
             // 첫 탱크 자동 선택 → RightPanel 표시
             if (rightPanel != null && convoyRef.tanks.Count > 0)
-                rightPanel.SetUnit(convoyRef.tanks[0]);
+            {
+                selectedTank = convoyRef.tanks[0];
+                rightPanel.SetUnit(selectedTank);
+            }
         }
 
         private void BuildTabMenu()
@@ -177,6 +182,7 @@ namespace Crux.UI
 
         public void OnUnitSelected(TankInstance tank)
         {
+            selectedTank = tank;
             if (rightPanel != null)
                 rightPanel.SetUnit(tank);
         }
@@ -216,6 +222,8 @@ namespace Crux.UI
                 TankInstance tank = (tankIdx < tanks.Count) ? tanks[tankIdx] : null;
                 BindOneSlot(slot, tank);
             }
+
+            AttachOpenPartsButton(compositionTabInstance);
         }
 
         private void BindOneSlot(Transform slot, TankInstance tank)
@@ -276,6 +284,159 @@ namespace Crux.UI
                 }
             }
             instantiatedTabs.Clear();
+            CloseOverlay();
+        }
+
+        private void AttachOpenPartsButton(GameObject compositionTab)
+        {
+            if (compositionTab == null) return;
+            if (compositionTab.transform.Find("OpenPartsButton") != null) return;
+
+            var btnObj = new GameObject("OpenPartsButton");
+            btnObj.transform.SetParent(compositionTab.transform, false);
+            btnObj.AddComponent<RectTransform>();
+            var img = btnObj.AddComponent<Image>();
+            img.color = new Color(0.3f, 0.35f, 0.42f, 1f);
+            var btn = btnObj.AddComponent<Button>();
+            var le = btnObj.AddComponent<LayoutElement>();
+            le.preferredHeight = 36;
+            le.flexibleWidth = 1;
+
+            // Label 자식
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(btnObj.transform, false);
+            var labelRt = labelObj.AddComponent<RectTransform>();
+            labelRt.anchorMin = Vector2.zero;
+            labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+            var text = labelObj.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 16;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.text = "파츠 인벤토리 열기";
+
+            btn.onClick.AddListener(() => {
+                if (selectedTank != null)
+                    OpenPartsInventory(selectedTank);
+            });
+        }
+
+        public void OpenPartsInventory(TankInstance tank)
+        {
+            if (tank == null) return;
+            if (activeOverlay != null) Destroy(activeOverlay);
+
+            // OverlayCanvas 찾기 (씬 루트)
+            var overlayCanvas = GameObject.Find("OverlayCanvas");
+            if (overlayCanvas == null) return;
+
+            activeOverlay = BuildPartsOverlay(tank);
+            activeOverlay.transform.SetParent(overlayCanvas.transform, false);
+            var rt = activeOverlay.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+        }
+
+        public void CloseOverlay()
+        {
+            if (activeOverlay != null)
+            {
+                Destroy(activeOverlay);
+                activeOverlay = null;
+            }
+        }
+
+        private GameObject BuildPartsOverlay(TankInstance tank)
+        {
+            // 배경 panel (반투명 검정 전체 스크린)
+            var root = new GameObject("PartsInventoryOverlay");
+            root.AddComponent<RectTransform>();
+            var bgImg = root.AddComponent<Image>();
+            bgImg.color = new Color(0f, 0f, 0f, 0.75f);
+
+            // 내부 패널 (가운데 640x480 박스)
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var panelRt = panel.AddComponent<RectTransform>();
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+            panelRt.sizeDelta = new Vector2(640f, 480f);
+            panelRt.anchoredPosition = Vector2.zero;
+            var panelImg = panel.AddComponent<Image>();
+            panelImg.color = new Color(0.12f, 0.12f, 0.14f, 1f);
+
+            var vlg = panel.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(16, 16, 16, 16);
+            vlg.spacing = 8;
+            vlg.childAlignment = TextAnchor.UpperLeft;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+
+            // 제목
+            AddText(panel.transform, "TitleText", $"파츠 인벤토리 · {tank.tankName}", 20, new Color(1f, 1f, 1f), 32);
+
+            // 5개 슬롯 라벨 + 장착 파츠
+            AddSlotRow(panel.transform, "주포", tank.mainGun);
+            AddSlotRow(panel.transform, "터렛", tank.turret);
+            AddSlotRow(panel.transform, "엔진", tank.engine);
+            AddSlotRow(panel.transform, "탄약고", tank.ammoRack);
+            AddSlotRow(panel.transform, "궤도", tank.track);
+
+            // 닫기 버튼 (하단)
+            var closeObj = new GameObject("CloseButton");
+            closeObj.transform.SetParent(panel.transform, false);
+            closeObj.AddComponent<RectTransform>();
+            var closeImg = closeObj.AddComponent<Image>();
+            closeImg.color = new Color(0.45f, 0.2f, 0.2f, 1f);
+            var closeBtn = closeObj.AddComponent<Button>();
+            closeBtn.onClick.AddListener(CloseOverlay);
+            var closeLe = closeObj.AddComponent<LayoutElement>();
+            closeLe.preferredHeight = 36;
+            // Label
+            var closeLabelObj = new GameObject("Label");
+            closeLabelObj.transform.SetParent(closeObj.transform, false);
+            var closeLabelRt = closeLabelObj.AddComponent<RectTransform>();
+            closeLabelRt.anchorMin = Vector2.zero;
+            closeLabelRt.anchorMax = Vector2.one;
+            closeLabelRt.offsetMin = Vector2.zero;
+            closeLabelRt.offsetMax = Vector2.zero;
+            var closeText = closeLabelObj.AddComponent<Text>();
+            closeText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            closeText.fontSize = 16;
+            closeText.alignment = TextAnchor.MiddleCenter;
+            closeText.color = Color.white;
+            closeText.text = "닫기";
+
+            return root;
+        }
+
+        private void AddText(Transform parent, string name, string text, int fontSize, Color color, float preferredHeight)
+        {
+            var obj = new GameObject(name);
+            obj.transform.SetParent(parent, false);
+            obj.AddComponent<RectTransform>();
+            var t = obj.AddComponent<Text>();
+            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            t.fontSize = fontSize;
+            t.color = color;
+            t.alignment = TextAnchor.MiddleLeft;
+            t.text = text;
+            var le = obj.AddComponent<LayoutElement>();
+            le.preferredHeight = preferredHeight;
+        }
+
+        private void AddSlotRow(Transform parent, string label, Crux.Data.PartInstance part)
+        {
+            string value = (part != null && part.data != null) ? part.data.partName : "(비어있음)";
+            Color color = (part != null) ? new Color(0.85f, 0.9f, 0.85f) : new Color(0.6f, 0.6f, 0.6f);
+            AddText(parent, $"Slot_{label}", $"{label}: {value}", 16, color, 24);
         }
     }
 }
