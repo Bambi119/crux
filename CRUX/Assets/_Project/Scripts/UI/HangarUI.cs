@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using Crux.Data;
 using System.Collections.Generic;
 
@@ -37,6 +38,9 @@ namespace Crux.UI
         [Header("샘플 부대 시드 (MVP — 임시)")]
         [SerializeField] private Crux.Data.CrewMemberSO[] crewRoster;  // 5개 SO 에셋 Inspector 할당
 
+        [Header("전투 연결")]
+        [SerializeField] private string battleSceneName = "StrategyScene";
+
         private HangarTab currentTab = HangarTab.Composition;
         private Dictionary<HangarTab, GameObject> instantiatedTabs = new();
         private GameObject activeOverlay;  // 중복 생성 방지
@@ -54,6 +58,7 @@ namespace Crux.UI
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
             UpdateTopBar();
+            AttachSortieButton();
 
             // 첫 탱크 자동 선택 → RightPanel 표시
             if (rightPanel != null && convoyRef.tanks.Count > 0)
@@ -270,6 +275,55 @@ namespace Crux.UI
                 if (tab == HangarTab.Composition)
                     BindTankSlots(instance);
             }
+        }
+
+        /// <summary>
+        /// TopBar 오른쪽에 "출격" 버튼을 런타임 추가. 클릭 시 battleSceneName 로드.
+        /// 중복 생성 방지. HorizontalLayoutGroup이 자동 배치.
+        /// </summary>
+        private void AttachSortieButton()
+        {
+            if (moneyText == null) return;
+            Transform topBar = moneyText.transform.parent;
+            if (topBar == null) return;
+            if (topBar.Find("SortieButton") != null) return;
+
+            var btnObj = new GameObject("SortieButton");
+            btnObj.transform.SetParent(topBar, false);
+            btnObj.AddComponent<RectTransform>();
+            var img = btnObj.AddComponent<Image>();
+            img.color = new Color(0.7f, 0.35f, 0.2f, 1f);
+            var btn = btnObj.AddComponent<Button>();
+            var le = btnObj.AddComponent<LayoutElement>();
+            le.preferredWidth = 120;
+            le.preferredHeight = 42;
+
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(btnObj.transform, false);
+            var labelRt = labelObj.AddComponent<RectTransform>();
+            labelRt.anchorMin = Vector2.zero;
+            labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = Vector2.zero;
+            labelRt.offsetMax = Vector2.zero;
+            var text = labelObj.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 18;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.text = "▶ 출격";
+
+            btn.onClick.AddListener(StartBattle);
+        }
+
+        public void StartBattle()
+        {
+            if (string.IsNullOrEmpty(battleSceneName))
+            {
+                Debug.LogWarning("[Hangar] battleSceneName 미설정");
+                return;
+            }
+            Debug.Log($"[Hangar] 출격 — {battleSceneName} 로드");
+            SceneManager.LoadScene(battleSceneName);
         }
 
         public void UpdateTopBar()
