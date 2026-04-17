@@ -11,8 +11,9 @@ namespace Crux.UI
     /// </summary>
     public static class HangarBootstrap
     {
-        const string KeyMoney = "Convoy.Money";
-        const string KeyMorale = "Convoy.Morale";
+        const string KeyMoney = "Convoy.Money";      // legacy Save-Minimal
+        const string KeyMorale = "Convoy.Morale";    // legacy Save-Minimal
+        const string KeyConvoyJson = "Convoy.Json";  // Save-Full P1
         const int DefaultMoney = 1000;
         const int DefaultMorale = 80;
 
@@ -25,7 +26,7 @@ namespace Crux.UI
         {
             var convoy = new ConvoyInventory();
 
-            // PlayerPrefs 복원 — 없으면 기본값
+            // PlayerPrefs 복원 — Save-Full JSON 우선, 없으면 legacy int 키, 둘 다 없으면 기본값
             convoy.Money = PlayerPrefs.GetInt(KeyMoney, DefaultMoney);
             convoy.Morale = PlayerPrefs.GetInt(KeyMorale, DefaultMorale);
 
@@ -87,6 +88,22 @@ namespace Crux.UI
             // 4) 샘플 파츠 시드 + 로시난테 기본 장착
             SeedSampleParts(convoy);
             EquipSamplePartsToTank(convoy, rocinante);
+
+            // 5) JSON 세이브 있으면 덮어쓰기 (Money/Morale/탱크 inSortie)
+            var json = PlayerPrefs.GetString(KeyConvoyJson, null);
+            if (!string.IsNullOrEmpty(json))
+            {
+                try
+                {
+                    var save = JsonUtility.FromJson<ConvoySaveData>(json);
+                    save?.ApplyTo(convoy);
+                    Debug.Log($"[Hangar] Save-Full 복원: money={convoy.Money} morale={convoy.Morale} tanks={save?.tanks.Count}");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"[Hangar] Save-Full 복원 실패 (무시): {e.Message}");
+                }
+            }
 
             return convoy;
         }
@@ -202,6 +219,13 @@ namespace Crux.UI
         public static void SaveConvoyStats(ConvoyInventory convoy)
         {
             if (convoy == null) return;
+
+            // Save-Full P1: JSON 직렬화로 Money/Morale + 탱크 메타 저장
+            var save = ConvoySaveData.FromConvoy(convoy);
+            string json = JsonUtility.ToJson(save);
+            PlayerPrefs.SetString(KeyConvoyJson, json);
+
+            // legacy Int 키도 유지 (타 로직 의존 가능)
             PlayerPrefs.SetInt(KeyMoney, convoy.Money);
             PlayerPrefs.SetInt(KeyMorale, convoy.Morale);
             PlayerPrefs.Save();
@@ -212,6 +236,7 @@ namespace Crux.UI
         {
             PlayerPrefs.DeleteKey(KeyMoney);
             PlayerPrefs.DeleteKey(KeyMorale);
+            PlayerPrefs.DeleteKey(KeyConvoyJson);
             PlayerPrefs.Save();
         }
 
