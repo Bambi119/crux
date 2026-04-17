@@ -73,6 +73,9 @@ namespace Crux.UI
             if (overlayBuilder == null)
                 overlayBuilder = new HangarOverlayBuilder(this, convoyRef);
 
+            // 직전 전투 결과 소비 (Victory 보상 / Defeat 피해)
+            ApplyBattleResult();
+
             BuildTabMenu();
             SelectTab(HangarTab.Composition);
             UpdateTopBar();
@@ -208,6 +211,31 @@ namespace Crux.UI
 
             if (convoyRef != null && moraleText != null)
                 moraleText.text = $"사기: {convoyRef.Morale}";
+        }
+
+        /// <summary>
+        /// 직전 전투 결과(Victory/Defeat)를 Convoy에 반영.
+        /// 소비 후 BattleEntryData.LastResult는 None으로 초기화.
+        /// </summary>
+        private void ApplyBattleResult()
+        {
+            var result = Crux.Core.BattleEntryData.LastResult;
+            if (result == Crux.Core.BattleResult.None || convoyRef == null) return;
+
+            if (result == Crux.Core.BattleResult.Victory)
+            {
+                convoyRef.AddMoney(200);
+                convoyRef.ChangeMorale(10);
+                Debug.Log("[Hangar] 승리 보상: +₩200 · +10 사기");
+            }
+            else if (result == Crux.Core.BattleResult.Defeat)
+            {
+                convoyRef.AddMoney(-100);
+                convoyRef.ChangeMorale(-15);
+                Debug.Log("[Hangar] 패배 피해: -₩100 · -15 사기");
+            }
+
+            Crux.Core.BattleEntryData.LastResult = Crux.Core.BattleResult.None;
         }
 
         public void OnUnitSelected(TankInstance tank)

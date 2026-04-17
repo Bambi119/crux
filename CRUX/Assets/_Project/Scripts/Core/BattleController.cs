@@ -288,6 +288,7 @@ namespace Crux.Core
             if (playerUnit != null && playerUnit.IsDestroyed)
             {
                 currentPhase = TurnPhase.GameOver;
+                BattleEntryData.LastResult = BattleResult.Defeat;
                 return;
             }
 
@@ -295,7 +296,10 @@ namespace Crux.Core
             foreach (var e in enemyUnits)
                 if (e != null && !e.IsDestroyed) { allEnemiesDead = false; break; }
             if (allEnemiesDead)
+            {
                 currentPhase = TurnPhase.Victory;
+                BattleEntryData.LastResult = BattleResult.Victory;
+            }
         }
 
         /// <summary>플레이어 유닛의 엄폐 커버 범위 표시 (상태 변경 시만 갱신)</summary>
