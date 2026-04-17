@@ -173,7 +173,9 @@ namespace Crux.Core
             mapSetup = useTerrainTestMap
                 ? setupObj.AddComponent<TerrainTestMapSetup>()
                 : setupObj.AddComponent<GridMapSetup>();
-            mapSetup.playerTankData = playerTankData;
+
+            // Scene-5-Mini: 편성 탱크가 있으면 TankDataSO 복사본에 기본 스탯 주입
+            mapSetup.playerTankData = BuildPlayerTankDataFromEntry() ?? playerTankData;
             mapSetup.lightEnemyData = lightEnemyData;
             mapSetup.heavyEnemyData = heavyEnemyData;
             mapSetup.playerAmmo = playerAmmo;
@@ -278,6 +280,31 @@ namespace Crux.Core
             // 지형 디버그 토글
             if (Input.GetKeyDown(KeyCode.F1))
                 showTerrainDebug = !showTerrainDebug;
+        }
+
+        /// <summary>
+        /// BattleEntryData.SortieTanks[0] 편성 정보를 TankDataSO 복사본에 반영.
+        /// Inspector playerTankData 원본 유지 + 편성 값(이름/차체/HP)만 덮어쓰기.
+        /// 편성 데이터 없으면 null 반환 — 호출 측이 원본 Fallback.
+        /// </summary>
+        private Crux.Data.TankDataSO BuildPlayerTankDataFromEntry()
+        {
+            if (!BattleEntryData.HasEntry || playerTankData == null) return null;
+            var entry = BattleEntryData.SortieTanks[0];
+            if (entry == null) return null;
+
+            var copy = ScriptableObject.Instantiate(playerTankData);
+            copy.name = playerTankData.name + " (Sortie)";
+            copy.tankName = entry.tankName;
+            copy.hullClass = entry.hullClass;
+            copy.isRocinante = entry.isRocinante;
+            if (entry.MaxHP > 0)
+                copy.maxHP = entry.MaxHP;
+            if (entry.mainGun?.data is Crux.Data.MainGunPartSO mg)
+                copy.mainGunCaliber = mg.caliber;
+
+            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} (HP={copy.maxHP}, 구경={copy.mainGunCaliber})");
+            return copy;
         }
 
         /// <summary>승리/패배 판정 — 플레이어 파괴 시 패배, 전 적 파괴 시 승리</summary>
