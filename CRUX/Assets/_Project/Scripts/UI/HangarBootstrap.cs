@@ -83,6 +83,12 @@ namespace Crux.UI
 
         private static void SeedSampleParts(ConvoyInventory convoy)
         {
+#if UNITY_EDITOR
+            // 1순위: Assets/_Project/Data/Parts/Samples/ 아래 에셋 로드 (PartAssetGenerator 산출물)
+            if (TrySeedFromAssets(convoy)) return;
+#endif
+
+            // 폴백: 런타임 CreateInstance — 에셋 없거나 빌드 모드
             // 엔진 2개
             var engine1 = ScriptableObject.CreateInstance<EnginePartSO>();
             engine1.partName = "V8 디젤";
@@ -148,6 +154,37 @@ namespace Crux.UI
             track2.weight = 280f;
             convoy.Add(new PartInstance(track2));
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// PartAssetGenerator가 만든 에셋 10개 로드 시도.
+        /// 하나라도 로드되면 true. 아무 것도 없으면 false.
+        /// </summary>
+        private static bool TrySeedFromAssets(ConvoyInventory convoy)
+        {
+            string[] ids = {
+                "engine_v8_diesel", "engine_v6_gasoline",
+                "turret_medium", "turret_large",
+                "maingun_76mm", "maingun_88mm",
+                "ammorack_standard", "ammorack_large",
+                "track_standard", "track_wide"
+            };
+            int loaded = 0;
+            foreach (var id in ids)
+            {
+                var path = $"Assets/_Project/Data/Parts/Samples/{id}.asset";
+                var so = UnityEditor.AssetDatabase.LoadAssetAtPath<PartDataSO>(path);
+                if (so != null)
+                {
+                    convoy.Add(new PartInstance(so));
+                    loaded++;
+                }
+            }
+            if (loaded > 0)
+                Debug.Log($"[Hangar] 파츠 에셋 로드: {loaded}/10");
+            return loaded == 10;
+        }
+#endif
 
         private static void EquipSamplePartsToTank(ConvoyInventory convoy, TankInstance tank)
         {
