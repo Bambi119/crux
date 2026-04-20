@@ -210,6 +210,9 @@ namespace Crux.Grid
             sr.sortingOrder = 5;
             obj.transform.localScale = Vector3.one * GameConstants.CellSize * 1.95f;
 
+            // 연기 파티클 생성
+            obj.AddComponent<SmokeCell>();
+
             smokeOverlays[pos] = obj;
         }
 
