@@ -116,7 +116,7 @@ namespace Crux.AI
             // 2) 이동 후보 × 타깃 후보 — 이동 후 사격 가능성까지 포함
             if (self.CanMove() && ctx.myAP > 0)
             {
-                var reachable = ctx.grid.GetReachableCells(self.GridPosition, ctx.myAP);
+                var reachable = ctx.grid.GetReachableCells(self.GridPosition, ctx.myAP, self);
                 foreach (var pos in reachable)
                 {
                     // 이동 목적지에 점유가 없어야 함 (GetReachableCells가 보장하지만 재확인)

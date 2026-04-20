@@ -47,7 +47,9 @@ namespace Crux.UI
 
             HangarButtonHelpers.AttachOpenPartsButton(root, () =>
             {
-                if (selectedTank != null) owner.OpenPartsInventory(selectedTank);
+                // 클릭 시점의 selectedTank를 읽음 — 로컬 변수 캡처 회피
+                var current = owner.SelectedTank;
+                if (current != null) owner.OpenPartsInventory(current);
             });
         }
 

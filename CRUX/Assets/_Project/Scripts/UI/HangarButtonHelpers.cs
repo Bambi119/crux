@@ -9,6 +9,25 @@ namespace Crux.UI
     /// </summary>
     public static class HangarButtonHelpers
     {
+        private static Font cachedKoreanFont;
+
+        /// <summary>
+        /// 한글 폰트 반환. Resources/Fonts/KoreanFont 우선, 실패 시 OS 동적 폰트 fallback.
+        /// </summary>
+        public static Font GetKoreanFont()
+        {
+            if (cachedKoreanFont == null)
+            {
+                cachedKoreanFont = Resources.Load<Font>("Fonts/KoreanFont");
+                if (cachedKoreanFont == null)
+                {
+                    Debug.LogWarning("[Hangar] Resources/Fonts/KoreanFont 로드 실패. OS 폰트 fallback 사용.");
+                    cachedKoreanFont = Font.CreateDynamicFontFromOSFont(
+                        new[] { "Malgun Gothic", "맑은 고딕", "Arial" }, 40);
+                }
+            }
+            return cachedKoreanFont;
+        }
         /// <summary>
         /// TopBar HorizontalLayoutGroup 하위에 "▶ 출격" 버튼 추가.
         /// 중복 생성 방지. 생성된 버튼의 onClick은 콜러 지정.
@@ -72,7 +91,7 @@ namespace Crux.UI
             labelRt.offsetMin = Vector2.zero;
             labelRt.offsetMax = Vector2.zero;
             var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = GetKoreanFont();
             text.fontSize = fontSize;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;

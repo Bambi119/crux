@@ -259,8 +259,30 @@ namespace Crux.Unit
         /// <summary>차체 회전 가능 여부</summary>
         public bool CanRotate() => moduleManager.CanRotate();
 
-        /// <summary>실효 이동 AP 비용 (1셀당)</summary>
-        public int GetMoveCostPerCell() => GameConstants.MoveCostPerCell + moduleManager.GetMoveAPPenalty() + (isOnFire ? 1 : 0);
+        /// <summary>실효 이동 AP 비용 (1셀당) — 엔진 출력/궤도 기동성 포함</summary>
+        public int GetMoveCostPerCell()
+        {
+            int cost = GameConstants.MoveCostPerCell;
+            cost += moduleManager.GetMoveAPPenalty();
+            if (isOnFire) cost += 1;
+
+            // 편성 엔진 출력 여유 → 이동 AP 보정 (partsEnginePowerOutput==0 이면 미적용)
+            if (tankData != null && tankData.partsEnginePowerOutput > 0f)
+            {
+                float delta = tankData.partsEnginePowerOutput - tankData.powerRequirement;
+                if (delta < 0f) cost += 1;          // 출력 부족: +1
+                else if (delta >= 50f) cost -= 1;   // 여유 많음: -1
+            }
+
+            // 편성 궤도 기동성 보너스 (mob+1 = cost-1)
+            if (tankData != null)
+                cost -= tankData.partsTrackMobilityBonus;
+
+            // 과적 패널티 — 파츠 중량 초과 시 이동 AP +1
+            if (tankData != null && tankData.partsIsOverweight) cost += 1;
+
+            return Mathf.Max(1, cost);  // 최소 1 보장
+        }
 
         /// <summary>실효 사격 AP 비용</summary>
         public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
@@ -494,6 +516,9 @@ namespace Crux.Unit
             if (!CanUseSmoke()) return false;
             remainingSmokeCharges--;
             currentAP -= 1;
+            // 현재 셀에 연막 배치 (3턴 유지)
+            var cell = grid?.GetCell(gridPosition);
+            if (cell != null) cell.SmokeTurnsLeft = 3;
             OnAPChanged?.Invoke();
             Debug.Log($"[CRUX] {tankData?.tankName} 연막 발사! 잔여: {remainingSmokeCharges}");
             return true;
@@ -508,7 +533,7 @@ namespace Crux.Unit
             ApplyPrerolledDamage(info, outcome);
         }
 
-        /// <summary>데미지 + 모듈 + 화재 + 격파 사전 롤 — 실제 적용 없음</summary>
+        /// <summary>데미지 + 모듈 + 화재 + 격파 + 승무원 부상 사전 롤 — 실제 적용 없음</summary>
         public DamageOutcome PreRollDamage(DamageInfo info)
         {
             var outcome = new DamageOutcome();
@@ -543,11 +568,68 @@ namespace Crux.Unit
                     outcome.fireStarted = true;
             }
 
+            // 승무원 부상 롤 — 모듈 피격 시 관련 승무원에게 부상 기회
+            if (outcome.moduleHit && crew != null)
+            {
+                RollCrewInjury(outcome.damagedModule);
+            }
+
             // 체력 0 예측 (피해만으로 격파)
             if (currentHP - info.damage <= 0)
                 outcome.killed = true;
 
             return outcome;
+        }
+
+        /// <summary>모듈 피격 시 관련 승무원에게 부상 확률 롤</summary>
+        private void RollCrewInjury(ModuleType module)
+        {
+            if (crew == null) return;
+
+            CrewMemberRuntime target = null;
+            float injuryChance = 0f;
+
+            switch (module)
+            {
+                case ModuleType.Engine:
+                    // 엔진 피격 → Driver 10% 부상 기회
+                    target = crew.driver;
+                    injuryChance = 0.10f;
+                    break;
+                case ModuleType.Barrel:
+                case ModuleType.TurretRing:
+                    // 포신/포탑 피격 → Gunner 15% 부상 기회
+                    target = crew.gunner;
+                    injuryChance = 0.15f;
+                    break;
+                case ModuleType.AmmoRack:
+                    // 탄약고 피격 → Loader 20% 부상 기회
+                    target = crew.loader;
+                    injuryChance = 0.20f;
+                    break;
+                case ModuleType.CaterpillarLeft:
+                case ModuleType.CaterpillarRight:
+                    // 궤도는 특정 승무원 영향 없음 (분산 처리)
+                    break;
+                default:
+                    break;
+            }
+
+            if (target != null && Random.value < injuryChance)
+            {
+                // 이미 부상 있으면 격상, 없으면 경상
+                if (target.injuryState == InjuryLevel.None)
+                {
+                    target.injuryState = InjuryLevel.Minor;
+                    Debug.Log($"[CRUX] {target.DisplayName}(직책: {target.data?.klass}) 경상 부상!");
+                }
+                else if (target.injuryState == InjuryLevel.Minor)
+                {
+                    target.injuryState = InjuryLevel.Severe;
+                    Debug.Log($"[CRUX] {target.DisplayName}(직책: {target.data?.klass}) 중상으로 악화!");
+                }
+                // Fatal은 이 경로로 발생 금지 (게임 밸런스)
+            }
         }
 
         /// <summary>사전 롤된 데미지 적용 — 결정론적</summary>

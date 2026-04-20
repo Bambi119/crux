@@ -519,7 +519,7 @@ namespace Crux.Core
         {
             if (selectedUnit == null || !selectedUnit.CanMove()) return;
             inputMode = InputMode.Move;
-            visualizer.ShowMoveRange(grid.GetReachableCells(selectedUnit.GridPosition, selectedUnit.CurrentAP));
+            visualizer.ShowMoveRange(grid.GetReachableCells(selectedUnit.GridPosition, selectedUnit.CurrentAP, selectedUnit));
         }
 
         public void TryEnterFireMode()

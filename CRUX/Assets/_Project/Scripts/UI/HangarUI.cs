@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using Crux.Data;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Crux.UI
 {
@@ -49,6 +50,11 @@ namespace Crux.UI
         private TankInstance selectedTank; // 가장 최근 선택된 탱크
         private HangarOverlayBuilder overlayBuilder; // 오버레이 생성 담당
         private HangarCompositionBinder compositionBinder; // 편성 탭 슬롯 바인딩 담당
+
+        /// <summary>
+        /// 현재 선택된 탱크. HangarCompositionBinder의 onClick 람다에서 클릭 시점의 값을 읽기 위해 사용.
+        /// </summary>
+        public TankInstance SelectedTank => selectedTank;
 
         private void OnEnable()
         {
@@ -161,8 +167,40 @@ namespace Crux.UI
             // BattleEntryData에 편성 데이터 저장 — BattleController가 수신
             if (convoyRef != null)
             {
+                var sortieTanks = convoyRef.tanks.FindAll(t => t.inSortie);
+
+                // 공석 가드 — 슬롯이 하나라도 비면 출격 불가 (docs/04 §8.1)
+                var allVacancies = new List<(string tankName, List<CrewClass> vacantClasses)>();
+                foreach (var tank in sortieTanks)
+                {
+                    if (tank.crew != null)
+                    {
+                        var vacant = new List<CrewClass>();
+                        foreach (var (klass, member) in tank.crew.All())
+                        {
+                            if (member == null)
+                                vacant.Add(klass);
+                        }
+                        if (vacant.Count > 0)
+                            allVacancies.Add((tank.tankName, vacant));
+                    }
+                }
+
+                if (allVacancies.Count > 0)
+                {
+                    // 모든 탱크의 공석 상황 통합 로그
+                    var vacancyReport = new System.Text.StringBuilder();
+                    foreach (var (tankName, vacantClasses) in allVacancies)
+                    {
+                        var classNames = string.Join(", ", vacantClasses);
+                        vacancyReport.AppendLine($"  '{tankName}': {classNames}");
+                    }
+                    Debug.LogWarning($"[Hangar] 출격 거부: 공석 있음\n{vacancyReport}");
+                    return;
+                }
+
                 Crux.Core.BattleEntryData.Convoy = convoyRef;
-                Crux.Core.BattleEntryData.SortieTanks = convoyRef.tanks.FindAll(t => t.inSortie);
+                Crux.Core.BattleEntryData.SortieTanks = sortieTanks;
                 Debug.Log($"[Hangar] 출격 편성: {Crux.Core.BattleEntryData.SortieTanks.Count}대 → {battleSceneName}");
             }
             else
@@ -294,11 +332,24 @@ namespace Crux.UI
 
         public void OpenPartsInventory(TankInstance tank)
         {
-            if (tank == null || overlayBuilder == null) return;
+            if (tank == null)
+            {
+                Debug.LogWarning("[Hangar] 파츠 오버레이 열기 실패: tank == null");
+                return;
+            }
+            if (overlayBuilder == null)
+            {
+                Debug.LogWarning("[Hangar] 파츠 오버레이 열기 실패: overlayBuilder == null");
+                return;
+            }
             if (activeOverlay != null) Destroy(activeOverlay);
 
             var overlayCanvas = GameObject.Find("OverlayCanvas");
-            if (overlayCanvas == null) return;
+            if (overlayCanvas == null)
+            {
+                Debug.LogWarning("[Hangar] 파츠 오버레이 열기 실패: OverlayCanvas 없음");
+                return;
+            }
 
             activeOverlay = overlayBuilder.BuildPartsOverlay(tank);
             activeOverlay.transform.SetParent(overlayCanvas.transform, false);
@@ -307,6 +358,7 @@ namespace Crux.UI
             rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
+            Debug.Log($"[Hangar] 파츠 오버레이 열기 성공: {tank.tankName}");
         }
 
         public void CloseOverlay()

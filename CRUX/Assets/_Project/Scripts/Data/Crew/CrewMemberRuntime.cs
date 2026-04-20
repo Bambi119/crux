@@ -110,5 +110,15 @@ namespace Crux.Data
         /// <summary>부상 상태에서 전투 가능 여부 — 중상/치명상은 공석 취급 (docs/04 §8.1)</summary>
         public bool IsCombatReady
             => injuryState == InjuryLevel.None || injuryState == InjuryLevel.Minor;
+
+        /// <summary>부상 상태에 따른 명중률 보정 (Gunner 직책용)</summary>
+        public float GetAimModifier() => injuryState switch
+        {
+            InjuryLevel.None => 0f,        // 부상 없음
+            InjuryLevel.Minor => -0.10f,   // 경상: -10%
+            InjuryLevel.Severe => -0.25f,  // 중상: -25%
+            InjuryLevel.Fatal => -1f,      // 치명상: 전투 불가 (실제 배제는 상위에서)
+            _ => 0f
+        };
     }
 }

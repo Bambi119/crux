@@ -221,6 +221,28 @@ namespace Crux.Combat
                 + mgData.accuracyModifier
                 - attacker.Modules.GetMGAccuracyPenalty();
 
+            // GunnerMech aim 명중 보정 (기본값 50 기준 ±0.5%/점)
+            var atkCrew = attacker.Crew;
+            if (atkCrew != null)
+            {
+                var gunnerMech = atkCrew.GetByClass(CrewClass.GunnerMech);
+                if (gunnerMech != null)
+                {
+                    float aimBonus = (gunnerMech.BaseAim - 50) * 0.005f;
+                    baseHitChance += aimBonus;
+                    Debug.Log($"[FIRE] GunnerMech aim={gunnerMech.BaseAim} → {(aimBonus > 0 ? "+" : "")}{aimBonus:P1}");
+
+                    // Trait aimBonus (% 단위)
+                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunnerMech.data.traitPositive, gunnerMech.data.traitNegative);
+                    if (traitMod.aimBonus != 0)
+                    {
+                        float traitDelta = traitMod.aimBonus * 0.01f;
+                        baseHitChance += traitDelta;
+                        Debug.Log($"[FIRE] GunnerMech trait aimBonus={traitMod.aimBonus:+0;-0} → {traitDelta:P1}");
+                    }
+                }
+            }
+
             // 기총 손상 시 버스트 감소
             int burstCount = Mathf.Max(1, mgData.burstCount - attacker.Modules.GetBurstPenalty());
             attacker.ConsumeMGBurst(burstCount);
@@ -368,6 +390,35 @@ namespace Crux.Combat
             var atkCrew = attacker.Crew;
             if (atkCrew != null)
                 chance += MoraleSystem.AimModifier(atkCrew.Band) * 0.01f;
+
+            // Gunner aim 명중 보정 (기본값 50 기준 ±0.5%/점) + 부상 페널티
+            if (atkCrew != null)
+            {
+                var gunner = atkCrew.GetByClass(CrewClass.Gunner);
+                if (gunner != null)
+                {
+                    float aimBonus = (gunner.BaseAim - 50) * 0.005f;
+                    chance += aimBonus;
+                    Debug.Log($"[FIRE] Gunner aim={gunner.BaseAim} → {(aimBonus > 0 ? "+" : "")}{aimBonus:P1}");
+
+                    // 부상 상태 명중 페널티
+                    float injuryMod = gunner.GetAimModifier();
+                    if (injuryMod != 0f)
+                    {
+                        chance += injuryMod;
+                        Debug.Log($"[FIRE] Gunner injury={gunner.injuryState} → {(injuryMod > 0 ? "+" : "")}{injuryMod:P1}");
+                    }
+
+                    // Trait aimBonus (% 단위. hermit_eye +5 = +5%)
+                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunner.data.traitPositive, gunner.data.traitNegative);
+                    if (traitMod.aimBonus != 0)
+                    {
+                        float traitDelta = traitMod.aimBonus * 0.01f;
+                        chance += traitDelta;
+                        Debug.Log($"[FIRE] Gunner trait aimBonus={traitMod.aimBonus:+0;-0} → {traitDelta:P1}");
+                    }
+                }
+            }
 
             return Mathf.Clamp01(chance);
         }

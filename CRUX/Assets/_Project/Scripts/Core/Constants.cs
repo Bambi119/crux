@@ -114,7 +114,7 @@ namespace Crux.Core
         public const int PlayerMaxAP = 6;
         public const int LightEnemyMaxAP = 5;
         public const int HeavyEnemyMaxAP = 4;
-        public const int MoveCostPerCell = 1;
+        public const int MoveCostPerCell = 2;
         public const int FireCost = 3;
         public const int OverwatchCost = 2;
 

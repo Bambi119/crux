@@ -149,7 +149,7 @@ namespace Crux.UI
             obj.transform.SetParent(parent, false);
             obj.AddComponent<RectTransform>();
             var t = obj.AddComponent<Text>();
-            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            t.font = HangarButtonHelpers.GetKoreanFont();
             t.fontSize = fontSize;
             t.color = color;
             t.alignment = TextAnchor.MiddleLeft;
@@ -189,7 +189,7 @@ namespace Crux.UI
             labelObj.transform.SetParent(rowObj.transform, false);
             labelObj.AddComponent<RectTransform>();
             var labelText = labelObj.AddComponent<Text>();
-            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            labelText.font = HangarButtonHelpers.GetKoreanFont();
             labelText.fontSize = 14;
             labelText.color = compatible
                 ? new Color(0.85f, 0.9f, 0.85f)
@@ -222,7 +222,7 @@ namespace Crux.UI
             btnLabelRt.offsetMin = Vector2.zero;
             btnLabelRt.offsetMax = Vector2.zero;
             var btnLabelText = btnLabelObj.AddComponent<Text>();
-            btnLabelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            btnLabelText.font = HangarButtonHelpers.GetKoreanFont();
             btnLabelText.fontSize = 14;
             btnLabelText.alignment = TextAnchor.MiddleCenter;
             btnLabelText.color = Color.white;
@@ -296,7 +296,7 @@ namespace Crux.UI
             labelRt.offsetMin = new Vector2(8, 0);
             labelRt.offsetMax = Vector2.zero;
             var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = HangarButtonHelpers.GetKoreanFont();
             text.fontSize = 14;
             text.alignment = TextAnchor.MiddleLeft;
             text.color = enabled
@@ -318,15 +318,27 @@ namespace Crux.UI
 
         private void AddCloseButton(Transform parent)
         {
+            // 닫기 버튼을 VLG 바깥 우상단 절대 위치에 배치
+            // (파츠 많을 때 VLG 하단 클리핑 방지)
             var closeObj = new GameObject("CloseButton");
             closeObj.transform.SetParent(parent, false);
-            closeObj.AddComponent<RectTransform>();
+            var closeRt = closeObj.AddComponent<RectTransform>();
+
+            // 우상단 고정 (부모 Panel의 우상단에서 8px 안쪽)
+            closeRt.anchorMin = new Vector2(1f, 1f);
+            closeRt.anchorMax = new Vector2(1f, 1f);
+            closeRt.pivot = new Vector2(1f, 1f);
+            closeRt.anchoredPosition = new Vector2(-8f, -8f);
+            closeRt.sizeDelta = new Vector2(28f, 28f);
+
             var closeImg = closeObj.AddComponent<Image>();
             closeImg.color = new Color(0.45f, 0.2f, 0.2f, 1f);
             var closeBtn = closeObj.AddComponent<Button>();
             closeBtn.onClick.AddListener(() => owner.CloseOverlay());
+
+            // LayoutGroup에 영향받지 않도록 설정
             var le = closeObj.AddComponent<LayoutElement>();
-            le.preferredHeight = 32;
+            le.ignoreLayout = true;
 
             var labelObj = new GameObject("Text");
             labelObj.transform.SetParent(closeObj.transform, false);
@@ -336,11 +348,11 @@ namespace Crux.UI
             labelRt.offsetMin = Vector2.zero;
             labelRt.offsetMax = Vector2.zero;
             var text = labelObj.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 14;
+            text.font = HangarButtonHelpers.GetKoreanFont();
+            text.fontSize = 18;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
-            text.text = "닫기";
+            text.text = "✕";
         }
 
         private void SwapPart(TankInstance tank, PartInstance newPart)

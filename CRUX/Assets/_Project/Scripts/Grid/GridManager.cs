@@ -162,6 +162,40 @@ namespace Crux.Grid
             return reachable;
         }
 
+        /// <summary>AP 기반 이동 가능 범위 (tank 실효 이동 비용 + 지형 비용 포함)</summary>
+        /// <remarks>tank가 null이 아니면 엔진·궤도·화재 등의 이동 비용 보정 적용</remarks>
+        public List<Vector2Int> GetReachableCells(Vector2Int start, int maxCost, Crux.Unit.GridTankUnit tank)
+        {
+            var reachable = new List<Vector2Int>();
+            var visited = new Dictionary<Vector2Int, float>();
+            var queue = new Queue<(Vector2Int pos, float cost)>();
+
+            queue.Enqueue((start, 0));
+            visited[start] = 0;
+
+            // tank의 기본 이동 비용 (엔진·궤도·화재 보정 포함)
+            int extraCostPerStep = 0;
+            if (tank != null)
+                extraCostPerStep = tank.GetMoveCostPerCell() - GameConstants.MoveCostPerCell;
+
+            while (queue.Count > 0)
+            {
+                var (pos, cost) = queue.Dequeue();
+                foreach (var neighbor in GetNeighbors(pos))
+                {
+                    if (!IsGroundPassable(neighbor)) continue;
+                    float newCost = cost + StepCost(neighbor) + extraCostPerStep;
+                    if (newCost > maxCost) continue;
+                    if (visited.ContainsKey(neighbor.Position) && newCost >= visited[neighbor.Position]) continue;
+
+                    visited[neighbor.Position] = newCost;
+                    reachable.Add(neighbor.Position);
+                    queue.Enqueue((neighbor.Position, newCost));
+                }
+            }
+            return reachable;
+        }
+
         // ===== LOS (Line of Sight) =====
 
         /// <summary>두 셀 간 LOS 유효 여부 — 중간 셀의 건물/벽이 차단, 고도차로 1단계 무력화</summary>
@@ -181,6 +215,8 @@ namespace Crux.Grid
             {
                 var mid = GetCell(line[i]);
                 if (mid == null) continue;
+                // 연막 체크 — 연막이 있으면 LOS 차단
+                if (mid.HasSmoke) return false;
                 if (!TerrainData.BlocksLOS(mid.Terrain)) continue;
                 int midElev = TerrainData.Elevation(mid.Terrain);
                 // 고도 규칙: 공격자 또는 목표가 중간보다 높으면 1단계까지 넘김

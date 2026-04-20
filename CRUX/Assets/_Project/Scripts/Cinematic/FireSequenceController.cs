@@ -167,7 +167,7 @@ namespace Crux.Cinematic
             if (data.targetCoverHit)
             {
                 // 엄폐물 피격 연출
-                HitEffects.SpawnCoverHit(impactPos);
+                HitEffects.SpawnCoverHit(impactPos, currentFireDir);
                 string coverLabel = string.IsNullOrEmpty(data.targetCoverName) ? "엄폐물" : data.targetCoverName;
                 DamagePopup.SpawnCoverHit(impactPos, data.coverDamageDealt, coverLabel);
                 ShowNarrative("엄폐물 피격!", new Color(0.3f, 0.85f, 0.9f));
@@ -226,13 +226,13 @@ namespace Crux.Cinematic
                 subText = "내부 탄약 연쇄 폭발";
 
                 // 대형 폭발 그래픽 — 2단계
-                HitEffects.SpawnExplosion(impactPos);
+                HitEffects.SpawnExplosionAmmoRack(impactPos);
                 StartCoroutine(CameraShake(0.5f, 0.22f));
                 SpawnAmmoCookoffEffect(impactPos);
 
                 yield return new WaitForSeconds(0.6f);
 
-                HitEffects.SpawnExplosion(impactPos + Vector3.up * 0.2f);
+                HitEffects.SpawnExplosionAmmoRack(impactPos + Vector3.up * 0.2f);
                 StartCoroutine(CameraShake(0.4f, 0.18f));
                 yield return new WaitForSeconds(0.5f);
 

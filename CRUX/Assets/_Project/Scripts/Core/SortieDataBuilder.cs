@@ -48,7 +48,27 @@ namespace Crux.Core
             // 장갑 — armor 리스트 순서로 front/side/rear/turret 매핑
             ApplyArmorProfile(entry, ref copy.armor);
 
-            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} · HP={copy.maxHP} · 구경={copy.mainGunCaliber} · 포탑회전={copy.turretRotationSpeed:F0}° · 주포탄={copy.maxMainGunAmmo} · 장갑 F/S/R/T={copy.armor.front:F0}/{copy.armor.side:F0}/{copy.armor.rear:F0}/{copy.armor.turret:F0}");
+            // 엔진 — 출력값
+            if (entry.engine?.data is EnginePartSO eng)
+                copy.partsEnginePowerOutput = eng.powerOutput;
+
+            // 궤도 — 기동성 보너스
+            if (entry.track?.data is TrackPartSO trk)
+                copy.partsTrackMobilityBonus = trk.mobilityBonus;
+
+            // 과적 여부 — 파츠 총 중량 vs 차체 하중 한도
+            float totalWeight = entry.TotalWeight;
+            copy.partsIsOverweight = totalWeight > copy.weightCapacity;
+
+            // 로그: 엔진/궤도 정보 추가
+            string engineLog = copy.partsEnginePowerOutput > 0f
+                ? $"엔진 powerOut={copy.partsEnginePowerOutput:F0}/요구{copy.powerRequirement} (여유{copy.partsEnginePowerOutput - copy.powerRequirement:+0.#;-0.#})"
+                : "엔진 편성없음";
+            string trackLog = copy.partsTrackMobilityBonus > 0
+                ? $"궤도 mob+{copy.partsTrackMobilityBonus}"
+                : "궤도 편성없음";
+
+            Debug.Log($"[Battle] 편성 TankData 주입: {copy.tankName} · HP={copy.maxHP} · 구경={copy.mainGunCaliber} · 포탑회전={copy.turretRotationSpeed:F0}° · 주포탄={copy.maxMainGunAmmo} · 장갑 F/S/R/T={copy.armor.front:F0}/{copy.armor.side:F0}/{copy.armor.rear:F0}/{copy.armor.turret:F0} · {engineLog} · {trackLog} · 중량={totalWeight:F0}/{copy.weightCapacity}({(copy.partsIsOverweight ? "과적!" : "정상")})");
             return copy;
         }
 

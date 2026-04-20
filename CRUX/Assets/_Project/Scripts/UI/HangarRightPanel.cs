@@ -85,7 +85,7 @@ namespace Crux.UI
             labelRt.offsetMin = Vector2.zero;
             labelRt.offsetMax = Vector2.zero;
             sortieToggleLabel = labelObj.AddComponent<Text>();
-            sortieToggleLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            sortieToggleLabel.font = HangarButtonHelpers.GetKoreanFont();
             sortieToggleLabel.fontSize = 14;
             sortieToggleLabel.alignment = TextAnchor.MiddleCenter;
             sortieToggleLabel.color = Color.white;
@@ -151,7 +151,7 @@ namespace Crux.UI
             entry.AddComponent<RectTransform>();
 
             Text text = entry.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = HangarButtonHelpers.GetKoreanFont();
             text.fontSize = 12;
             text.alignment = TextAnchor.MiddleLeft;
             text.color = trait.isPositive
@@ -189,7 +189,7 @@ namespace Crux.UI
 
             // 텍스트 (raycastTarget=true로 Button의 targetGraphic 역할)
             Text textComponent = entryObj.AddComponent<Text>();
-            textComponent.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            textComponent.font = HangarButtonHelpers.GetKoreanFont();
             textComponent.fontSize = 14;
             textComponent.alignment = TextAnchor.MiddleLeft;
             textComponent.color = crew != null ? new Color(0.9f, 0.9f, 0.9f) : new Color(0.5f, 0.5f, 0.5f);

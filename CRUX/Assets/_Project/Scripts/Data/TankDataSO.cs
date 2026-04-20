@@ -138,6 +138,16 @@ namespace Crux.Data
         [Header("모듈 내구력")]
         public ModuleHPProfile moduleHP;
 
+        [Header("편성 파츠 반영값 (런타임)")]
+        [Tooltip("편성 엔진 powerOutput — 편성 진입 시 주입, Inspector 원본은 0")]
+        public float partsEnginePowerOutput = 0f;
+
+        [Tooltip("편성 궤도 mobilityBonus — 편성 진입 시 주입")]
+        public int partsTrackMobilityBonus = 0;
+
+        [Tooltip("편성 파츠 총 중량이 차체 하중 한도 초과 여부 — 편성 진입 시 주입")]
+        public bool partsIsOverweight = false;
+
 #if UNITY_EDITOR
         private void OnValidate()
         {
