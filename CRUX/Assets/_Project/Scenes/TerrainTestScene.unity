@@ -124,11 +124,6 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 7019115748295416076, guid: ca592b572434e4b489291a401e51f62e, type: 3}
   m_PrefabInstance: {fileID: 1702643815192530225}
   m_PrefabAsset: {fileID: 0}
---- !u!224 &261607942 stripped
-RectTransform:
-  m_CorrespondingSourceObject: {fileID: 8640660040774095010, guid: ece3ebb04a1471a419e7f4f1161a6732, type: 3}
-  m_PrefabInstance: {fileID: 4398407338612291872}
-  m_PrefabAsset: {fileID: 0}
 --- !u!224 &613812185 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1925336158687904153, guid: a0e5fcf0393238b469b481af67586a4c, type: 3}
@@ -332,17 +327,37 @@ PrefabInstance:
       addedObject: {fileID: 1376436507}
     - targetCorrespondingSourceObject: {fileID: 5582286838641677369, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 261607942}
+      addedObject: {fileID: 4398407338612291873}
     - targetCorrespondingSourceObject: {fileID: 5582286838641677369, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
       insertIndex: -1
       addedObject: {fileID: 613812185}
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 3768684923444633422, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1326158598}
   m_SourcePrefab: {fileID: 100100000, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
 --- !u!224 &1326158596 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 5582286838641677369, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
   m_PrefabInstance: {fileID: 1326158595}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1326158597 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 3768684923444633422, guid: 0dbc136829ffaf14d9588cdcd78577dc, type: 3}
+  m_PrefabInstance: {fileID: 1326158595}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1326158598
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1326158597}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2220f114a35cf24388811ecc1cc96bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.UI.TempFirePreviewInstantiator
 --- !u!224 &1376436507 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1626924639852887773, guid: 29646392748313542969ec704aa05ac7, type: 3}
@@ -1140,6 +1155,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ece3ebb04a1471a419e7f4f1161a6732, type: 3}
+--- !u!224 &4398407338612291873 stripped
+RectTransform:
+  m_CorrespondingSourceObject: {fileID: 1111111111111111112, guid: ece3ebb04a1471a419e7f4f1161a6732, type: 3}
+  m_PrefabInstance: {fileID: 4398407338612291872}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &6115807674774658641
 PrefabInstance:
   m_ObjectHideFlags: 0

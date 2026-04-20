@@ -53,6 +53,14 @@ namespace Crux.UI
             var actionController = canvasTransform.gameObject.AddComponent<ActionStackController>();
             actionController.Initialize(controller, actionStack);
 
+            // FirePreviewCard 선택적 초기화 (있을 때만)
+            var firePreviewCard = canvasTransform.Find("FirePreviewCard");
+            if (firePreviewCard != null)
+            {
+                var fpBinder = canvasTransform.gameObject.AddComponent<FirePreviewCardBinder>();
+                fpBinder.Initialize(controller, firePreviewCard);
+            }
+
             Debug.Log("[CRUX] BattleHUDBootstrap: uGUI HUD 초기화 완료");
         }
 
