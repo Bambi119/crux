@@ -134,12 +134,41 @@ namespace Crux.Combat
             Object.Destroy(glow, 1.0f);
         }
 
-        // ===== 빗나감 =====
+        // ===== 빗나감 — 흙먼지 + 방향성 파편 =====
         private static void SpawnMiss(Vector3 position)
         {
-            var obj = P(position, new Color(0.5f, 0.45f, 0.3f, 0.5f), 0.08f, 40);
-            obj.AddComponent<FadeAndShrink>();
-            Object.Destroy(obj, 0.3f);
+            // [1] 중심 흙먼지 디스크 — 크고 빠르게 퍼지다 사라짐
+            var dust = P(position, new Color(0.62f, 0.52f, 0.32f, 0.7f), 0.22f, 42);
+            dust.AddComponent<FadeAndShrink>();
+            Object.Destroy(dust, 0.55f);
+
+            // [2] 작은 흙먼지 보조 — 약간 오프셋
+            var dust2 = P(position + (Vector3)Random.insideUnitCircle * 0.12f,
+                          new Color(0.55f, 0.47f, 0.28f, 0.5f), 0.14f, 41);
+            dust2.AddComponent<FadeAndShrink>();
+            Object.Destroy(dust2, 0.4f);
+
+            // [3] 파편 3개 — Rigidbody2D로 방향성 분산
+            for (int i = 0; i < 3; i++)
+            {
+                float ang = Random.Range(0f, 360f);
+                var chip = new GameObject("MissChip");
+                chip.transform.position = position;
+                var sr = chip.AddComponent<SpriteRenderer>();
+                sr.sprite = GetCircle();
+                sr.sortingOrder = 43;
+                sr.color = new Color(0.6f, 0.5f, 0.3f, 0.85f);
+                chip.transform.localScale = Vector3.one * Random.Range(0.04f, 0.07f);
+                var rb = chip.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0f;
+                rb.linearDamping = 4f;
+                Vector2 dir = new Vector2(
+                    Mathf.Cos(ang * Mathf.Deg2Rad),
+                    Mathf.Sin(ang * Mathf.Deg2Rad));
+                rb.linearVelocity = dir * Random.Range(3f, 7f);
+                chip.AddComponent<FadeAndShrink>();
+                Object.Destroy(chip, Random.Range(0.3f, 0.5f));
+            }
         }
 
         // ===== 도탄 — 스프라이트 + 금속 불꽃 파편 + 파티클 =====
