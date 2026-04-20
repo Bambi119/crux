@@ -69,6 +69,14 @@ namespace Crux.UI
                 fwBinder.Initialize(controller, facingWheel);
             }
 
+            // MissionCompleteModal 선택적 초기화 (있을 때만)
+            var missionComplete = canvasTransform.Find("MissionCompleteModal");
+            if (missionComplete != null)
+            {
+                var mcBinder = canvasTransform.gameObject.AddComponent<MissionCompleteModalBinder>();
+                mcBinder.Initialize(controller, missionComplete);
+            }
+
             Debug.Log("[CRUX] BattleHUDBootstrap: uGUI HUD 초기화 완료");
         }
 
