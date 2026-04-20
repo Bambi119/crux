@@ -35,10 +35,10 @@ namespace Crux.AI
         /// <summary>
         /// 엄폐 팩터 — 내가 from 위치에 있을 때 target 방향에서 오는 공격에 대한 엄폐율.
         /// 엄폐물 오브젝트 + 지형 자체 엄폐 합산.
+        /// target==null이면 셀의 기본 엄폐율만 평가 (Reposition 용).
         /// </summary>
         public static float CoverFactor(AIContext ctx, Vector2Int from, GridTankUnit target)
         {
-            if (target == null) return 0f;
             var cell = ctx.grid.GetCell(from);
             if (cell == null) return 0f;
 
@@ -46,10 +46,18 @@ namespace Crux.AI
 
             if (cell.HasCover && cell.Cover != null && !cell.Cover.IsDestroyed)
             {
-                // 공격자(target) → 나(from) 방향으로 방호면 체크
-                var atkDir = HexCoord.AttackDir(target.GridPosition, from, GameConstants.CellSize);
-                if (cell.Cover.IsCovered(atkDir))
-                    cov += cell.Cover.CoverRate;
+                if (target != null)
+                {
+                    // 공격자(target) → 나(from) 방향으로 방호면 체크
+                    var atkDir = HexCoord.AttackDir(target.GridPosition, from, GameConstants.CellSize);
+                    if (cell.Cover.IsCovered(atkDir))
+                        cov += cell.Cover.CoverRate;
+                }
+                else
+                {
+                    // 타겟 없으면 평균 엄폐율 적용 (모든 방향에서의 기댓값)
+                    cov += cell.Cover.CoverRate * 0.5f;
+                }
             }
             return Mathf.Clamp01(cov);
         }
@@ -147,6 +155,38 @@ namespace Crux.AI
             s += w.exposure * ExposureFactor(ctx, from);
             s += w.concealment * ConcealmentFactor(ctx, from);
             s += w.elev * ElevationFactor(ctx, from, target);
+            return s;
+        }
+
+        /// <summary>
+        /// Flank 상태에서 (from, target) 쌍 스코어 계산.
+        /// flank/cover/exposure/dist/kcs/concealment/elev 팩터 사용.
+        /// </summary>
+        public static float ScoreFlank(AIContext ctx, Vector2Int from, GridTankUnit target,
+                                        AIWeights.Weights w)
+        {
+            if (target == null) return float.MinValue;
+            float s = 0f;
+            s += w.flank * FlankFactor(ctx, from, target);
+            s += w.cover * CoverFactor(ctx, from, target);
+            s += w.exposure * ExposureFactor(ctx, from);
+            s += w.dist * DistFactor(ctx, from, target);
+            s += w.kcs * KcsFactor(ctx, from, target);
+            s += w.concealment * ConcealmentFactor(ctx, from);
+            s += w.elev * ElevationFactor(ctx, from, target);
+            return s;
+        }
+
+        /// <summary>
+        /// Reposition 상태에서 셀 위치 스코어 계산.
+        /// 노출도 회피 + 엄폐 이동을 우선. 타겟 무관.
+        /// </summary>
+        public static float ScoreReposition(AIContext ctx, Vector2Int from, AIWeights.Weights w)
+        {
+            float s = 0f;
+            s += w.exposure * ExposureFactor(ctx, from);
+            s += w.cover * CoverFactor(ctx, from, null);
+            s += w.concealment * ConcealmentFactor(ctx, from);
             return s;
         }
     }

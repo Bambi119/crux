@@ -48,7 +48,101 @@ namespace Crux.AI
 
         private static readonly Dictionary<(AIRole, AIState), Weights> table = new()
         {
-            // P2 첫 구현: Medium/Engage — 기존 행동(사거리 내 사격, 엄폐 가산 이동)과 동치
+            // Vehicle (Scout Flanker)
+            {
+                (AIRole.Vehicle, AIState.Flank), new Weights
+                {
+                    flank = 3.0f,
+                    cover = 2.5f,
+                    exposure = -2.5f,
+                    dist = -0.5f,
+                    kcs = 1.5f,
+                    concealment = 2.0f,
+                    elev = 0.5f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Vehicle, AIState.Engage), new Weights
+                {
+                    dist = -1.5f,
+                    cover = 1.5f,
+                    kcs = 2.0f,
+                    exposure = -2.0f,
+                    flank = 2.0f,
+                    concealment = 1.5f,
+                    elev = 0.5f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Vehicle, AIState.Reposition), new Weights
+                {
+                    exposure = -3.5f,
+                    cover = 3.0f,
+                    concealment = 2.5f,
+                    dist = 0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Vehicle, AIState.Retreat), new Weights
+                {
+                    exposure = -4.0f,
+                    cover = 2.5f,
+                    dist = 0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    concealment = 0f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+
+            // Heavy (Anvil)
+            {
+                (AIRole.Heavy, AIState.Guard), new Weights
+                {
+                    cover = 3.0f,
+                    facingHold = 5.0f,
+                    proxAlly = 2.0f,
+                    dist = 0.1f,
+                    exposure = -1.0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    concealment = 0f,
+                    elev = 0f,
+                    modulePriority = 0f
+                }
+            },
+            {
+                (AIRole.Heavy, AIState.Suppress), new Weights
+                {
+                    kcs = 3.0f,
+                    flank = -2.0f,
+                    cover = 2.0f,
+                    exposure = -1.5f,
+                    dist = 0f,
+                    concealment = 0f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+
+            // Medium (Balanced Opportunist) — P2 첫 구현
             {
                 (AIRole.Medium, AIState.Engage), new Weights
                 {
@@ -56,15 +150,45 @@ namespace Crux.AI
                     cover = 2.0f,
                     kcs = 2.5f,
                     exposure = -1.5f,
-                    facingHold = 0f,
                     flank = 0f,
                     concealment = 0.5f,
                     elev = 1.0f,
+                    facingHold = 0f,
                     modulePriority = 0f,
                     proxAlly = 0f
                 }
             },
-            // 이후 Role들은 P3에서 채워짐 — 기본 Engage 템플릿 재사용 가능
+            {
+                (AIRole.Medium, AIState.Flank), new Weights
+                {
+                    flank = 3.0f,
+                    dist = -1.0f,
+                    cover = 1.0f,
+                    kcs = 2.0f,
+                    exposure = -1.5f,
+                    concealment = 0.5f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Medium, AIState.Reposition), new Weights
+                {
+                    exposure = -3.0f,
+                    cover = 2.5f,
+                    dist = 0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    concealment = 0f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            // 이후 Light/Drone/Infantry은 P3에서 채워짐
         };
 
         public static Weights Get(AIRole role, AIState state)
