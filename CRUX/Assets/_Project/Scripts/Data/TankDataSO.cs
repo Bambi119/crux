@@ -138,6 +138,10 @@ namespace Crux.Data
         [Header("모듈 내구력")]
         public ModuleHPProfile moduleHP;
 
+        [Header("화재 저항")]
+        [Tooltip("모듈 관통 시 화재 발생 확률 경감 (0~100%). 기본값 10")]
+        public float fireResistancePercent = 10f;
+
         [Header("편성 파츠 반영값 (런타임)")]
         [Tooltip("편성 엔진 powerOutput — 편성 진입 시 주입, Inspector 원본은 0")]
         public float partsEnginePowerOutput = 0f;

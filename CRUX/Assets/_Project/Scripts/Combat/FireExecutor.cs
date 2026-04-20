@@ -348,6 +348,10 @@ namespace Crux.Combat
             // 포신 손상 패널티
             chance -= attacker.Modules.GetAccuracyPenalty();
 
+            // 화재 중 조준 불안정
+            if (attacker.IsOnFire)
+                chance -= Crux.Data.FireConstants.FireAimPenalty;
+
             var attackerCell = grid.GetCell(attacker.GridPosition);
             var targetCell = grid.GetCell(target.GridPosition);
 

@@ -25,6 +25,7 @@ namespace Crux.Unit
 
         // 상태이상
         private bool isOnFire;
+        private int fireTurnsLeft = 0;
         private int remainingSmokeCharges;
 
         // 오버워치 (반응 사격) — 활성화 시 FireCost 선지불, 이동 적에게 즉시 반격 1회
@@ -71,6 +72,7 @@ namespace Crux.Unit
         public TankDataSO Data => tankData;
         public ModuleManager Modules => moduleManager;
         public bool IsOnFire => isOnFire;
+        public int FireTurnsLeft => fireTurnsLeft;
         public int RemainingSmokeCharges => remainingSmokeCharges;
         public bool IsOverwatching => isOverwatching;
         public int MainGunAmmoCount => mainGunAmmoCount;
@@ -100,6 +102,7 @@ namespace Crux.Unit
                 isDestroyed = IsDestroyed,
                 moduleSaves = moduleManager.SaveAll(),
                 isOnFire = isOnFire,
+                fireTurnsLeft = fireTurnsLeft,
                 remainingSmokeCharges = remainingSmokeCharges,
                 mainGunAmmoCount = mainGunAmmoCount,
                 mgAmmoLoaded = mgAmmoLoaded,
@@ -140,6 +143,7 @@ namespace Crux.Unit
             // 모듈 상태 복원
             moduleManager.RestoreAll(state.moduleSaves);
             isOnFire = state.isOnFire;
+            fireTurnsLeft = state.fireTurnsLeft;
             remainingSmokeCharges = state.remainingSmokeCharges;
             mainGunAmmoCount = state.mainGunAmmoCount;
             mgAmmoLoaded = state.mgAmmoLoaded;
@@ -200,33 +204,8 @@ namespace Crux.Unit
             // 오버워치는 다음 턴 시작 시 해제 — 트리거되지 않았다면 사전 지불 AP는 손실
             isOverwatching = false;
 
-            // 화재 처리
-            if (isOnFire)
-            {
-                // 자동 소화 30%
-                if (Random.value < 0.3f)
-                {
-                    isOnFire = false;
-                    Debug.Log($"[CRUX] {tankData?.tankName} 화재 자동 소화!");
-                }
-                else
-                {
-                    // HP -10% (maxHP 기준)
-                    float fireDmg = (tankData != null ? tankData.maxHP : 100) * 0.1f;
-                    currentHP -= fireDmg;
-                    Debug.Log($"[CRUX] {tankData?.tankName} 화재 데미지 -{fireDmg:F0} (HP: {currentHP:F0})");
-
-                    if (currentHP <= 0)
-                    {
-                        currentHP = 0;
-                        ClearCellOccupancy();
-                        OnFireKilled?.Invoke(this);
-                        OnDeath?.Invoke(this);
-                        UpdateVisual();
-                        return;
-                    }
-                }
-            }
+            // 화재 처리 — TickFire가 사망 처리까지 담당
+            TickFire();
 
             OnAPChanged?.Invoke();
         }
@@ -488,11 +467,12 @@ namespace Crux.Unit
 
         // ===== 화재/연막 =====
 
-        /// <summary>화재 발생</summary>
+        /// <summary>화재 발생 — fireTurnsLeft를 최대값으로 설정</summary>
         public void SetOnFire()
         {
             if (isOnFire) return;
             isOnFire = true;
+            fireTurnsLeft = FireConstants.MaxFireTurns;
             Debug.Log($"[CRUX] {tankData?.tankName} 화재 발생!");
         }
 
@@ -579,6 +559,12 @@ namespace Crux.Unit
                 RollCrewInjury(outcome.damagedModule);
             }
 
+            // 화재 발생 시도 (관통 + 모듈 피격 시)
+            if (info.outcome == ShotOutcome.Penetration && outcome.moduleHit)
+            {
+                TryStartFire(outcome.damagedModule);
+            }
+
             // 체력 0 예측 (피해만으로 격파)
             if (currentHP - info.damage <= 0)
                 outcome.killed = true;
@@ -635,6 +621,65 @@ namespace Crux.Unit
                 }
                 // Fatal은 이 경로로 발생 금지 (게임 밸런스)
             }
+        }
+
+        /// <summary>모듈 피격 시 화재 발생 확률 롤 — FireConstants 기준</summary>
+        public void TryStartFire(ModuleType module)
+        {
+            if (isOnFire) return;
+
+            float baseChance = module switch
+            {
+                ModuleType.AmmoRack => FireConstants.AmmoRackFireChance,
+                ModuleType.Engine   => FireConstants.EngineFireChance,
+                _                   => FireConstants.OtherModuleFireChance,
+            };
+
+            float resistance = (tankData?.fireResistancePercent ?? 0f) / 100f;
+            if (Random.value < Mathf.Max(0f, baseChance - resistance))
+            {
+                isOnFire = true;
+                fireTurnsLeft = FireConstants.MaxFireTurns;
+                Debug.Log($"[CRUX] {tankData?.tankName} 화재 시작! 모듈={module} 남은턴={fireTurnsLeft}");
+            }
+        }
+
+        /// <summary>화재 턴 처리 — 데미지 + 자동 소화 + 만료 판정. OnTurnStart에서 호출 필수</summary>
+        public void TickFire()
+        {
+            if (!isOnFire) return;
+
+            float dmg = (tankData != null ? tankData.maxHP : 100) * (FireConstants.FireDamagePerTurnPercent / 100f);
+            currentHP = Mathf.Max(0, currentHP - (int)dmg);
+            Debug.Log($"[CRUX] {tankData?.tankName} 화재 데미지 {(int)dmg} → HP {currentHP}/{tankData?.maxHP}");
+
+            if (currentHP <= 0)
+            {
+                currentHP = 0;
+                ClearCellOccupancy();
+                OnFireKilled?.Invoke(this);
+                OnDeath?.Invoke(this);
+                UpdateVisual();
+                return;
+            }
+
+            if (Random.value < FireConstants.AutoExtinguishChance)
+            {
+                ExtinguishFire();
+                return;
+            }
+
+            fireTurnsLeft--;
+            if (fireTurnsLeft <= 0)
+                ExtinguishFire();
+        }
+
+        /// <summary>화재 소화 — 턴 카운트 리셋</summary>
+        public void ExtinguishFire()
+        {
+            isOnFire = false;
+            fireTurnsLeft = 0;
+            Debug.Log($"[CRUX] {tankData?.tankName} 화재 소화");
         }
 
         /// <summary>사전 롤된 데미지 적용 — 결정론적</summary>
