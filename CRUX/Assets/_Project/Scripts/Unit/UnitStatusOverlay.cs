@@ -12,9 +12,9 @@ namespace Crux.Unit
         private ModuleState[] lastStates;
 
         // 아이콘 설정 — 다크 디스크 배경 + 상태색 링 + 심볼 3레이어 구조
-        private const float iconSize = 0.32f;
-        private const float iconSpacing = 0.42f;
-        private const float yOffset = 0.85f;
+        private const float iconSize = 0.44f;
+        private const float iconSpacing = 0.54f;
+        private const float yOffset = 0.95f;
         private const int sortOrder = 20;
         // 배경(Fill/Ring) 레이어 스케일 — 심볼보다 살짝 크게 해서 테두리 여백 확보
         private const float backingScale = 1.2f;
@@ -203,7 +203,7 @@ namespace Crux.Unit
         {
             if (_spriteCache.TryGetValue(type, out var cached)) return cached;
 
-            int s = 8;
+            int s = 12;
             var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
             var px = new Color[s * s];
@@ -249,7 +249,7 @@ namespace Crux.Unit
         private Sprite GetXSprite()
         {
             if (_xSprite != null) return _xSprite;
-            int s = 8;
+            int s = 12;
             var tex = new Texture2D(s, s);
             tex.filterMode = FilterMode.Point;
             var px = new Color[s * s];

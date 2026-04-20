@@ -20,7 +20,7 @@ namespace Crux.UI
 
         public void Draw(float x, float y, GridTankUnit u)
         {
-            float w = 350, h = 180;
+            float w = 350, h = 200;
             hud.DrawBox(new Rect(x, y, w, h));
 
             var style = hud.GetLabelStyleUI();
@@ -127,6 +127,47 @@ namespace Crux.UI
             stStyle.fontSize = 15;
             stStyle.normal.textColor = u.IsOnFire ? new Color(1f, 0.5f, 0.2f) : new Color(0.8f, 0.85f, 0.9f);
             GUI.Label(new Rect(cx, cy, innerW, lineH), $"상태: {statusExtra}", stStyle);
+            cy += lineH;
+
+            // 8행: 승무원 부상 상태 (부상자가 있을 때만 표시)
+            var crew = u.Crew;
+            if (crew != null)
+            {
+                var injuredMembers = new System.Collections.Generic.List<string>();
+                AddInjuredMemberIfExists(crew.commander, "전차장", injuredMembers);
+                AddInjuredMemberIfExists(crew.gunner, "포수", injuredMembers);
+                AddInjuredMemberIfExists(crew.loader, "탄약수", injuredMembers);
+                AddInjuredMemberIfExists(crew.driver, "조종수", injuredMembers);
+                AddInjuredMemberIfExists(crew.mgMechanic, "기총사수", injuredMembers);
+
+                if (injuredMembers.Count > 0)
+                {
+                    string crewStatus = string.Join(" ", injuredMembers);
+                    var crewStyle = new GUIStyle(style);
+                    crewStyle.fontSize = 14;
+                    crewStyle.normal.textColor = new Color(1f, 0.7f, 0.4f);
+                    GUI.Label(new Rect(cx, cy, innerW, lineH), $"크루: {crewStatus}", crewStyle);
+                }
+            }
+        }
+
+        /// <summary>승무원 부상 상태 추가 헬퍼</summary>
+        private void AddInjuredMemberIfExists(Crux.Data.CrewMemberRuntime member, string role,
+                                              System.Collections.Generic.List<string> injuredList)
+        {
+            if (member == null) return;
+            var level = member.injuryState;
+            if (level == Crux.Data.InjuryLevel.None) return;
+
+            string label = level switch
+            {
+                Crux.Data.InjuryLevel.Minor => $"<color=#ffa040>부상:{role}</color>",
+                Crux.Data.InjuryLevel.Severe => $"<color=#ff4040>중상:{role}</color>",
+                Crux.Data.InjuryLevel.Fatal => $"<color=#888888>전사:{role}</color>",
+                _ => ""
+            };
+            if (!string.IsNullOrEmpty(label))
+                injuredList.Add(label);
         }
     }
 }
