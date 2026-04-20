@@ -56,6 +56,12 @@ namespace Crux.Combat
 
             bool hit = Random.value <= hitChance;
 
+            // Pseudo-RNG 피드백: hit 여부에 따라 연속 miss 카운트 갱신
+            if (hit)
+                attacker.ResetMisses();
+            else
+                attacker.RecordMiss();
+
             ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
             bool hitCover = false;
             float coverDmgDealt = 0f;
@@ -422,6 +428,14 @@ namespace Crux.Combat
                         Debug.Log($"[FIRE] Gunner trait aimBonus={traitMod.aimBonus:+0;-0} → {traitDelta:P1}");
                     }
                 }
+            }
+
+            // Pseudo-RNG 보정 — 연속 miss 누적 시 다음 사격 명중률 상향
+            float pRngBonus = Mathf.Min(attacker.ConsecutiveMisses * 0.05f, 0.30f);
+            if (pRngBonus > 0f)
+            {
+                chance += pRngBonus;
+                Debug.Log($"[FIRE] Pseudo-RNG 보정: miss={attacker.ConsecutiveMisses} → +{pRngBonus:P0}");
             }
 
             return Mathf.Clamp01(chance);

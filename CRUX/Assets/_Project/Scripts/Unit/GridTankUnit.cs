@@ -26,6 +26,7 @@ namespace Crux.Unit
         // 상태이상
         private bool isOnFire;
         private int fireTurnsLeft = 0;
+        private int consecutiveMisses = 0;
         private int remainingSmokeCharges;
 
         // 오버워치 (반응 사격) — 활성화 시 FireCost 선지불, 이동 적에게 즉시 반격 1회
@@ -73,6 +74,7 @@ namespace Crux.Unit
         public ModuleManager Modules => moduleManager;
         public bool IsOnFire => isOnFire;
         public int FireTurnsLeft => fireTurnsLeft;
+        public int ConsecutiveMisses => consecutiveMisses;
         public int RemainingSmokeCharges => remainingSmokeCharges;
         public bool IsOverwatching => isOverwatching;
         public int MainGunAmmoCount => mainGunAmmoCount;
@@ -103,6 +105,7 @@ namespace Crux.Unit
                 moduleSaves = moduleManager.SaveAll(),
                 isOnFire = isOnFire,
                 fireTurnsLeft = fireTurnsLeft,
+                consecutiveMisses = consecutiveMisses,
                 remainingSmokeCharges = remainingSmokeCharges,
                 mainGunAmmoCount = mainGunAmmoCount,
                 mgAmmoLoaded = mgAmmoLoaded,
@@ -144,6 +147,7 @@ namespace Crux.Unit
             moduleManager.RestoreAll(state.moduleSaves);
             isOnFire = state.isOnFire;
             fireTurnsLeft = state.fireTurnsLeft;
+            consecutiveMisses = state.consecutiveMisses;
             remainingSmokeCharges = state.remainingSmokeCharges;
             mainGunAmmoCount = state.mainGunAmmoCount;
             mgAmmoLoaded = state.mgAmmoLoaded;
@@ -199,6 +203,7 @@ namespace Crux.Unit
 
         public void OnTurnStart()
         {
+            consecutiveMisses = 0;
             currentAP = tankData != null ? tankData.maxAP : 6;
 
             // 오버워치는 다음 턴 시작 시 해제 — 트리거되지 않았다면 사전 지불 AP는 손실
@@ -681,6 +686,12 @@ namespace Crux.Unit
             fireTurnsLeft = 0;
             Debug.Log($"[CRUX] {tankData?.tankName} 화재 소화");
         }
+
+        /// <summary>연속 실패 기록 (Pseudo-RNG 보호용)</summary>
+        public void RecordMiss() => consecutiveMisses++;
+
+        /// <summary>연속 실패 카운터 리셋</summary>
+        public void ResetMisses() => consecutiveMisses = 0;
 
         /// <summary>사전 롤된 데미지 적용 — 결정론적</summary>
         public void ApplyPrerolledDamage(DamageInfo info, DamageOutcome outcome)

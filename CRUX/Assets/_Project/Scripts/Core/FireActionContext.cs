@@ -58,6 +58,7 @@ namespace Crux.Core
         public Unit.ModuleSaveData[] moduleSaves;
         public bool isOnFire;
         public int fireTurnsLeft;
+        public int consecutiveMisses;
         public int remainingSmokeCharges;
         public int mainGunAmmoCount;
         public int mgAmmoLoaded;
