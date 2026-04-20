@@ -52,12 +52,12 @@ namespace Crux.UI
             // 제목
             AddText(panel.transform, "TitleText", $"파츠 인벤토리 · {tank.tankName}", 20, new Color(1f, 1f, 1f), 32);
 
-            // 5개 슬롯 라벨 + 장착 파츠
-            AddSlotRow(panel.transform, "주포", tank.mainGun);
-            AddSlotRow(panel.transform, "터렛", tank.turret);
-            AddSlotRow(panel.transform, "엔진", tank.engine);
-            AddSlotRow(panel.transform, "탄약고", tank.ammoRack);
-            AddSlotRow(panel.transform, "궤도", tank.track);
+            // 5개 슬롯 라벨 + 장착 파츠 (드롭존 콜백 연결)
+            AddSlotRowWithDropZone(panel.transform, "주포", tank.mainGun, tank);
+            AddSlotRowWithDropZone(panel.transform, "터렛", tank.turret, tank);
+            AddSlotRowWithDropZone(panel.transform, "엔진", tank.engine, tank);
+            AddSlotRowWithDropZone(panel.transform, "탄약고", tank.ammoRack, tank);
+            AddSlotRowWithDropZone(panel.transform, "궤도", tank.track, tank);
 
             // "보유 파츠 (여분)" 섹션 라벨
             AddText(panel.transform, "SpareHeaderText", "보유 파츠 (여분)", 18, new Color(0.95f, 0.85f, 0.55f), 28);
@@ -165,6 +165,38 @@ namespace Crux.UI
             AddText(parent, $"Slot_{label}", $"{label}: {value}", 16, color, 24);
         }
 
+        private void AddSlotRowWithDropZone(Transform parent, string label, PartInstance part, TankInstance tank)
+        {
+            string value = (part != null && part.data != null) ? part.data.partName : "(비어있음)";
+            Color textColor = (part != null) ? new Color(0.85f, 0.9f, 0.85f) : new Color(0.6f, 0.6f, 0.6f);
+
+            // 슬롯 행 GameObject (raycasting + 드롭존)
+            var rowObj = new GameObject($"Slot_{label}");
+            rowObj.transform.SetParent(parent, false);
+            rowObj.AddComponent<RectTransform>();
+            var rowImg = rowObj.AddComponent<Image>();
+            rowImg.color = new Color(1f, 1f, 1f, 0.15f);
+            var rowLe = rowObj.AddComponent<LayoutElement>();
+            rowLe.preferredHeight = 24;
+
+            // 드롭존 컴포넌트 추가 및 콜백 연결
+            var dropZone = rowObj.AddComponent<PartDropZone>();
+            dropZone.OnPartDropped += (draggedPart, srcTank) => SwapPart(tank, draggedPart);
+
+            // 슬롯 텍스트 라벨 (자식)
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(rowObj.transform, false);
+            labelObj.AddComponent<RectTransform>();
+            var labelText = labelObj.AddComponent<Text>();
+            labelText.font = HangarButtonHelpers.GetKoreanFont();
+            labelText.fontSize = 16;
+            labelText.color = textColor;
+            labelText.alignment = TextAnchor.MiddleLeft;
+            labelText.text = $"{label}: {value}";
+            var labelLe = labelObj.AddComponent<LayoutElement>();
+            labelLe.flexibleWidth = 1;
+        }
+
         private void AddSparePartRow(Transform parent, PartInstance part, TankInstance tank)
         {
             if (part == null || part.data == null) return;
@@ -175,6 +207,8 @@ namespace Crux.UI
             var rowObj = new GameObject($"Spare_{part.data.partName}");
             rowObj.transform.SetParent(parent, false);
             rowObj.AddComponent<RectTransform>();
+            var rowImg = rowObj.AddComponent<Image>();
+            rowImg.color = new Color(1f, 1f, 1f, 0.1f);
             var hlg = rowObj.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 8;
             hlg.childControlWidth = true;
@@ -183,6 +217,11 @@ namespace Crux.UI
             hlg.childForceExpandHeight = true;
             var rowLe = rowObj.AddComponent<LayoutElement>();
             rowLe.preferredHeight = 28;
+
+            // 드래그 핸들러 추가 (Canvas 참조 필요)
+            var dragHandler = rowObj.AddComponent<PartDragHandler>();
+            Canvas rootCanvas = parent.GetComponentInParent<Canvas>();
+            dragHandler.Init(part, tank, rootCanvas);
 
             // 왼쪽: 파츠 이름 + 카테고리 + 호환 ✓/✗
             var labelObj = new GameObject("Label");
@@ -200,7 +239,7 @@ namespace Crux.UI
             var labelLe = labelObj.AddComponent<LayoutElement>();
             labelLe.flexibleWidth = 1;
 
-            // 오른쪽: [교체] 버튼
+            // 오른쪽: [교체] 버튼 (기존 버튼과 병행)
             var btnObj = new GameObject("SwapButton");
             btnObj.transform.SetParent(rowObj.transform, false);
             btnObj.AddComponent<RectTransform>();

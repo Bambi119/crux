@@ -518,7 +518,12 @@ namespace Crux.Unit
             currentAP -= 1;
             // 현재 셀에 연막 배치 (3턴 유지)
             var cell = grid?.GetCell(gridPosition);
-            if (cell != null) cell.SmokeTurnsLeft = 3;
+            if (cell != null)
+            {
+                cell.SmokeTurnsLeft = 3;
+                // 연막 시각 효과 스폰
+                grid.GetVisualizer()?.ShowSmoke(gridPosition);
+            }
             OnAPChanged?.Invoke();
             Debug.Log($"[CRUX] {tankData?.tankName} 연막 발사! 잔여: {remainingSmokeCharges}");
             return true;

@@ -14,9 +14,16 @@ namespace Crux.Grid
         [SerializeField] private int height = GameConstants.GridHeight;
 
         private Dictionary<Vector2Int, GridCell> cells = new();
+        private GridVisualizer visualizer;
 
         public int Width => width;
         public int Height => height;
+
+        /// <summary>그리드 시각화 컴포넌트 설정 (BattleController에서 호출)</summary>
+        public void SetVisualizer(GridVisualizer vis) => visualizer = vis;
+
+        /// <summary>그리드 시각화 컴포넌트 조회</summary>
+        public GridVisualizer GetVisualizer() => visualizer;
 
         private void Awake()
         {

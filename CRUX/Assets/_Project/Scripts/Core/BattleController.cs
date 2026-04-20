@@ -167,6 +167,7 @@ namespace Crux.Core
             var visObj = new GameObject("GridVisualizer");
             visualizer = visObj.AddComponent<GridVisualizer>();
             visualizer.Initialize(grid);
+            grid.SetVisualizer(visualizer);
 
             // 맵 배치 — 모드별 배치 클래스 선택
             var setupObj = new GameObject("MapSetup");
