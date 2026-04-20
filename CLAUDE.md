@@ -234,7 +234,7 @@ Data ──┐
 | TD-04 | 빈 의도 폴더 Enemy/Loot/Vision (Camera/Input/UI는 채워짐) | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
 | TD-05 | `HitEffects`/`MuzzleFlash`/VFX 렌더 상수 하드코드 | 🟢 P4 | 밸런스 패스 때 Data SO로 |
 | TD-06 | 지형 플로어 스프라이트가 다크톤 multiply라 틴트 약함 | 🟡 P2 | Pixel 에이전트 타일 변형 생성 |
-| TD-07 | `BattleHUD.cs` OnGUI → uGUI 이관 | 🟢 P3 | 첫 빌드 완성 이후 리팩토링 슬롯 (docs/10 §5) |
+| TD-08 | BattleHUD OnGUI 제거 완료 — 배너/경고 큐 uGUI/월드 공간 렌더링 이관 대기 | 🟢 P3 | Phase 4 UI 통합 |
 
 ## 11. 변경 이력
 
@@ -242,3 +242,4 @@ Data ──┐
 |---|---|
 | 2026-04-14 | 초판. 아키텍처·예산·레이어·리팩토링 트리거·S1~S7 스케줄·부채 원장 수립 |
 | 2026-04-16 | §1 Camera/Input/UI 폴더 상태 갱신 · §9 P-S1~S7 완료 표시 · §10 TD-01/TD-04 현재 상태 반영 |
+| 2026-04-20 | Phase 3: BattleHUD OnGUI 제거 — ShowBanner/ShowAlert 큐 BattleController 이관 · TD-08 신규 |

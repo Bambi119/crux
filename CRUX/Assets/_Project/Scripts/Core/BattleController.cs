@@ -61,9 +61,6 @@ namespace Crux.Core
         // 사기 라우터 (P3-b)
         private Crux.Combat.CombatMoraleRouter moraleRouter;
 
-        // HUD
-        private BattleHUD hud;
-
         // 입력 핸들러
         private PlayerInputHandler inputHandler;
 
@@ -97,6 +94,17 @@ namespace Crux.Core
 
         // 카메라
         private BattleCamera battleCam;
+
+        // UI 배너 큐 (Phase 4 큐 렌더링 구현 예정 — TD-08)
+        private class BannerEntry
+        {
+            public string text;
+            public Color color;
+            public float endTime;
+        }
+        private List<BannerEntry> bannerQueue = new List<BannerEntry>();
+        private Vector3? alertWorldPos;
+        private float alertEndTime;
 
         public TurnPhase CurrentPhase => currentPhase;
         public int TurnCount => turnCount;
@@ -193,8 +201,8 @@ namespace Crux.Core
             playerUnit = mapSetup.PlayerUnit;
             enemyUnits = mapSetup.EnemyUnits;
 
-            // 화재 사망 처리 (P-S7: FireKillHandler 초기화)
-            fireKillHandler = new Crux.Combat.FireKillHandler(grid, (t, c, d) => hud?.ShowBanner(t, c, d));
+            // 화재 사망 처리 (P-S7: FireKillHandler 초기화) — Phase 4: ShowBanner 큐 이관 필요 (TD-08)
+            fireKillHandler = new Crux.Combat.FireKillHandler(grid, (t, c, d) => ShowBanner(t, c, d));
 
             // 화재 사망 이벤트 구독
             if (playerUnit != null)
@@ -232,21 +240,16 @@ namespace Crux.Core
             inputHandler = inputObj.AddComponent<PlayerInputHandler>();
             inputHandler.Initialize(this);
 
-            // 사격 실행 초기화 (HUD 이전)
+            // 사격 실행 초기화
             fireExecutor = new Crux.Combat.FireExecutor(grid, enemyUnits, coaxialMGData, mountedMGData);
-
-            // HUD 초기화
-            var hudObj = new GameObject("BattleHUD");
-            hud = hudObj.AddComponent<BattleHUD>();
-            hud.Initialize(this);
 
             // 반응 사격 시퀀스 초기화 (P-S5 추출)
             var rfsObj = new GameObject("ReactionFireSequence");
             reactionFireSeq = rfsObj.AddComponent<Crux.Combat.ReactionFireSequence>();
             reactionFireSeq.Initialize(
                 grid, battleCam, fireExecutor, playerUnit,
-                (text, col, dur) => hud?.ShowBanner(text, col, dur),
-                (pos, dur) => hud?.ShowAlert(pos, dur));
+                (text, col, dur) => ShowBanner(text, col, dur),
+                (pos, dur) => ShowAlert(pos, dur));
 
             // 오버워치 이벤트 구독 (P-S5: ReactionFireSequence 초기화 이후)
             foreach (var e in enemyUnits)
@@ -604,15 +607,19 @@ namespace Crux.Core
             }
         }
 
-        /// <summary>전략맵 상단 배너 — duration 초 동안 표시</summary>
+        /// <summary>전략맵 상단 배너 — Phase 4 uGUI 렌더링 대기 중 (TD-08)</summary>
         public void ShowBanner(string text, Color color, float duration)
         {
-            if (hud != null) hud.ShowBanner(text, color, duration);
+            bannerQueue.Add(new BannerEntry { text = text, color = color, endTime = Time.time + duration });
+            Debug.Log($"[CRUX] Banner enqueued (Phase 4 render pending): {text}");
         }
 
+        /// <summary>경고 마커 — Phase 4 월드 공간 렌더링 대기 중 (TD-08)</summary>
         public void ShowAlert(Vector3 worldPos, float duration)
         {
-            if (hud != null) hud.ShowAlert(worldPos, duration);
+            alertWorldPos = worldPos;
+            alertEndTime = Time.time + duration;
+            Debug.Log($"[CRUX] Alert enqueued at {worldPos} (Phase 4 render pending)");
         }
 
         /// <summary>Fire 모드: 마우스 위치의 적을 hoveredTarget에 기록</summary>
@@ -720,12 +727,5 @@ namespace Crux.Core
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
 
-
-        // ===== UI (OnGUI) =====
-
-        private void OnGUI()
-        {
-            if (hud != null) hud.Draw();
-        }
     }
 }
