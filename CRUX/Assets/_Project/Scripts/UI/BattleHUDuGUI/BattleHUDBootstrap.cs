@@ -61,6 +61,14 @@ namespace Crux.UI
                 fpBinder.Initialize(controller, firePreviewCard);
             }
 
+            // FacingWheel 선택적 초기화 (있을 때만)
+            var facingWheel = canvasTransform.Find("FacingWheel");
+            if (facingWheel != null)
+            {
+                var fwBinder = canvasTransform.gameObject.AddComponent<FacingWheelBinder>();
+                fwBinder.Initialize(controller, facingWheel);
+            }
+
             Debug.Log("[CRUX] BattleHUDBootstrap: uGUI HUD 초기화 완료");
         }
 
