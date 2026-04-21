@@ -57,6 +57,8 @@ Unity Scene 파일 수는 **5개로 고정** (Title·WorldMap·Battle·Hangar·D
 
 > **첫 빌드 최우선 코드 타깃**. 편성 탭만 구현, 나머지 탭은 UI 골격만 배치하고 잠금 표시.
 
+> **모듈 구조**: 격납고는 5개 독립 모듈(편성·파츠·승무원·Trait·정비)로 분할. 경계·공유 상태·이벤트 정의는 [`10b_hangar_overview.md`](10b_hangar_overview.md) 허브 문서 참조. 탭별 UX 상세는 10c~10f·03b가 담당.
+
 ### 2.1 전체 레이아웃
 
 ```
