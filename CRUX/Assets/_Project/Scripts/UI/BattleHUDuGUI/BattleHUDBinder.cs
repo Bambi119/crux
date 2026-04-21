@@ -30,7 +30,8 @@ namespace Crux.UI
         private float bannerEndTime;
         private const float BannerDuration = 1.8f;
 
-        // 이동 AP 프리뷰 (UnitInfoCard 하단에 런타임 생성)
+        // 이동 AP 프리뷰 (Canvas 루트 오버레이 — UnitInfoCard 위에 배지 형태)
+        private GameObject apCostPreviewRoot;
         private TextMeshProUGUI apCostPreviewText;
 
         // AmmoCounterPanel
@@ -427,54 +428,70 @@ namespace Crux.UI
 
         private void EnsureAPCostPreviewText(Transform unitCard)
         {
-            if (apCostPreviewText != null) return;
-            if (unitCard == null) return;
+            if (apCostPreviewRoot != null) return;
+            if (unitCard == null || unitCard.parent == null) return;
 
-            // APStatusRow 아래에 생성
-            var apStatusRow = unitCard.Find("APStatusRow");
-            Transform parent = apStatusRow != null ? apStatusRow : unitCard;
+            // Canvas 루트에 생성 — UnitInfoCard(좌하단 24,24)의 바로 위에 배치
+            Transform canvasRoot = unitCard.parent;
 
-            var go = new GameObject("APCostPreviewText", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
+            apCostPreviewRoot = new GameObject("APCostPreviewBadge", typeof(RectTransform));
+            apCostPreviewRoot.transform.SetParent(canvasRoot, false);
 
-            var rt = go.GetComponent<RectTransform>();
+            var rt = apCostPreviewRoot.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0f, 0f);
-            rt.anchorMax = new Vector2(1f, 0f);
-            rt.pivot = new Vector2(0.5f, 0f);
-            rt.anchoredPosition = new Vector2(0f, -18f);
-            rt.sizeDelta = new Vector2(0f, 16f);
+            rt.anchorMax = new Vector2(0f, 0f);
+            rt.pivot = new Vector2(0f, 0f);
+            // UnitInfoCard = 24,24 + size 320x180 → 카드 바로 위에 8px 간격
+            rt.anchoredPosition = new Vector2(24f, 212f);
+            rt.sizeDelta = new Vector2(240f, 30f);
 
-            apCostPreviewText = go.AddComponent<TextMeshProUGUI>();
-            apCostPreviewText.fontSize = 12f;
-            apCostPreviewText.alignment = TextAlignmentOptions.Center;
-            apCostPreviewText.color = UIColorPalette.OnSurfaceVariant;
+            // 배경 (반투명 패널 + 액센트)
+            var bg = apCostPreviewRoot.AddComponent<Image>();
+            var bgColor = UIColorPalette.SurfaceContainerHigh;
+            bgColor.a = 0.92f;
+            bg.color = bgColor;
+            bg.raycastTarget = false;
+
+            // 텍스트 자식 — 한글 없이 숫자/기호 중심
+            var txtGo = new GameObject("Text", typeof(RectTransform));
+            txtGo.transform.SetParent(apCostPreviewRoot.transform, false);
+            var txtRt = txtGo.GetComponent<RectTransform>();
+            txtRt.anchorMin = Vector2.zero;
+            txtRt.anchorMax = Vector2.one;
+            txtRt.offsetMin = new Vector2(10f, 0f);
+            txtRt.offsetMax = new Vector2(-10f, 0f);
+
+            apCostPreviewText = txtGo.AddComponent<TextMeshProUGUI>();
+            apCostPreviewText.fontSize = 16f;
+            apCostPreviewText.alignment = TextAlignmentOptions.Left;
+            apCostPreviewText.color = UIColorPalette.OnSurface;
             apCostPreviewText.text = string.Empty;
             apCostPreviewText.raycastTarget = false;
 
-            // 기존 유닛명 폰트를 상속 (SpaceGrotesk 적용)
+            // 기존 유닛명 폰트 상속 (있으면 SpaceGrotesk)
             if (unitName != null && unitName.font != null)
                 apCostPreviewText.font = unitName.font;
 
-            go.SetActive(false);
+            apCostPreviewRoot.SetActive(false);
         }
 
         private void UpdateAPCostPreviewText(int currentAP, int previewCost)
         {
-            if (apCostPreviewText == null) return;
+            if (apCostPreviewRoot == null || apCostPreviewText == null) return;
 
             if (previewCost <= 0)
             {
-                apCostPreviewText.gameObject.SetActive(false);
+                apCostPreviewRoot.SetActive(false);
                 return;
             }
 
-            apCostPreviewText.gameObject.SetActive(true);
+            apCostPreviewRoot.SetActive(true);
             int remaining = currentAP - previewCost;
             bool canAfford = remaining >= 0;
 
             string txt = canAfford
-                ? $"이동 -{previewCost} AP · 잔여 {remaining}"
-                : $"AP 부족 ({previewCost} / {currentAP})";
+                ? $"MOVE  -{previewCost} AP   ({remaining}/{currentAP} left)"
+                : $"LOW AP  ({previewCost} / {currentAP})";
 
             apCostPreviewText.text = txt;
             apCostPreviewText.color = canAfford
