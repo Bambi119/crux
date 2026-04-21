@@ -45,6 +45,9 @@ namespace Crux.UI
                 return;
             }
 
+            // 초기 숨김 — 메시지/모드 트리거 전까지 보이면 안 되는 오버레이
+            banner.gameObject.SetActive(false);
+
             // Binder 추가 및 초기화
             var binder = canvasTransform.gameObject.AddComponent<BattleHUDBinder>();
             binder.Initialize(controller, turnCounter, banner, ammo, unitCard);
@@ -57,6 +60,7 @@ namespace Crux.UI
             var firePreviewCard = canvasTransform.Find("FirePreviewCard");
             if (firePreviewCard != null)
             {
+                firePreviewCard.gameObject.SetActive(false);
                 var fpBinder = canvasTransform.gameObject.AddComponent<FirePreviewCardBinder>();
                 fpBinder.Initialize(controller, firePreviewCard);
             }
@@ -65,6 +69,7 @@ namespace Crux.UI
             var facingWheel = canvasTransform.Find("FacingWheel");
             if (facingWheel != null)
             {
+                facingWheel.gameObject.SetActive(false);
                 var fwBinder = canvasTransform.gameObject.AddComponent<FacingWheelBinder>();
                 fwBinder.Initialize(controller, facingWheel);
             }
@@ -73,6 +78,7 @@ namespace Crux.UI
             var missionComplete = canvasTransform.Find("MissionCompleteModal");
             if (missionComplete != null)
             {
+                missionComplete.gameObject.SetActive(false);
                 var mcBinder = canvasTransform.gameObject.AddComponent<MissionCompleteModalBinder>();
                 mcBinder.Initialize(controller, missionComplete);
             }

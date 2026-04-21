@@ -20,8 +20,15 @@ namespace Crux.UI
         private TextMeshProUGUI playerTurnText;
         private Image statusDot;
 
-        // BannerPanel (1차: 숨김 상태)
+        // BannerPanel — 턴 전환 알림
         private GameObject bannerPanel;
+        private TextMeshProUGUI bannerText;
+        private Text bannerLegacyText;
+        private Image bannerBackground;
+        private TurnPhase prevPhase;
+        private bool phaseInitialized;
+        private float bannerEndTime;
+        private const float BannerDuration = 1.8f;
 
         // AmmoCounterPanel
         private TextMeshProUGUI ammoLabel;
@@ -64,9 +71,24 @@ namespace Crux.UI
                 }
             }
 
-            // BannerPanel 캐시
+            // BannerPanel 캐시 — TMP와 레거시 Text 모두 대응 (프리팹이 레거시 Text로 만들어졌을 가능성)
             if (banner != null)
+            {
                 bannerPanel = banner.gameObject;
+                var bannerTextTr = banner.Find("BannerText");
+                if (bannerTextTr != null)
+                {
+                    bannerText = bannerTextTr.GetComponent<TextMeshProUGUI>();
+                    bannerLegacyText = bannerTextTr.GetComponent<Text>();
+                }
+                bannerBackground = banner.GetComponent<Image>();
+
+                // 프리팹에 하드코딩된 기본 문구(예: "적 격파!") 제거 — 배너가 꺼지기 전까지 남지 않도록
+                if (bannerText != null) bannerText.text = string.Empty;
+                if (bannerLegacyText != null) bannerLegacyText.text = string.Empty;
+
+                bannerPanel.SetActive(false);
+            }
 
             // AmmoCounterPanel 캐시
             if (ammo != null)
@@ -141,10 +163,77 @@ namespace Crux.UI
         {
             if (controller == null) return;
 
+            DetectPhaseChange();
             UpdateTurnCounter();
             UpdateBanner();
             UpdateAmmoCounter();
             UpdateUnitInfoCard();
+        }
+
+        // === 턴 배너 ===
+
+        private void DetectPhaseChange()
+        {
+            var phase = controller.CurrentPhase;
+
+            if (!phaseInitialized)
+            {
+                prevPhase = phase;
+                phaseInitialized = true;
+                // 초기 페이즈도 배너로 예고 (EnemyTurn 선공 등 상황 안내)
+                ShowTurnBannerFor(phase);
+                return;
+            }
+
+            if (phase != prevPhase)
+            {
+                ShowTurnBannerFor(phase);
+                prevPhase = phase;
+            }
+        }
+
+        private void ShowTurnBannerFor(TurnPhase phase)
+        {
+            switch (phase)
+            {
+                case TurnPhase.PlayerTurn:
+                    ShowTurnBanner("아군 턴 시작", UIColorPalette.PrimaryContainer);
+                    break;
+                case TurnPhase.EnemyTurn:
+                    ShowTurnBanner("적 턴 시작", UIColorPalette.TertiaryContainer);
+                    break;
+                case TurnPhase.Victory:
+                    ShowTurnBanner("승리", UIColorPalette.SecondaryContainer);
+                    break;
+                case TurnPhase.GameOver:
+                    ShowTurnBanner("패배", UIColorPalette.TertiaryContainer);
+                    break;
+                // Cinematic는 배너 스킵
+            }
+        }
+
+        private void ShowTurnBanner(string message, Color accent)
+        {
+            if (bannerPanel == null) return;
+            bannerPanel.SetActive(true);
+            if (bannerText != null)
+            {
+                bannerText.text = message;
+                bannerText.color = accent;
+            }
+            if (bannerLegacyText != null)
+            {
+                bannerLegacyText.text = message;
+                bannerLegacyText.color = accent;
+            }
+            if (bannerBackground != null)
+            {
+                // 배경 살짝 강조 — 알파만 올림
+                var col = bannerBackground.color;
+                col.a = 0.92f;
+                bannerBackground.color = col;
+            }
+            bannerEndTime = Time.time + BannerDuration;
         }
 
         private void UpdateTurnCounter()
@@ -163,9 +252,12 @@ namespace Crux.UI
 
         private void UpdateBanner()
         {
-            // Phase 1: Banner은 숨김 상태로 둠. ShowBanner 큐 소비는 후속 단계에서 구현
-            if (bannerPanel != null && bannerPanel.activeInHierarchy)
+            if (bannerPanel == null) return;
+            if (bannerEndTime > 0f && Time.time >= bannerEndTime)
+            {
                 bannerPanel.SetActive(false);
+                bannerEndTime = 0f;
+            }
         }
 
         private void UpdateAmmoCounter()
