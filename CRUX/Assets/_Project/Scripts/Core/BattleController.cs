@@ -487,6 +487,10 @@ namespace Crux.Core
                     {
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
+
+                        // Task #17: 플레이어 반격 프롬프트 (방어자가 플레이어면)
+                        yield return StartCoroutine(PromptPlayerCounterIfNeeded(enemy, decision.fireTarget));
+
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
                         stateManager.Save();
                         SceneManager.LoadScene("FireActionScene");
@@ -726,6 +730,56 @@ namespace Crux.Core
         /// <summary>유닛의 현재 상태 (개활지/엄폐) — FireExecutor의 wrapper (호환성 유지)</summary>
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
+
+        // ===== Task #17: 플레이어 반격 프롬프트 =====
+
+        /// <summary>
+        /// 플레이어 유닛이 방어자일 때 1.5s 프롬프트로 반격 Y/N 확인.
+        /// 적이 방어자면 즉시 return (적은 항상 자동 반격).
+        /// 반격 불가능하면 즉시 return.
+        /// </summary>
+        private IEnumerator PromptPlayerCounterIfNeeded(GridTankUnit attacker, GridTankUnit defender)
+        {
+            // 방어자가 플레이어 아니면 → 적은 항상 자동
+            if (defender.side != PlayerSide.Player)
+                yield break;
+
+            // 반격 가능성 체크 (8조건)
+            var checkResult = CounterFireResolver.CheckWithReason(defender, attacker, grid);
+            if (!checkResult.canCounter)
+                yield break;  // 반격 불가능 — 자동 스킵
+
+            // 프롬프트 표시
+            ShowBanner($"반격? [Y] 확정 / [N] 스킵 — 1.5s 자동확정", Color.yellow, 1.5f);
+
+            // 1.5s 타이머 루프
+            float endTime = Time.time + 1.5f;
+            bool confirmed = true;  // 기본: 자동확정 Y
+
+            while (Time.time < endTime)
+            {
+                if (Input.GetKeyDown(KeyCode.Y))
+                {
+                    confirmed = true;
+                    break;
+                }
+                if (Input.GetKeyDown(KeyCode.N))
+                {
+                    confirmed = false;
+                    break;
+                }
+                yield return null;
+            }
+
+            // 확정 결과 적용
+            defender.SetCounterConfirmed(confirmed);
+
+            // 피드백 배너 표시
+            string feedback = confirmed ? "반격 실행" : "반격 스킵";
+            ShowBanner(feedback, confirmed ? Color.green : Color.gray, 1f);
+
+            yield return new WaitForSeconds(0.5f);
+        }
 
     }
 }

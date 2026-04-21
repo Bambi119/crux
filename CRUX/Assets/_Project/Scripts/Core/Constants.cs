@@ -112,11 +112,14 @@ namespace Crux.Core
 
         // AP
         public const int PlayerMaxAP = 6;
-        public const int LightEnemyMaxAP = 5;
-        public const int HeavyEnemyMaxAP = 4;
+        public const int LightEnemyMaxAP = 8;
+        public const int HeavyEnemyMaxAP = 5;
+        public const int SPGEnemyMaxAP = 4;
+        public const int DroneEnemyMaxAP = 10;
         public const int MoveCostPerCell = 2;
-        public const int FireCost = 3;
-        public const int OverwatchCost = 2;
+
+        /// <summary>오버워치 AP 비용 = 주포 사격 AP * 2</summary>
+        public static int GetOverwatchCost(int fireAP) => fireAP * 2;
 
         // 사거리
         public const int MaxFireRange = 8;

@@ -32,6 +32,11 @@ namespace Crux.Unit
         // 오버워치 (반응 사격) — 활성화 시 FireCost 선지불, 이동 적에게 즉시 반격 1회
         private bool isOverwatching;
 
+        // 반격 상태 관리 (Task #15·#16·#17)
+        private bool isCounterImmune;           // true면 반격 불가 (오버워치 중인 유닛 등)
+        private bool hasCounteredThisExchange;  // 이번 교환에서 이미 반격 실행했으면 true (연쇄 반격 차단)
+        private bool counterConfirmed = true;   // Task #17: 플레이어 반격 확정 (기본 true, 프롬프트에서 설정)
+
         // 탄약 잔량
         private int mainGunAmmoCount;
         private int mgAmmoLoaded;
@@ -82,6 +87,9 @@ namespace Crux.Unit
         public int MGAmmoLoaded => mgAmmoLoaded;
         public int MGAmmoTotal => mgAmmoTotal;
         public TankCrew Crew => crew;
+        public bool IsCounterImmune => isCounterImmune;
+        public bool HasCounteredThisExchange => hasCounteredThisExchange;
+        public bool CounterConfirmed => counterConfirmed;
 
         public System.Action<GridTankUnit> OnDeath;
         public System.Action<GridTankUnit> OnFireKilled; // 화재 누적 사망 전용
@@ -110,7 +118,10 @@ namespace Crux.Unit
                 mainGunAmmoCount = mainGunAmmoCount,
                 mgAmmoLoaded = mgAmmoLoaded,
                 mgAmmoTotal = mgAmmoTotal,
-                isOverwatching = isOverwatching
+                isOverwatching = isOverwatching,
+                isCounterImmune = isCounterImmune,
+                hasCounteredThisExchange = hasCounteredThisExchange,
+                counterConfirmed = counterConfirmed
             };
         }
 
@@ -153,6 +164,9 @@ namespace Crux.Unit
             mgAmmoLoaded = state.mgAmmoLoaded;
             mgAmmoTotal = state.mgAmmoTotal;
             isOverwatching = state.isOverwatching;
+            isCounterImmune = state.isCounterImmune;
+            hasCounteredThisExchange = state.hasCounteredThisExchange;
+            counterConfirmed = state.counterConfirmed;
 
             UpdateVisual();
 
@@ -209,6 +223,11 @@ namespace Crux.Unit
             // 오버워치는 다음 턴 시작 시 해제 — 트리거되지 않았다면 사전 지불 AP는 손실
             isOverwatching = false;
 
+            // 반격 상태 초기화 — 새 턴마다 리셋 (해제는 교환 단위로 진행)
+            hasCounteredThisExchange = false;
+            isCounterImmune = false;
+            counterConfirmed = true;  // Task #17: 턴 시작 시 반격 확정 기본값으로 리셋
+
             // 화재 처리 — TickFire가 사망 처리까지 담당
             TickFire();
 
@@ -229,8 +248,7 @@ namespace Crux.Unit
         {
             if (isMoving) return false;
             if (!moduleManager.CanFireMainGun()) return false;
-            int cost = GameConstants.FireCost + moduleManager.GetFireAPPenalty();
-            return currentAP >= cost;
+            return currentAP >= GetFireCost();
         }
 
         /// <summary>기총 사격 가능 여부</summary>
@@ -268,8 +286,12 @@ namespace Crux.Unit
             return Mathf.Max(1, cost);  // 최소 1 보장
         }
 
-        /// <summary>실효 사격 AP 비용</summary>
-        public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
+        /// <summary>실효 사격 AP 비용 — tankData.fireCost 기준</summary>
+        public int GetFireCost()
+        {
+            int baseCost = tankData != null ? tankData.fireCost : 3;
+            return baseCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
+        }
 
         // ===== 오버워치 (반응 사격) =====
 
@@ -279,17 +301,19 @@ namespace Crux.Unit
             if (isMoving || isOverwatching) return false;
             if (!moduleManager.CanFireMainGun()) return false;
             if (mainGunAmmoCount <= 0) return false;
-            return currentAP >= GameConstants.OverwatchCost;
+            int owCost = GameConstants.GetOverwatchCost(GetFireCost());
+            return currentAP >= owCost;
         }
 
         /// <summary>오버워치 설정 — AP 선지불, 트리거 시 반격 1회</summary>
         public bool ActivateOverwatch()
         {
             if (!CanActivateOverwatch()) return false;
-            currentAP -= GameConstants.OverwatchCost;
+            int owCost = GameConstants.GetOverwatchCost(GetFireCost());
+            currentAP -= owCost;
             isOverwatching = true;
             OnAPChanged?.Invoke();
-            Debug.Log($"[CRUX] {tankData?.tankName} 오버워치 설정 (AP -{GameConstants.OverwatchCost})");
+            Debug.Log($"[CRUX] {tankData?.tankName} 오버워치 설정 (AP -{owCost})");
             return true;
         }
 
@@ -297,6 +321,26 @@ namespace Crux.Unit
         public void ConsumeOverwatchShot()
         {
             isOverwatching = false;
+        }
+
+        // ===== 반격 상태 관리 (Task #15-#16-#17) =====
+
+        /// <summary>반격 면역 설정 — 오버워치 또는 기타 조건으로 인해 반격 불가</summary>
+        public void SetCounterImmune(bool value)
+        {
+            isCounterImmune = value;
+        }
+
+        /// <summary>이번 교환에서 반격 실행 표시 — 연쇄 반격 차단용</summary>
+        public void SetCountered(bool value)
+        {
+            hasCounteredThisExchange = value;
+        }
+
+        /// <summary>Task #17: 플레이어 반격 확정 여부 — 프롬프트에서 Y/N 선택 후 설정</summary>
+        public void SetCounterConfirmed(bool value)
+        {
+            counterConfirmed = value;
         }
 
         // ===== 이동 (애니메이션) =====

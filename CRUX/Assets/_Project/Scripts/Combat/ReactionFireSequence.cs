@@ -62,6 +62,8 @@ namespace Crux.Combat
             if (delta > OverwatchArcHalfWidth) return;
 
             // 트리거! — 반응 사격 시퀀스 시작 (카메라 팬 + 경고 마커 + 탄환 트레이서)
+            // 이동 중인 적을 오버워치 면역으로 표시 (반격 불가 — §06 §3.4 조건 7)
+            movingEnemy.SetCounterImmune(true);
             StartCoroutine(Execute(playerUnit, movingEnemy));
         }
 
@@ -223,6 +225,12 @@ namespace Crux.Combat
 
             // ===== 카메라 즉시 복귀 =====
             battleCam?.RestoreState();
+
+            // 오버워치 면역 해제 (적이 생존했으면 다음 턴에 반격 재개 가능)
+            if (!target.IsDestroyed)
+            {
+                target.SetCounterImmune(false);
+            }
 
             IsPlaying = false;
         }

@@ -64,6 +64,9 @@ namespace Crux.Core
         public int mgAmmoLoaded;
         public int mgAmmoTotal;
         public bool isOverwatching;
+        public bool isCounterImmune;           // Task #15-#16
+        public bool hasCounteredThisExchange;  // Task #15-#16
+        public bool counterConfirmed;          // Task #17: 플레이어 반격 확정 여부
     }
 
     [System.Serializable]
