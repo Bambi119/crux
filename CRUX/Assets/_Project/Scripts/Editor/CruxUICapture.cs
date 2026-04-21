@@ -168,7 +168,7 @@ namespace Crux.EditorTools
 
         [MenuItem("Crux/Test/UICapture Idle HUD")]
         public static void CaptureIdleHUD()
-            => Start("idle-hud", "Assets/_Project/Scenes/TerrainTestScene.unity", 10f);
+            => Start("idle-hud", "Assets/_Project/Scenes/TerrainTestScene.unity", 25f);
 
         [MenuItem("Crux/Test/UICapture Abort")]
         public static void Abort()
@@ -238,9 +238,27 @@ namespace Crux.EditorTools
 
         IEnumerator RunIdleHUD(BattleController controller)
         {
-            // 초기 HUD 상태만 — 아무 조작도 하지 않음
-            yield return new WaitForSeconds(1.5f);
-            CruxUICapture.Append("[UITEST] idle-hud scenario ready");
+            // 플레이어 턴 + SelectedUnit 세팅까지 대기 (최대 15초 — 적 선공 시 턴 소모 필요)
+            float deadline = Time.realtimeSinceStartup + 15f;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                if (controller.CurrentPhase == TurnPhase.PlayerTurn &&
+                    controller.SelectedUnit != null)
+                    break;
+                yield return null;
+            }
+
+            if (controller.SelectedUnit == null)
+            {
+                CruxUICapture.Append("[UITEST] idle-hud WARNING no SelectedUnit after 15s — 캡처는 진행");
+            }
+            else
+            {
+                CruxUICapture.Append($"[UITEST] idle-hud ready SelectedUnit={controller.SelectedUnit.name} AP={controller.SelectedUnit.CurrentAP}");
+            }
+
+            // 안정화 — HUD 바인더가 1프레임 지연 반영
+            yield return new WaitForSeconds(0.3f);
         }
 
         IEnumerator RunAPPreview(BattleController controller)
