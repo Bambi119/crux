@@ -70,6 +70,18 @@ namespace Crux.AI
             return TerrainData.Concealment(cell.Terrain) * 0.01f;
         }
 
+        /// <summary>
+        /// 자셀 연막 보너스 — from 셀에 연막이 있으면 1, 없으면 0.
+        /// LOS 엔드포인트는 면제이므로 근접 시 여전히 피격 가능하지만,
+        /// 원거리 적의 시야는 대부분 차단. 방어적 포지셔닝 평가에 사용.
+        /// </summary>
+        public static float SmokeCoverFactor(AIContext ctx, Vector2Int from)
+        {
+            var cell = ctx.grid.GetCell(from);
+            if (cell == null) return 0f;
+            return cell.HasSmoke ? 1f : 0f;
+        }
+
         /// <summary>노출도 팩터 — from 셀을 LOS로 볼 수 있는 적(foe) 수. 0=안전, N=위험</summary>
         public static float ExposureFactor(AIContext ctx, Vector2Int from)
         {
@@ -136,7 +148,11 @@ namespace Crux.AI
             float myDmg = ctx.self.currentAmmo != null ? ctx.self.currentAmmo.damage : 10f;
             float targetHP = Mathf.Max(1f, target.CurrentHP);
             float ratio = myDmg / targetHP;
-            return chance * Mathf.Clamp01(ratio);
+            float score = chance * Mathf.Clamp01(ratio);
+
+            // 이미 불타는 적은 다음 화재틱으로 스스로 손상 중 — 탄약 낭비 회피
+            if (target.IsOnFire) score *= 0.5f;
+            return score;
         }
 
         // ===== 통합 스코어 =====
@@ -187,6 +203,7 @@ namespace Crux.AI
             s += w.exposure * ExposureFactor(ctx, from);
             s += w.cover * CoverFactor(ctx, from, null);
             s += w.concealment * ConcealmentFactor(ctx, from);
+            s += w.smokeCover * SmokeCoverFactor(ctx, from);
             return s;
         }
     }

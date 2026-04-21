@@ -44,6 +44,7 @@ namespace Crux.AI
             public float facingHold;   // 전면 유지 (구축전차)
             public float modulePriority; // 모듈 우선도 (보병)
             public float proxAlly;     // 아군 근접 (팩 vs 분산)
+            public float smokeCover;   // 자셀 연막 보너스 (방어적 포지셔닝)
         }
 
         private static readonly Dictionary<(AIRole, AIState), Weights> table = new()
@@ -85,6 +86,7 @@ namespace Crux.AI
                     exposure = -3.5f,
                     cover = 3.0f,
                     concealment = 2.5f,
+                    smokeCover = 2.5f,
                     dist = 0f,
                     kcs = 0f,
                     flank = 0f,
@@ -99,6 +101,7 @@ namespace Crux.AI
                 {
                     exposure = -4.0f,
                     cover = 2.5f,
+                    smokeCover = 3.0f,
                     dist = 0f,
                     kcs = 0f,
                     flank = 0f,
@@ -178,12 +181,45 @@ namespace Crux.AI
                 {
                     exposure = -3.0f,
                     cover = 2.5f,
+                    smokeCover = 2.0f,
                     dist = 0f,
                     kcs = 0f,
                     flank = 0f,
                     concealment = 0f,
                     elev = 0f,
                     facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Medium, AIState.Retreat), new Weights
+                {
+                    exposure = -3.5f,
+                    cover = 2.5f,
+                    smokeCover = 2.5f,
+                    dist = 0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    concealment = 0f,
+                    elev = 0f,
+                    facingHold = 0f,
+                    modulePriority = 0f,
+                    proxAlly = 0f
+                }
+            },
+            {
+                (AIRole.Heavy, AIState.Retreat), new Weights
+                {
+                    exposure = -3.0f,
+                    cover = 3.0f,
+                    smokeCover = 2.0f,
+                    facingHold = 1.0f,
+                    dist = 0f,
+                    kcs = 0f,
+                    flank = 0f,
+                    concealment = 0f,
+                    elev = 0f,
                     modulePriority = 0f,
                     proxAlly = 0f
                 }

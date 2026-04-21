@@ -38,6 +38,10 @@ namespace Crux.AI
 
             var ctx = BuildContext(grid, allies, foes);
 
+            // 자기 자신이 불타고 있으면 Role 무시하고 즉시 Retreat — 연막 셀 우선 이동
+            if (self.IsOnFire)
+                return DecideRetreat(ctx);
+
             return role switch
             {
                 AIRole.Vehicle => DecideVehicle(ctx),
@@ -366,7 +370,8 @@ namespace Crux.AI
                 float avgDist = foeCount > 0 ? totalDist / foeCount : 0f;
                 float s = avgDist * 0.5f
                     + AIScoring.CoverFactor(ctx, pos, null) * 2.0f
-                    + AIScoring.ExposureFactor(ctx, pos) * -1.5f;
+                    + AIScoring.ExposureFactor(ctx, pos) * -1.5f
+                    + AIScoring.SmokeCoverFactor(ctx, pos) * (self.IsOnFire ? 4.0f : 2.0f);
                 if (s > best.score)
                     best = new AIDecision
                     {
