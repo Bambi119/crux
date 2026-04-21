@@ -30,6 +30,9 @@ namespace Crux.UI
         private float bannerEndTime;
         private const float BannerDuration = 1.8f;
 
+        // 이동 AP 프리뷰 (UnitInfoCard 하단에 런타임 생성)
+        private TextMeshProUGUI apCostPreviewText;
+
         // AmmoCounterPanel
         private TextMeshProUGUI ammoLabel;
         private TextMeshProUGUI ammoCount;
@@ -154,6 +157,9 @@ namespace Crux.UI
                             moduleDots[i] = cell.Find($"{moduleCellNames[i].Replace("Cell", "Dot")}")?.GetComponent<Image>();
                     }
                 }
+
+                // AP 이동 프리뷰 텍스트 — 런타임 생성 (APStatusRow 하단)
+                EnsureAPCostPreviewText(unitCard);
             }
 
             Debug.Log("[CRUX] BattleHUDBinder: 초기화 완료");
@@ -321,32 +327,35 @@ namespace Crux.UI
                 hpFill.sizeDelta = sizeDelta;
             }
 
-            // AP 도트
+            // AP 도트 — 이동 프리뷰 적용 (플레이어 유닛 + Move/MoveDirectionSelect 모드에서만)
+            int previewCost = 0;
+            if (selectedUnit.side == Core.PlayerSide.Player)
+                previewCost = ComputeMoveCostPreview(selectedUnit);
+
+            int currentAP = selectedUnit.CurrentAP;
+            int previewStart = Mathf.Max(0, currentAP - previewCost); // 이 인덱스부터 currentAP-1까지가 소모 예고
+
             for (int i = 0; i < 6; i++)
             {
                 if (apDots[i] == null) continue;
+                var img = apDots[i].GetComponent<Image>();
+                if (img == null) continue;
 
-                if (i < selectedUnit.CurrentAP)
+                if (i < currentAP)
                 {
-                    // 활성 도트 — 색상 채우기
-                    var img = apDots[i].GetComponent<Image>();
-                    if (img != null)
-                    {
-                        img.color = UIColorPalette.PrimaryContainer;
-                        img.fillAmount = 1f;
-                    }
+                    // 활성 도트 — 소모 예고 구간은 Tertiary, 나머지는 Primary
+                    bool willConsume = (previewCost > 0) && (i >= previewStart);
+                    img.color = willConsume ? UIColorPalette.TertiaryContainer : UIColorPalette.PrimaryContainer;
                 }
                 else
                 {
-                    // 비활성 도트 — 배경색 + outline
-                    var img = apDots[i].GetComponent<Image>();
-                    if (img != null)
-                    {
-                        img.color = UIColorPalette.SurfaceContainerLowest;
-                        img.fillAmount = 1f;
-                    }
+                    // 비활성 도트
+                    img.color = UIColorPalette.SurfaceContainerLowest;
                 }
+                img.fillAmount = 1f;
             }
+
+            UpdateAPCostPreviewText(currentAP, previewCost);
 
             // 상태 배지
             if (fireBadge != null)
@@ -381,6 +390,96 @@ namespace Crux.UI
                 ModuleState.Destroyed => UIColorPalette.TertiaryContainer,
                 _ => UIColorPalette.OnSurfaceVariant
             };
+        }
+
+        // === 이동 AP 프리뷰 ===
+
+        private int ComputeMoveCostPreview(GridTankUnit selected)
+        {
+            var mode = controller.CurrentInputMode;
+
+            // 방향 확정 대기 — 이미 계산된 경로 비용
+            if (mode == BattleController.InputModeEnum.MoveDirectionSelect)
+                return Mathf.Max(0, controller.PendingMoveCost);
+
+            // 이동 선택 중 — 마우스 hover 셀까지 경로 비용
+            if (mode == BattleController.InputModeEnum.Move && selected != null)
+            {
+                var cam = controller.MainCam;
+                var grid = controller.Grid;
+                if (cam == null || grid == null) return 0;
+
+                Vector3 world = cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition);
+                world.z = 0f;
+                Vector2Int hoverCell = grid.WorldToGrid(world);
+
+                if (hoverCell == selected.GridPosition) return 0;
+
+                var path = grid.FindPath(selected.GridPosition, hoverCell);
+                if (path == null || path.Count <= 1) return 0;
+
+                int cost = (path.Count - 1) * selected.GetMoveCostPerCell();
+                return Mathf.Min(cost, selected.CurrentAP); // AP 초과는 클램프 (도트 표시 안전)
+            }
+
+            return 0;
+        }
+
+        private void EnsureAPCostPreviewText(Transform unitCard)
+        {
+            if (apCostPreviewText != null) return;
+            if (unitCard == null) return;
+
+            // APStatusRow 아래에 생성
+            var apStatusRow = unitCard.Find("APStatusRow");
+            Transform parent = apStatusRow != null ? apStatusRow : unitCard;
+
+            var go = new GameObject("APCostPreviewText", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = new Vector2(0f, -18f);
+            rt.sizeDelta = new Vector2(0f, 16f);
+
+            apCostPreviewText = go.AddComponent<TextMeshProUGUI>();
+            apCostPreviewText.fontSize = 12f;
+            apCostPreviewText.alignment = TextAlignmentOptions.Center;
+            apCostPreviewText.color = UIColorPalette.OnSurfaceVariant;
+            apCostPreviewText.text = string.Empty;
+            apCostPreviewText.raycastTarget = false;
+
+            // 기존 유닛명 폰트를 상속 (SpaceGrotesk 적용)
+            if (unitName != null && unitName.font != null)
+                apCostPreviewText.font = unitName.font;
+
+            go.SetActive(false);
+        }
+
+        private void UpdateAPCostPreviewText(int currentAP, int previewCost)
+        {
+            if (apCostPreviewText == null) return;
+
+            if (previewCost <= 0)
+            {
+                apCostPreviewText.gameObject.SetActive(false);
+                return;
+            }
+
+            apCostPreviewText.gameObject.SetActive(true);
+            int remaining = currentAP - previewCost;
+            bool canAfford = remaining >= 0;
+
+            string txt = canAfford
+                ? $"이동 -{previewCost} AP · 잔여 {remaining}"
+                : $"AP 부족 ({previewCost} / {currentAP})";
+
+            apCostPreviewText.text = txt;
+            apCostPreviewText.color = canAfford
+                ? UIColorPalette.OnSurfaceVariant
+                : UIColorPalette.TertiaryContainer;
         }
     }
 }
