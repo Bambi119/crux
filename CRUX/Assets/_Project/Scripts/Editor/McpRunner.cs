@@ -21,6 +21,21 @@ namespace Crux.EditorTools
         {
             EditorApplication.ExecuteMenuItem("Crux/Test/PlaySmoke TerrainTest (3s)");
         }
+
+        public static void CaptureUIAPPreview()
+        {
+            EditorApplication.ExecuteMenuItem("Crux/Test/UICapture AP Preview");
+        }
+
+        public static void CaptureUIIdleHUD()
+        {
+            EditorApplication.ExecuteMenuItem("Crux/Test/UICapture Idle HUD");
+        }
+
+        public static void AbortUICapture()
+        {
+            EditorApplication.ExecuteMenuItem("Crux/Test/UICapture Abort");
+        }
     }
 }
 #endif
