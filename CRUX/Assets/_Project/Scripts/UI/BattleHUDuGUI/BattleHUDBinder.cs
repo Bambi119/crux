@@ -50,6 +50,10 @@ namespace Crux.UI
         private Image[] moduleDots = new Image[4]; // Engine, Barrel, MachineGun, TurretRing
         private GameObject unitCardRoot;
 
+        // InputModePanel — 플레이어 입력 상태 표시
+        private GameObject inputModePanel;
+        private TextMeshProUGUI inputModeText;
+
         // 모듈 타입 맵 (순서: Engine, Barrel, MachineGun, TurretRing)
         private readonly ModuleType[] moduleTypesForUI = new[]
         {
@@ -149,8 +153,9 @@ namespace Crux.UI
                 var moduleGrid = unitCard.Find("ModuleGrid");
                 if (moduleGrid != null)
                 {
-                    // Engine, Barrel, MachineGun, TurretRing 순서
-                    string[] moduleCellNames = { "EngineCell", "BarrelCell", "MachineGunCell", "TurretRingCell" };
+                    // Engine, Barrel, MachineGun, TurretRing 순서와 실제 프리팹 셀 이름 매핑:
+                    // Engine → EngineCell / Barrel(주포) → GunCell / MachineGun → TrackCell(기총 좌측) / TurretRing → TurretCell
+                    string[] moduleCellNames = { "EngineCell", "GunCell", "TrackCell", "TurretCell" };
                     for (int i = 0; i < 4; i++)
                     {
                         var cell = moduleGrid.Find(moduleCellNames[i]);
@@ -161,6 +166,16 @@ namespace Crux.UI
 
                 // AP 이동 프리뷰 텍스트 — 런타임 생성 (APStatusRow 하단)
                 EnsureAPCostPreviewText(unitCard);
+            }
+
+            // InputModePanel 캐시 (선택적 — 있으면 사용, 없으면 무시)
+            var inputPanel = turnCounter?.parent?.Find("InputModePanel");
+            if (inputPanel != null)
+            {
+                inputModePanel = inputPanel.gameObject;
+                inputModeText = inputPanel.Find("InputModeText")?.GetComponent<TextMeshProUGUI>();
+                if (inputModeText == null)
+                    inputModePanel = null; // Text 컴포넌트 없으면 전체 무시
             }
 
             Debug.Log("[CRUX] BattleHUDBinder: 초기화 완료");
@@ -175,6 +190,7 @@ namespace Crux.UI
             UpdateBanner();
             UpdateAmmoCounter();
             UpdateUnitInfoCard();
+            UpdateInputMode();
         }
 
         // === 턴 배너 ===
@@ -259,11 +275,37 @@ namespace Crux.UI
 
         private void UpdateBanner()
         {
-            if (bannerPanel == null) return;
+            if (bannerPanel == null || controller == null) return;
+
+            // 현재 배너 타이머 확인 — 만료 시 다음 항목으로
             if (bannerEndTime > 0f && Time.time >= bannerEndTime)
             {
                 bannerPanel.SetActive(false);
                 bannerEndTime = 0f;
+            }
+
+            // 큐 폴링 — 배너가 표시되지 않고 있을 때만 다음 항목 꺼냄
+            if (bannerEndTime <= 0f && controller.BannerQueue.Count > 0)
+            {
+                var entry = controller.BannerQueue[0];
+                controller.BannerQueue.RemoveAt(0);
+
+                // 배너 렌더링
+                bannerPanel.SetActive(true);
+                if (bannerText != null)
+                {
+                    bannerText.text = entry.text;
+                    bannerText.color = entry.color;
+                }
+                if (bannerLegacyText != null)
+                {
+                    bannerLegacyText.text = entry.text;
+                    bannerLegacyText.color = entry.color;
+                }
+                if (bannerBackground != null)
+                    bannerBackground.color = new Color(entry.color.r, entry.color.g, entry.color.b, 0.7f);
+
+                bannerEndTime = entry.endTime;
             }
         }
 
@@ -391,6 +433,37 @@ namespace Crux.UI
                 ModuleState.Destroyed => UIColorPalette.TertiaryContainer,
                 _ => UIColorPalette.OnSurfaceVariant
             };
+        }
+
+        private void UpdateInputMode()
+        {
+            if (inputModePanel == null || inputModeText == null) return;
+
+            var mode = controller.CurrentInputMode;
+            string modeLabel = mode switch
+            {
+                BattleController.InputModeEnum.Select => "선택 대기",
+                BattleController.InputModeEnum.Move => "이동 선택",
+                BattleController.InputModeEnum.MoveDirectionSelect => "방향 확인",
+                BattleController.InputModeEnum.Fire => "사격 준비",
+                BattleController.InputModeEnum.WeaponSelect => "무기 선택",
+                _ => "?"
+            };
+
+            inputModeText.text = modeLabel;
+
+            // 모드별 색상
+            Color modeColor = mode switch
+            {
+                BattleController.InputModeEnum.Select => UIColorPalette.OnSurface,
+                BattleController.InputModeEnum.Move => UIColorPalette.PrimaryContainer,
+                BattleController.InputModeEnum.MoveDirectionSelect => UIColorPalette.PrimaryContainer,
+                BattleController.InputModeEnum.Fire => UIColorPalette.TertiaryContainer,
+                BattleController.InputModeEnum.WeaponSelect => UIColorPalette.SecondaryContainer,
+                _ => UIColorPalette.OnSurfaceVariant
+            };
+
+            inputModeText.color = modeColor;
         }
 
         // === 이동 AP 프리뷰 ===

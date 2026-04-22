@@ -12,7 +12,7 @@ namespace Crux.UI
         private void Awake()
         {
             // BattleController 찾기
-            var controller = FindObjectOfType<BattleController>();
+            var controller = FindFirstObjectByType<BattleController>();
             if (controller == null)
             {
                 Debug.LogError("[CRUX] BattleHUDBootstrap: BattleController를 찾을 수 없습니다.");
@@ -47,6 +47,9 @@ namespace Crux.UI
 
             // 초기 숨김 — 메시지/모드 트리거 전까지 보이면 안 되는 오버레이
             banner.gameObject.SetActive(false);
+
+            // InputModePanel 선택적 찾기
+            Transform inputModePanel = canvasTransform.Find("InputModePanel");
 
             // Binder 추가 및 초기화
             var binder = canvasTransform.gameObject.AddComponent<BattleHUDBinder>();
