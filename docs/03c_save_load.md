@@ -1,6 +1,6 @@
 # 3c. 세이브·로드 기획
 
-> 작성: 2026-04-21 · v1.1: 2026-04-22 (docs/11 v1.1 정합 — 시설 Tier·암시장 캐시·campaignStats 일부 확정)
+> 작성: 2026-04-21 · v1.1: 2026-04-22 (docs/11 v1.1 정합 — 시설 Tier·암시장 캐시·campaignStats 일부 확정) · v1.2: 2026-04-22 (docs/08 정합 — `ConvoyState.consumablesStash` + `ConsumableStack` 정식 반영)
 > 관계: `docs/03` 루프의 **한 판 완결성**을 담보하는 데이터 영속화 기획
 > 참조: `docs/03 §6.3 맵 해금`·`docs/09 §7 자원 정산 흐름`·`docs/10 §7.1 타이틀`·`docs/03b §8 오픈 이슈 #6 (campVisits 필드)`·`docs/04 §10 데이터 스키마`·`docs/05 §8 데이터 스키마`·`docs/11 §3.3 암시장 / §3.5 시설 / §9 데이터 스키마`
 >
@@ -57,7 +57,8 @@ CampaignSave {
 ConvoyState {
   funds: int                     # 자금 (docs/11)
   tanks: List<TankState>         # 1~6대
-  partStash: List<PartState>     # 공용 인벤토리
+  partStash: List<PartState>     # 공용 인벤토리 (장착 가능 파츠)
+  consumablesStash: List<ConsumableStack>  # 소모품 스태시 (docs/08 §6) — v1.2 신규
   availableCrew: List<CrewState> # 승무원 풀 (미배치 포함)
   maxTankSlots: int              # 보관 한도 (docs/09 §4)
   launchSlotCount: int           # 출격 슬롯 수
@@ -99,6 +100,19 @@ PartState {
   chargesRemaining: int          # Auxiliary 전용, -1은 비적용
 }
 ```
+
+### 2.4b `ConsumableStack` (docs/08 §6) — v1.2 신규
+
+```
+ConsumableStack {
+  type: ConsumableType           # docs/08 §3.2 enum (MVP: MedKit 단일)
+  count: int                     # 보유 수량 (>0). 0이 되면 스택 자체 제거
+}
+```
+
+**의의**: 소모품은 `instanceId`·`durability`·`grade` 등 인스턴스 속성이 없으므로 파츠와 분리. 동일 `type`은 **자동 병합** (스택 1개로 합산). 캠프 외부에서만 사용(전투 중 사용 불가, docs/08 §1·§5.2). 상한 없음(MVP).
+
+**역참조**: `ConsumableType`은 `Crux.Data` enum, `ConsumableDataSO`로 효과·가격·아이콘을 보관(docs/08 §8). 본 스키마는 enum 값만 보존.
 
 ### 2.5 `CrewState`
 
@@ -374,6 +388,7 @@ Unity의 `Application.persistentDataPath`가 자동 처리.
 MVP 캠페인 후반 추정:
 - 전차 6대 × (파츠 12~20개 + 모듈 8개 + 승무원 5) ≈ 각 3KB → 18KB
 - 파츠 스태시 50~100개 × 200B → 20KB
+- 소모품 스태시 (MedKit 단일 타입, 후속 SKU 추가해도 ≤10종) × 50B → <1KB (무시 가능)
 - 승무원 풀 20명 × 1KB → 20KB
 - 노드·플래그·큐 → 5KB
 - **총 ≈ 63KB**. 100KB 여유.
@@ -479,3 +494,4 @@ SaveManager.DeleteSave()
 |---|---|
 | 2026-04-21 | 초판. 단일 슬롯 자동 세이브 정책, 4종 트리거, JSON(Newtonsoft) 포맷, 스키마 버전 1, 원자적 쓰기, 실패 대응, docs/10 §7.1 타이틀 확장 제안, docs/03b §8 오픈 이슈 #6 (campVisits) 반영. 튜닝 훅·오픈 이슈 다수 명시 |
 | 2026-04-22 | v1.1. docs/11 v1.1 정합 — §2.6 `MapState.facilityTiers`(시설 5종 Tier 0~3) 도입, 기존 `unlockedFacilities` 폐기. §2.8 `BlackMarketState`(캠프 1회 추첨 결과 캐시) 신규. §2.9 `RunStats` 7필드 확정(오픈 이슈 #5 종료). 스키마 버전 v1 → v1 유지(MVP 단계, 호환 깨짐은 §6.1 거부 처리) |
+| 2026-04-22 | v1.2. docs/08 정합 — §2.2 `ConvoyState.consumablesStash` 필드 추가, §2.4b `ConsumableStack` 타입 정의(자동 병합·상한 없음). §7.3 크기 예산에 소모품 스태시 항목 반영(<1KB, 영향 미미). 스키마 버전 v1 유지(필드 추가 = 마이너 변경, MVP는 §6.1 거부 처리이므로 사실상 새 캠페인 강제) |
