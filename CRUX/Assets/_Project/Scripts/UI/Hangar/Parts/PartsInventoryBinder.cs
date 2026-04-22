@@ -3,26 +3,28 @@ using UnityEngine;
 using UnityEngine.UI;
 using Crux.Data;
 
-namespace Crux.UI
+namespace Crux.UI.Hangar.Parts
 {
-    /// <summary>
-    /// RIGHT 패널 — 부품 창고 바인더.
-    /// 카테고리 탭(전체/엔진/포탑/주포/장갑/궤도/보조) + 필터링된 카드 리스트.
-    /// EQUIP 버튼 클릭 → Bootstrap.SelectedTank에 장착 시도 (실패 시 토스트 로그).
-    /// </summary>
-    public class HangarV2PartsInventoryBinder : MonoBehaviour
+    // docs/10b §3.1 / 10d RIGHT — 부품 창고.
+    // 카테고리 탭(전체/엔진/포탑/주포/장갑/궤도/보조) + 필터링된 카드 리스트.
+    // EQUIP 버튼 → state.SelectedTank에 장착. bus.Publish(PartEquippedEvent).
+    public class PartsInventoryBinder : MonoBehaviour
     {
-        private HangarV2Bootstrap bootstrap;
-        private Transform panelRoot;
-        private Transform tabsContainer;
-        private Transform listContainer;
+        HangarSharedState mutableState;
+        IHangarStateReadOnly state;
+        IHangarBus bus;
+        ConvoyInventory convoy;
+        Transform panelRoot;
 
-        private readonly List<GameObject> cards = new();
-        private readonly List<Button> tabButtons = new();
+        Transform tabsContainer;
+        Transform listContainer;
 
-        private PartCategory? activeFilter = null;  // null = 전체
+        readonly List<GameObject> cards = new List<GameObject>();
+        readonly List<Button> tabButtons = new List<Button>();
 
-        private static readonly (PartCategory? cat, string label)[] TabSpec = new (PartCategory?, string)[]
+        PartCategory? activeFilter = null; // null = 전체
+
+        static readonly (PartCategory? cat, string label)[] TabSpec =
         {
             (null, "전체"),
             (PartCategory.Engine, "엔진"),
@@ -33,36 +35,53 @@ namespace Crux.UI
             (PartCategory.Auxiliary, "보조"),
         };
 
-        public void Initialize(HangarV2Bootstrap bootstrap, Transform panelRoot)
+        public void WireScene(HangarSharedState mutableState, ConvoyInventory convoy, Transform panelRoot)
         {
-            this.bootstrap = bootstrap;
+            this.mutableState = mutableState;
+            this.convoy = convoy;
             this.panelRoot = panelRoot;
+        }
 
-            tabsContainer = panelRoot.Find("CategoryTabs") ?? CreateTabsContainer(panelRoot);
-            listContainer = panelRoot.Find("PartsList") ?? CreateListContainer(panelRoot);
+        public void Initialize(IHangarStateReadOnly state, IHangarBus bus)
+        {
+            this.state = state;
+            this.bus = bus;
 
+            EnsureContainers();
             BuildTabs();
             RebuildCards();
 
-            bootstrap.SelectedTankChanged += OnSelectedTankChanged;
-            bootstrap.LoadoutChanged += OnLoadoutChanged;
+            bus.Subscribe<TankSelectedEvent>(OnTankSelected);
+            bus.Subscribe<PartEquippedEvent>(OnLoadoutChanged);
+            bus.Subscribe<PartUnequippedEvent>(OnLoadoutChanged);
         }
 
-        private void OnDestroy()
-        {
-            if (bootstrap != null)
-            {
-                bootstrap.SelectedTankChanged -= OnSelectedTankChanged;
-                bootstrap.LoadoutChanged -= OnLoadoutChanged;
-            }
-        }
-
-        private void OnLoadoutChanged(TankInstance tank)
+        public void Refresh(TankInstance tank)
         {
             RebuildCards();
         }
 
-        private Transform CreateTabsContainer(Transform parent)
+        void OnDestroy()
+        {
+            if (bus != null)
+            {
+                bus.Unsubscribe<TankSelectedEvent>(OnTankSelected);
+                bus.Unsubscribe<PartEquippedEvent>(OnLoadoutChanged);
+                bus.Unsubscribe<PartUnequippedEvent>(OnLoadoutChanged);
+            }
+        }
+
+        void OnTankSelected(TankSelectedEvent evt) => RebuildCards();
+        void OnLoadoutChanged<T>(T _) => RebuildCards();
+
+        void EnsureContainers()
+        {
+            if (panelRoot == null) return;
+            tabsContainer = panelRoot.Find("CategoryTabs") ?? CreateTabsContainer(panelRoot);
+            listContainer = panelRoot.Find("PartsList") ?? CreateListContainer(panelRoot);
+        }
+
+        Transform CreateTabsContainer(Transform parent)
         {
             var go = new GameObject("CategoryTabs", typeof(RectTransform));
             var rt = (RectTransform)go.transform;
@@ -82,7 +101,7 @@ namespace Crux.UI
             return go.transform;
         }
 
-        private Transform CreateListContainer(Transform parent)
+        Transform CreateListContainer(Transform parent)
         {
             var go = new GameObject("PartsList", typeof(RectTransform));
             var rt = (RectTransform)go.transform;
@@ -101,7 +120,7 @@ namespace Crux.UI
             return go.transform;
         }
 
-        private void BuildTabs()
+        void BuildTabs()
         {
             foreach (var btn in tabButtons)
                 if (btn != null) Destroy(btn.gameObject);
@@ -138,14 +157,15 @@ namespace Crux.UI
             ApplyTabHighlight();
         }
 
-        private void SetActiveFilter(PartCategory? category)
+        void SetActiveFilter(PartCategory? category)
         {
             activeFilter = category;
+            if (mutableState != null) mutableState.PartsSetFilterCategory(category);
             ApplyTabHighlight();
             RebuildCards();
         }
 
-        private void ApplyTabHighlight()
+        void ApplyTabHighlight()
         {
             for (int i = 0; i < tabButtons.Count && i < TabSpec.Length; i++)
             {
@@ -162,39 +182,39 @@ namespace Crux.UI
             }
         }
 
-        private void RebuildCards()
+        void RebuildCards()
         {
             foreach (var card in cards)
                 if (card != null) Destroy(card);
             cards.Clear();
 
-            if (bootstrap?.Convoy == null) return;
+            if (convoy == null) return;
 
             var parts = CollectFiltered();
             foreach (var part in parts)
                 cards.Add(CreateCard(part));
         }
 
-        private List<PartInstance> CollectFiltered()
+        List<PartInstance> CollectFiltered()
         {
             var result = new List<PartInstance>();
-            if (bootstrap?.Convoy == null) return result;
+            if (convoy == null) return result;
 
             if (activeFilter.HasValue)
             {
-                foreach (var p in bootstrap.Convoy.GetByCategory(activeFilter.Value))
+                foreach (var p in convoy.GetByCategory(activeFilter.Value))
                     if (p != null) result.Add(p);
             }
             else
             {
                 foreach (PartCategory cat in System.Enum.GetValues(typeof(PartCategory)))
-                    foreach (var p in bootstrap.Convoy.GetByCategory(cat))
+                    foreach (var p in convoy.GetByCategory(cat))
                         if (p != null) result.Add(p);
             }
             return result;
         }
 
-        private GameObject CreateCard(PartInstance part)
+        GameObject CreateCard(PartInstance part)
         {
             var card = new GameObject($"Part_{part.instanceId}", typeof(RectTransform));
             card.transform.SetParent(listContainer, false);
@@ -211,7 +231,7 @@ namespace Crux.UI
             return card;
         }
 
-        private void AddPartName(Transform parent, PartInstance part)
+        void AddPartName(Transform parent, PartInstance part)
         {
             var go = new GameObject("Name", typeof(RectTransform));
             var rt = (RectTransform)go.transform;
@@ -230,7 +250,7 @@ namespace Crux.UI
             text.text = part.data != null ? part.data.partName : "-";
         }
 
-        private void AddPartMeta(Transform parent, PartInstance part)
+        void AddPartMeta(Transform parent, PartInstance part)
         {
             var go = new GameObject("Meta", typeof(RectTransform));
             var rt = (RectTransform)go.transform;
@@ -253,7 +273,7 @@ namespace Crux.UI
             text.text = $"{CategoryLabel(part.Category)} · {weight:F1}t · {power:F0}kW · 내구 {durabilityPct}%";
         }
 
-        private void AddEquipButton(Transform parent, PartInstance part)
+        void AddEquipButton(Transform parent, PartInstance part)
         {
             var go = new GameObject("EquipBtn", typeof(RectTransform));
             var rt = (RectTransform)go.transform;
@@ -281,7 +301,7 @@ namespace Crux.UI
             text.alignment = TextAnchor.MiddleCenter;
 
             bool functional = part.IsFunctional;
-            bool hasTank = bootstrap?.SelectedTank != null;
+            bool hasTank = state?.SelectedTank != null;
             if (!functional)
             {
                 img.color = UIColorPalette.SurfaceContainerLowest;
@@ -306,10 +326,10 @@ namespace Crux.UI
             }
         }
 
-        private void TryEquip(PartInstance part)
+        void TryEquip(PartInstance part)
         {
-            var tank = bootstrap.SelectedTank;
-            if (tank == null || part == null) return;
+            var tank = state?.SelectedTank;
+            if (tank == null || part == null || convoy == null) return;
 
             int slotIndex = 0;
             if (part.Category == PartCategory.Armor)
@@ -317,30 +337,25 @@ namespace Crux.UI
             else if (part.Category == PartCategory.Auxiliary)
                 slotIndex = FindEmptySlot(tank.auxiliary);
 
-            var result = bootstrap.Convoy.EquipTo(tank, part.instanceId, part.Category, slotIndex);
+            var result = convoy.EquipTo(tank, part.instanceId, part.Category, slotIndex);
             if (!result.isValid)
             {
-                Debug.LogWarning($"[Hangar] 장착 실패 — {string.Join(", ", result.violations)}");
+                Debug.LogWarning($"[CRUX] [HANGAR] 장착 실패 — {string.Join(", ", result.violations)}");
                 return;
             }
 
-            RebuildCards();
-            bootstrap.NotifyLoadoutChanged();
+            bus.Publish(new PartEquippedEvent(tank, part, part.Category));
         }
 
-        private static int FindEmptySlot(List<PartInstance> slots)
+        static int FindEmptySlot(List<PartInstance> slots)
         {
+            if (slots == null) return 0;
             for (int i = 0; i < slots.Count; i++)
                 if (slots[i] == null) return i;
             return 0;
         }
 
-        private void OnSelectedTankChanged(TankInstance tank)
-        {
-            RebuildCards();
-        }
-
-        private static string CategoryLabel(PartCategory cat) => cat switch
+        static string CategoryLabel(PartCategory cat) => cat switch
         {
             PartCategory.Engine => "엔진",
             PartCategory.Turret => "포탑",
