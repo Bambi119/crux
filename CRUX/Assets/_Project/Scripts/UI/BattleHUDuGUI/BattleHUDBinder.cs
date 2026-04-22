@@ -50,6 +50,18 @@ namespace Crux.UI
         private Image[] moduleDots = new Image[4]; // Engine, Barrel, MachineGun, TurretRing
         private GameObject unitCardRoot;
 
+        // New P-B battle status fields
+        private TextMeshProUGUI moraleValue;
+        private TextMeshProUGUI moraleband;
+        private TextMeshProUGUI mgAmmoText;
+        private TextMeshProUGUI fireTurnsText;
+        private GameObject fireTurnsRow;
+        private TextMeshProUGUI missesText;
+        private GameObject missesRow;
+        private Image overwatchBadge;
+        private GameObject overwatchBadgeContainer;
+        private TextMeshProUGUI crewStatusText;
+
         // InputModePanel — 플레이어 입력 상태 표시
         private GameObject inputModePanel;
         private TextMeshProUGUI inputModeText;
@@ -162,6 +174,48 @@ namespace Crux.UI
                         if (cell != null)
                             moduleDots[i] = cell.Find($"{moduleCellNames[i].Replace("Cell", "Dot")}")?.GetComponent<Image>();
                     }
+                }
+
+                // P-B: 새로운 전투 상태 필드 생성 (프리팹에 없을 경우)
+                EnsurePBattleStatusRows(unitCard);
+
+                // P-B: 새로운 전투 상태 필드 캐싱 (Morale, MG Ammo, Fire Turns, Consecutive Misses, Overwatch, Crew Status)
+                var moraleRow = unitCard.Find("MoraleRow");
+                if (moraleRow != null)
+                {
+                    moraleValue = moraleRow.Find("MoraleValue")?.GetComponent<TextMeshProUGUI>();
+                    moraleband = moraleRow.Find("MoraleBand")?.GetComponent<TextMeshProUGUI>();
+                }
+
+                var mgAmmoRow = unitCard.Find("MGAmmoRow");
+                if (mgAmmoRow != null)
+                {
+                    mgAmmoText = mgAmmoRow.Find("MGAmmoText")?.GetComponent<TextMeshProUGUI>();
+                }
+
+                fireTurnsRow = unitCard.Find("FireTurnsRow")?.gameObject;
+                if (fireTurnsRow != null)
+                {
+                    fireTurnsText = fireTurnsRow.transform.Find("FireTurnsText")?.GetComponent<TextMeshProUGUI>();
+                }
+
+                missesRow = unitCard.Find("MissesRow")?.gameObject;
+                if (missesRow != null)
+                {
+                    missesText = missesRow.transform.Find("MissesText")?.GetComponent<TextMeshProUGUI>();
+                }
+
+                var overwatchRow = unitCard.Find("OverwatchRow");
+                if (overwatchRow != null)
+                {
+                    overwatchBadgeContainer = overwatchRow.gameObject;
+                    overwatchBadge = overwatchRow.Find("OverwatchBadge")?.GetComponent<Image>();
+                }
+
+                var crewStatusRow = unitCard.Find("CrewStatusRow");
+                if (crewStatusRow != null)
+                {
+                    crewStatusText = crewStatusRow.Find("CrewStatusText")?.GetComponent<TextMeshProUGUI>();
                 }
 
                 // AP 이동 프리뷰 텍스트 — 런타임 생성 (APStatusRow 하단)
@@ -407,6 +461,9 @@ namespace Crux.UI
             if (smokeBadge != null)
                 smokeBadge.SetActive(selectedUnit.RemainingSmokeCharges == 0);
 
+            // P-B: 새로운 전투 상태 필드 바인딩
+            UpdateBattleStatusFields(selectedUnit);
+
             // 모듈 도트
             UpdateModuleDots(selectedUnit);
         }
@@ -432,6 +489,235 @@ namespace Crux.UI
                 ModuleState.Broken => UIColorPalette.TertiaryContainer,
                 ModuleState.Destroyed => UIColorPalette.TertiaryContainer,
                 _ => UIColorPalette.OnSurfaceVariant
+            };
+        }
+
+        /// <summary>
+        /// P-B: 프리팹에서 누락된 전투 상태 행들을 런타임에 생성
+        /// MoraleRow, MGAmmoRow, FireTurnsRow, MissesRow, OverwatchRow, CrewStatusRow가 없으면 생성
+        /// </summary>
+        private void EnsurePBattleStatusRows(Transform unitCard)
+        {
+            if (unitCard == null) return;
+
+            // 각 행에 대해 이미 존재하면 스킵, 없으면 생성
+            EnsureRow(unitCard, "MoraleRow", 2); // MoraleLabel, MoraleValue, MoraleBand
+            EnsureRow(unitCard, "MGAmmoRow", 2); // MGAmmoLabel, MGAmmoText
+            EnsureRow(unitCard, "FireTurnsRow", 2); // FireTurnsLabel, FireTurnsText
+            EnsureRow(unitCard, "MissesRow", 2); // MissesLabel, MissesText
+            EnsureRow(unitCard, "OverwatchRow", 1); // OverwatchBadge
+            EnsureRow(unitCard, "CrewStatusRow", 2); // CrewStatusLabel, CrewStatusText
+        }
+
+        /// <summary>
+        /// 행 생성 헬퍼 — 없으면 생성, 있으면 무시
+        /// </summary>
+        private void EnsureRow(Transform unitCard, string rowName, int childCount)
+        {
+            if (unitCard.Find(rowName) != null)
+                return; // 이미 존재
+
+            GameObject row = new GameObject(rowName);
+            row.transform.SetParent(unitCard, false);
+
+            // RectTransform 설정
+            RectTransform rowRT = row.AddComponent<RectTransform>();
+            rowRT.anchorMin = Vector2.zero;
+            rowRT.anchorMax = new Vector2(1f, 0f); // 상단 고정, 너비는 부모 기준
+            rowRT.offsetMin = Vector2.zero;
+            rowRT.offsetMax = Vector2.zero;
+            rowRT.sizeDelta = new Vector2(0f, 25f); // 높이 25, 너비는 부모 기준
+
+            // LayoutGroup 추가
+            HorizontalLayoutGroup hlg = row.AddComponent<HorizontalLayoutGroup>();
+            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandHeight = false;
+            hlg.spacing = 5f;
+            hlg.padding = new RectOffset(5, 5, 0, 0);
+
+            // 자식 생성 (label + value(s) 패턴)
+            CreateRowChild(row.transform, $"{rowName}Label", true); // Label은 좌측, flexible width 최소
+            for (int i = 1; i < childCount; i++)
+            {
+                CreateRowChild(row.transform, GetChildNameForRow(rowName, i), false); // 값 필드들
+            }
+        }
+
+        /// <summary>
+        /// 행의 자식 GameObject 생성 (TextMeshProUGUI 또는 Image)
+        /// </summary>
+        private void CreateRowChild(Transform parentRow, string childName, bool isLabel)
+        {
+            GameObject child = new GameObject(childName);
+            child.transform.SetParent(parentRow, false);
+
+            RectTransform childRT = child.AddComponent<RectTransform>();
+            childRT.anchorMin = Vector2.zero;
+            childRT.anchorMax = Vector2.one;
+            childRT.offsetMin = Vector2.zero;
+            childRT.offsetMax = Vector2.zero;
+
+            // Label인 경우 위에 Image로 표시, 아니면 TextMeshProUGUI 또는 Image로
+            if (childName.Contains("Badge"))
+            {
+                // Badge는 Image
+                Image img = child.AddComponent<Image>();
+                img.color = new Color(0.2f, 0.7f, 1f); // 파란 배지 기본색
+            }
+            else
+            {
+                // 나머지는 TextMeshProUGUI
+                TextMeshProUGUI tmp = child.AddComponent<TextMeshProUGUI>();
+                tmp.text = isLabel ? GetLabelText(childName) : "0";
+                tmp.fontSize = 3;
+                tmp.alignment = TextAlignmentOptions.BottomLeft;
+                tmp.color = Color.white;
+            }
+
+            // LayoutElement — Label은 preferred width를 제한하여 공간 절약
+            LayoutElement le = child.AddComponent<LayoutElement>();
+            if (isLabel)
+            {
+                le.preferredWidth = 80f;
+                le.flexibleWidth = 0f;
+            }
+            else
+            {
+                le.preferredWidth = -1f; // 자동
+                le.flexibleWidth = 1f;
+            }
+            le.preferredHeight = 25f;
+            le.flexibleHeight = 0f;
+        }
+
+        /// <summary>행 타입에 따른 자식 이름 생성</summary>
+        private string GetChildNameForRow(string rowName, int index)
+        {
+            return rowName switch
+            {
+                "MoraleRow" => index == 1 ? "MoraleValue" : "MoraleBand",
+                "MGAmmoRow" => "MGAmmoText",
+                "FireTurnsRow" => "FireTurnsText",
+                "MissesRow" => "MissesText",
+                "OverwatchRow" => "OverwatchBadge",
+                "CrewStatusRow" => "CrewStatusText",
+                _ => $"Child{index}"
+            };
+        }
+
+        /// <summary>라벨 텍스트 반환</summary>
+        private string GetLabelText(string fieldName)
+        {
+            return fieldName switch
+            {
+                "MoraleRowLabel" => "사기",
+                "MGAmmoRowLabel" => "기총탄",
+                "FireTurnsRowLabel" => "사격대기",
+                "MissesRowLabel" => "연속실탄",
+                "OverwatchRowLabel" => "반격",
+                "CrewStatusRowLabel" => "승무원",
+                _ => ""
+            };
+        }
+
+        /// <summary>
+        /// P-B: 새로운 전투 상태 필드 바인딩 (사기, MG탄약, 사격대기, 연속실탄, 반격준비, 승무원 상태)
+        /// </summary>
+        private void UpdateBattleStatusFields(GridTankUnit unit)
+        {
+            if (unit?.Crew == null) return;
+
+            // 사기 및 사기대 렌더링
+            if (moraleValue != null)
+            {
+                moraleValue.text = unit.Crew.Morale.ToString();
+                moraleValue.color = GetMoraleColor(unit.Crew.Band);
+            }
+
+            if (moraleband != null)
+            {
+                moraleband.text = GetMoraleBandLabel(unit.Crew.Band);
+                moraleband.color = GetMoraleColor(unit.Crew.Band);
+            }
+
+            // MG 탄약 표시
+            if (mgAmmoText != null)
+            {
+                mgAmmoText.text = $"{unit.MGAmmoLoaded}/{unit.MGAmmoTotal}";
+            }
+
+            // 사격 대기 턴 (조건부 표시)
+            if (fireTurnsRow != null)
+            {
+                bool hasFireTurns = unit.FireTurnsLeft > 0;
+                fireTurnsRow.SetActive(hasFireTurns);
+                if (hasFireTurns && fireTurnsText != null)
+                {
+                    fireTurnsText.text = $"{unit.FireTurnsLeft}턴";
+                }
+            }
+
+            // 연속 실탄 (조건부 표시)
+            if (missesRow != null)
+            {
+                bool hasMisses = unit.ConsecutiveMisses > 0;
+                missesRow.SetActive(hasMisses);
+                if (hasMisses && missesText != null)
+                {
+                    missesText.text = $"{unit.ConsecutiveMisses}회";
+                }
+            }
+
+            // 반격 준비 배지 (조건부 표시)
+            if (overwatchBadgeContainer != null)
+            {
+                overwatchBadgeContainer.SetActive(unit.IsOverwatching);
+            }
+
+            // 승무원 상태 요약 (배치된 승무원 수 표시)
+            if (crewStatusText != null)
+            {
+                int deployedCount = CountDeployedCrew(unit.Crew);
+                int totalSlots = 5;
+                crewStatusText.text = $"{deployedCount}/{totalSlots} 배치";
+            }
+        }
+
+        /// <summary>배치된 전투 가능 승무원 수 반환</summary>
+        private int CountDeployedCrew(TankCrew crew)
+        {
+            int count = 0;
+            if (crew.commander != null && crew.commander.IsCombatReady) count++;
+            if (crew.gunner != null && crew.gunner.IsCombatReady) count++;
+            if (crew.loader != null && crew.loader.IsCombatReady) count++;
+            if (crew.driver != null && crew.driver.IsCombatReady) count++;
+            if (crew.mgMechanic != null && crew.mgMechanic.IsCombatReady) count++;
+            return count;
+        }
+
+        /// <summary>사기 대역 라벨 반환</summary>
+        private string GetMoraleBandLabel(MoraleBand band)
+        {
+            return band switch
+            {
+                MoraleBand.High => "양호",
+                MoraleBand.Normal => "정상",
+                MoraleBand.Shaken => "동요",
+                MoraleBand.Panic => "공황",
+                _ => "?"
+            };
+        }
+
+        /// <summary>사기 대역에 따른 색상 반환</summary>
+        private Color GetMoraleColor(MoraleBand band)
+        {
+            return band switch
+            {
+                MoraleBand.High => new Color(0.2f, 0.8f, 0.3f), // 녹색
+                MoraleBand.Normal => new Color(0.9f, 0.9f, 0.3f), // 노란색
+                MoraleBand.Shaken => new Color(1f, 0.6f, 0.2f), // 주황색
+                MoraleBand.Panic => new Color(1f, 0.2f, 0.2f), // 빨간색
+                _ => Color.white
             };
         }
 
