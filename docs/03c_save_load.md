@@ -1,8 +1,8 @@
 # 3c. 세이브·로드 기획
 
-> 작성: 2026-04-21
+> 작성: 2026-04-21 · v1.1: 2026-04-22 (docs/11 v1.1 정합 — 시설 Tier·암시장 캐시·campaignStats 일부 확정)
 > 관계: `docs/03` 루프의 **한 판 완결성**을 담보하는 데이터 영속화 기획
-> 참조: `docs/03 §6.3 맵 해금`·`docs/09 §7 자원 정산 흐름`·`docs/10 §7.1 타이틀`·`docs/03b §8 오픈 이슈 #6 (campVisits 필드)`·`docs/04 §10 데이터 스키마`·`docs/05 §8 데이터 스키마`·`docs/11 §9 데이터 스키마`
+> 참조: `docs/03 §6.3 맵 해금`·`docs/09 §7 자원 정산 흐름`·`docs/10 §7.1 타이틀`·`docs/03b §8 오픈 이슈 #6 (campVisits 필드)`·`docs/04 §10 데이터 스키마`·`docs/05 §8 데이터 스키마`·`docs/11 §3.3 암시장 / §3.5 시설 / §9 데이터 스키마`
 >
 > **목적**: "한 판 처음부터 끝까지 돌아가는 빌드"(`docs/03 §7.1`)가 성립하려면 **세션 간 상태 보존**이 필수. 본 문서는 세이브 대상·시점·형식·이어하기 UX·실패 복구 규칙을 확정한다. 실제 C# 구현은 `Crux-dev` 워크트리에서 별도 수행.
 
@@ -43,8 +43,9 @@ CampaignSave {
   convoy: ConvoyState        # 부대 집합
   mapProgress: MapState      # 월드맵 진행도
   maintenance: MaintenanceState  # 정비 대기 큐 (03b §7.1 MaintenanceState)
+  blackMarket: BlackMarketState  # 현 캠프 암시장 인벤토리 캐시 (docs/11 §3.3)
   storyFlags: Map<string, bool>  # 스토리 분기·해금 플래그
-  campaignStats: RunStats    # 실행 통계 (누적 전투 수·격파 수 등, 표시용)
+  campaignStats: RunStats        # 실행 통계 (§2.9 구체 필드)
 }
 ```
 
@@ -123,9 +124,14 @@ MapState {
   currentNodeId: string          # 현재 노드 (docs/09 §1.1)
   visitedNodeIds: List<string>   # 클리어한 노드 이력
   campVisitCount: int            # 캠프 방문 누적 (docs/03b §8 오픈 이슈 #6)
-  unlockedFacilities: List<string>  # 캠프 시설 해금 (docs/09 §3)
+  facilityTiers: Dictionary<string, int>
+  # 시설 5종 현재 해금 단계 (docs/11 §3.5).
+  # key: "garage" / "hospital" / "workshop" / "tavern" / "blackmarket_loyal"
+  # value: 0(미해금) ~ 3(Tier 3). 단 "garage"는 기본 1
 }
 ```
+
+**v1.1 변경**: 기존 `unlockedFacilities: List<string>` 폐기. Tier 단계 표현 불가. v1 세이브는 §6.1 "구버전" 처리(로드 거부).
 
 ### 2.7 `MaintenanceState` (docs/03b §7.1 직렬화)
 
@@ -143,7 +149,43 @@ AwakeningEntry {
 }
 ```
 
-### 2.8 직렬화 제외 항목
+### 2.8 `BlackMarketState` (docs/11 §3.3 캐시) — v1.1 신규
+
+```
+BlackMarketState {
+  currentCampNodeId: string?     # 현재 캠프 노드 (다른 캠프 도착 시 invalidated)
+  rolledAt: string?              # 마지막 추첨 시각 ISO8601
+  offers: List<BlackMarketOffer> # 캠프당 1회 추첨 결과, 떠나면 비움
+}
+
+BlackMarketOffer {
+  partDataId: string?            # 파츠 제공 시 (null 이면 차체 제공)
+  tankDataId: string?            # 완성 전차 제공 시
+  grade: PartGrade?              # 파츠일 때만
+  price: int                     # 추첨 시 가격대 내 결정 (docs/11 §3.3.2)
+  sold: bool                     # 구매 시 true (재방문 방지)
+}
+```
+
+**의의**: 캠프 1회 입장 시 `N=2~4` 상품을 한 번만 추첨(가중표 §3.3.2). 인벤토리를 닫고 다시 열어도 동일. 다른 노드로 이동 후 다른 캠프 도착 시 `currentCampNodeId` 비교로 무효화 → 새 추첨.
+
+### 2.9 `RunStats` (campaignStats 최소 필드) — v1.1 확정
+
+```
+RunStats {
+  totalBattles: int              # 전투 노드 완료 수 (CampaignSave 트리거 BattleResultConfirmed 카운트)
+  totalKills: int                # 누적 격파 (모든 승무원 killCounters 합산 ≠ — 별도 카운트, 0.5 기여 미포함 정수)
+  totalCampVisits: int           # MapState.campVisitCount 미러 (편의)
+  fundsEarnedCum: int            # 누적 자금 획득 (지출 무관, +만 합산)
+  blackMarketPurchases: int      # 암시장 구매 누적 횟수
+  campaignStartedAt: string      # 캠페인 첫 시작 ISO8601
+  playTimeSeconds: int           # 캠페인 실 플레이 시간 (타이틀·옵션 제외)
+}
+```
+
+§5.1 타이틀 메타에서 `playTimeSeconds → "n시간 m분"` 변환, `savedAt` 별도 표시. 통계 공개 화면(Phase 2)에서도 재사용.
+
+### 2.10 직렬화 제외 항목
 
 런타임에 재생성 가능하므로 저장하지 않음:
 - 카메라 위치·줌 상태
@@ -400,7 +442,7 @@ SaveManager.DeleteSave()
 2. **PlayerPrefs 승계 여부** — §8 2번. 개발 테스트 데이터 보존 필요한지, 아니면 초기화 허용인지 사용자 결정
 3. **노드 진입 시점 정확한 정의** — "노드 도달" vs "노드 처리 완료" (휴식 노드의 1초 이벤트 내부에서 세이브하면 중복 방지 복잡). 현재는 **완료 직후**로 통일 — 재확인 필요
 4. **스팀 도전 과제 저장** — Steam API는 별도 저장. MVP에는 도전 과제 없음으로 가정
-5. **`campaignStats`(§2.1) 필드 구체 구성** — 총 전투 수·격파 적 수·피격 관통 수 등. 세이브 표시용/통계 공개용 이중 목적. 최소 필드 정의는 후속
+5. ~~**`campaignStats`(§2.1) 필드 구체 구성**~~ — **v1.1 확정**: §2.9 `RunStats` 7필드 정의(총 전투 수·격파 수·캠프 방문 수·누적 자금 획득·암시장 구매 수·캠페인 시작 시각·실 플레이 초). 추가 필드(피격 관통 수 등)는 통계 공개 화면 도입 시 후속
 6. **전투 중 자동 저장 (체크포인트)** — 플레이 시간 25~30분(docs/09 §9)이면 체크포인트 없이 허용 가능. 재시작 손실이 크게 느껴지면 후속 도입
 7. **스키마 버전 증가 가이드** — 필드 추가 = 마이너(호환 가능 가정, MVP는 `>v1` 거부), 필드 제거·타입 변경 = 메이저. 문서화 시점 필요
 8. **다중 캠페인 구분** — Phase 2 다중 슬롯 도입 시 `save_1.json`·`save_2.json`·`save_3.json`. 확장 여유 위해 **현 단계에서도 `save.json`보다 `save_0.json`이 나을지** 검토
@@ -436,3 +478,4 @@ SaveManager.DeleteSave()
 | 날짜 | 변경 |
 |---|---|
 | 2026-04-21 | 초판. 단일 슬롯 자동 세이브 정책, 4종 트리거, JSON(Newtonsoft) 포맷, 스키마 버전 1, 원자적 쓰기, 실패 대응, docs/10 §7.1 타이틀 확장 제안, docs/03b §8 오픈 이슈 #6 (campVisits) 반영. 튜닝 훅·오픈 이슈 다수 명시 |
+| 2026-04-22 | v1.1. docs/11 v1.1 정합 — §2.6 `MapState.facilityTiers`(시설 5종 Tier 0~3) 도입, 기존 `unlockedFacilities` 폐기. §2.8 `BlackMarketState`(캠프 1회 추첨 결과 캐시) 신규. §2.9 `RunStats` 7필드 확정(오픈 이슈 #5 종료). 스키마 버전 v1 → v1 유지(MVP 단계, 호환 깨짐은 §6.1 거부 처리) |
