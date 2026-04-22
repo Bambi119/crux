@@ -22,12 +22,12 @@
 
 ## 1. 설계 원칙 — 모듈화 우선
 
-1. **한 탭 = 한 모듈** — 편성·정비·파츠·승무원·Trait은 각각 독립 책임. 내부 로직은 모듈 바깥에 노출 안 함
+1. **한 탭 = 한 모듈** — 편성·정비·파츠·승무원·LoadoutEffect는 각각 독립 책임. 내부 로직은 모듈 바깥에 노출 안 함
 2. **모듈 간 직접 참조 금지** — 탭 컴포넌트끼리 서로의 내부 타입·메서드를 호출하지 않는다. 통신은 **공유 상태 스토어 + 이벤트**만 경유
 3. **의존 방향 단방향** — 허브(10b) → 각 모듈(10c~10f, 03b). 모듈에서 허브로의 역참조 금지. 모듈 간 횡단 참조 금지
 4. **각 모듈은 입력·출력이 명시적** — 읽기 소스와 쓰기 대상이 본 문서 §3.2 표에 고정. 표 밖 접근은 리팩토링 신호
 5. **UI와 상태 분리** — UI 컴포넌트(Binder)는 표현만. 상태 변경은 공유 상태 스토어에 요청 → 이벤트로 전 탭에 전파
-6. **순수 계산은 별도** — Trait 계산·호환성 체크 등 순수 함수는 서비스 계층(Crux.Core 또는 Crux.Data 유틸)에 두고 모듈은 호출만
+6. **순수 계산은 별도** — LoadoutEffect 계산·호환성 체크 등 순수 함수는 서비스 계층(Crux.Core 또는 Crux.Data 유틸)에 두고 모듈은 호출만
 
 **철학 근거**: `CRUX/CLAUDE.md §1·§5` 모듈 경계 강제·반(反)스파게티 원칙. 격납고는 BattleController급으로 비대해질 위험이 가장 큰 영역이라 선제 분할.
 
@@ -76,7 +76,7 @@
 | **10c 편성** | `10c_hangar_composition.md` | "어떤 전차를 데려갈지" 결정. 출격·보관 슬롯·출격 확정 |
 | **10d 파츠 인벤토리** | `10d_hangar_parts_inventory.md` | "어떤 파츠를 어디에 꽂을지". 카테고리·필터·호환성 피드백·합성 |
 | **10e 승무원 배치** | `10e_hangar_crew_assignment.md` | "어떤 승무원을 어느 직책에". 5직책·선호·공석 처리 |
-| **10f Trait** | `10f_hangar_traits.md` | "이 파츠·승무원 조합이 만드는 고정 효과". 계산 엔진 |
+| **10f LoadoutEffect** | `10f_hangar_loadout_effects.md` | "이 파츠·승무원 조합이 만드는 고정 효과". 계산 엔진 (편성 효과) |
 | **03b 정비** | `03b_maintenance.md` | "다음 전투 전 무엇이 회복돼야 하는지". 수리·부상·각성 카드 |
 
 ### 3.2 데이터 입출력 표
@@ -88,7 +88,7 @@
 | 10c 편성 | `ConvoyInventory.tanks`·`launchSlots`·`storageSlots` | `launchSlots` 할당, `SharedState.selectedTank` | (없음 — 최상위 진입점) |
 | 10d 파츠 | `ConvoyInventory.partStash`·`SharedState.selectedTank` | 선택 전차 `installedParts` 변경 | docs/05 §3 호환성, 10f (계산 트리거) |
 | 10e 승무원 | `ConvoyInventory.availableCrew`·`SharedState.selectedTank.crew` | 직책 슬롯 할당 | docs/04 §1 선호, 10f (계산 트리거) |
-| 10f Trait | 선택 전차의 파츠·승무원 스냅샷 | `SharedState.selectedTankTraits` (파생) | (읽기 전용 — 역참조 없음) |
+| 10f LoadoutEffect | 선택 전차의 파츠·승무원 스냅샷 | `SharedState.selectedTankLoadoutEffects` (파생) | (읽기 전용 — 역참조 없음) |
 | 03b 정비 | `ConvoyInventory` 전체·`MaintenanceState` | 파츠 내구도·모듈 HP·부상·스킬 소유 | 10c (선택 전차) |
 
 **엄격 규칙**: 위 표 밖의 접근은 **아키텍처 위반**. 리뷰어(모나미)가 Pull Request에서 차단한다.
@@ -101,7 +101,7 @@
          ┌────────┬───────┼───────┬────────┐
          ▼        ▼       ▼       ▼        ▼
        10c     10d     10e     10f       03b
-     편성    파츠     승무원   Trait      정비
+     편성    파츠     승무원  LoadoutEffect  정비
          │      │       │       ▲         │
          │      │       │       │         │
          │      └───────┴───────┤         │
@@ -134,8 +134,8 @@ HangarSharedState {
   # 편성 탭 (10c 전용 쓰기)
   launchSlotAssignment: TankInstance[]  # 0~4 인덱스 = 출격 슬롯
 
-  # Trait 파생 (10f 전용 쓰기)
-  selectedTankTraits: IReadOnlyList<TraitEffect>
+  # LoadoutEffect 파생 (10f 전용 쓰기) — 편성 효과
+  selectedTankLoadoutEffects: IReadOnlyList<LoadoutEffect>
 
   # 필터 상태 (10d 전용 쓰기)
   partsFilterCategory: PartCategory?
@@ -155,11 +155,11 @@ HangarSharedState {
 | 이벤트 | 발행자 | 구독자 | 의미 |
 |---|---|---|---|
 | `TankSelected(TankInstance)` | 10c | 10d, 10e, 10f, 03b | 우 패널·관련 탭이 대상 전차 교체 |
-| `PartEquipped(TankInstance, PartCategory, slotIndex, PartInstance)` | 10d | 10f, (10c 표시 갱신) | Trait 재계산 트리거 |
+| `PartEquipped(TankInstance, PartCategory, slotIndex, PartInstance)` | 10d | 10f, (10c 표시 갱신) | LoadoutEffect 재계산 트리거 |
 | `PartUnequipped(TankInstance, PartCategory, slotIndex, PartInstance)` | 10d | 10f, 10c | 상동 |
-| `CrewAssigned(TankInstance, CrewClass, CrewMemberRuntime)` | 10e | 10f, 10c | 선호 매칭·Trait 재계산 |
+| `CrewAssigned(TankInstance, CrewClass, CrewMemberRuntime)` | 10e | 10f, 10c | 선호 매칭·LoadoutEffect 재계산 |
 | `CrewUnassigned(TankInstance, CrewClass, CrewMemberRuntime)` | 10e | 10f, 10c | 상동 |
-| `TraitsRecalculated(TankInstance, IReadOnlyList<TraitEffect>)` | 10f | 10c (우 패널 Trait 섹션 갱신) | 계산 완료 통지 |
+| `LoadoutEffectsRecalculated(TankInstance, IReadOnlyList<LoadoutEffect>)` | 10f | 10c (우 패널 LoadoutEffect 섹션 갱신) | 편성 효과 재계산 완료 통지 |
 | `TabChanged(HangarTab)` | 10b 허브 | 전 탭 | `OnTabEnter`·`OnTabLeave` 호출 |
 | `AwakeningQueueChanged(int newCount)` | MaintenanceTicker | 10b 허브 (뱃지 갱신) | 탭 뱃지 숫자 변경 |
 | `LaunchConfirmed(IReadOnlyList<TankInstance>)` | 10c | 10b 허브 (씬 전환) | 출격 확정 → WorldMap 복귀 |
@@ -230,11 +230,11 @@ Hangar COMP 탭:
 | `10c_hangar_composition.md` | ⏸ 예정 | 편성 탭 UX·슬롯 상호작용·출격 확정 |
 | `10d_hangar_parts_inventory.md` | ⏸ 예정 | 파츠 인벤토리·필터·호환성 피드백·합성 진입점 |
 | `10e_hangar_crew_assignment.md` | ⏸ 예정 | 승무원 배치·직책 매칭·선호·공석 경고 |
-| `10f_hangar_traits.md` | ⏸ 예정 | Trait 계산 규칙·획득 경로·표시 |
+| `10f_hangar_loadout_effects.md` | ⏸ 예정 | LoadoutEffect(편성 효과) 계산 규칙·획득 경로·표시 |
 | `03b_maintenance.md` | ✅ 완료 | 정비 탭 전체 |
 | `hangar_prefab_build_guide.md` | ✅ 완료 | 프리팹 수동 조립 절차 (구현 보조) |
 
-**작성 순서 제안**: 10c → 10d → 10e → 10f. 이유: 편성(10c)이 모든 탭의 대상 전차를 결정하므로 먼저. Trait(10f)은 10d·10e 이후.
+**작성 순서 제안**: 10c → 10d → 10e → 10f. 이유: 편성(10c)이 모든 탭의 대상 전차를 결정하므로 먼저. LoadoutEffect(10f)는 10d·10e 이후.
 
 ---
 
@@ -266,7 +266,7 @@ ITabModule {
 
 ### 7.3 경계 강제 방법
 
-- **namespace 분리**: `Crux.UI.Hangar.Composition` / `Crux.UI.Hangar.Parts` / `Crux.UI.Hangar.Crew` / `Crux.UI.Hangar.Traits` — 한 namespace가 다른 namespace의 internal 타입을 참조할 때 경고
+- **namespace 분리**: `Crux.UI.Hangar.Composition` / `Crux.UI.Hangar.Parts` / `Crux.UI.Hangar.Crew` / `Crux.UI.Hangar.LoadoutEffects` — 한 namespace가 다른 namespace의 internal 타입을 참조할 때 경고
 - **internal 접근자 활용**: 탭별 MonoBehaviour·헬퍼는 `internal` 기본. `public`은 `ITabModule`·이벤트·DTO 한정
 - **assembly definition 분리** (선택, Phase 2): 탭별 asmdef로 컴파일 단계에서 경계 강제
 
@@ -280,7 +280,7 @@ ITabModule {
 ### 7.5 테스트 가능성
 
 - 각 탭 바인더는 **mock `IHangarStateReadOnly`·`IHangarBus`** 주입으로 단위 테스트 가능해야 함
-- Trait 계산(10f)은 **순수 함수**로 — `ComputeTraits(TankInstance) → IReadOnlyList<TraitEffect>` 단독 테스트 가능
+- LoadoutEffect 계산(10f)은 **순수 함수**로 — `ComputeLoadoutEffects(TankInstance) → IReadOnlyList<LoadoutEffect>` 단독 테스트 가능
 - 호환성 체크(docs/05 §3)는 이미 순수, 재활용
 
 ---
@@ -323,3 +323,4 @@ ITabModule {
 | 날짜 | 변경 |
 |---|---|
 | 2026-04-21 | 초판. 격납고 5모듈 분할·경계·의존 지도·공유 상태·이벤트 정의·탭 네비·구현 가이드 확정. 10c~10f는 후속 작성. 03b는 기존 문서를 정비 탭으로 흡수 |
+| 2026-04-22 | 용어 정리: 10f 모듈명 `Trait` → `LoadoutEffect` (편성 효과). 캐릭터 Trait(승무원 고유 특성)과 분리. 영향: 모듈 명·이벤트(`LoadoutEffectsRecalculated`)·SharedState 필드(`selectedTankLoadoutEffects`)·namespace(`Crux.UI.Hangar.LoadoutEffects`)·계산 함수(`ComputeLoadoutEffects`)·문서명(`10f_hangar_loadout_effects.md`) |
