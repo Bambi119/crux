@@ -51,6 +51,13 @@ namespace Crux.PlayerInput
                 return;
             }
 
+            // 회전 모드 (Phase 4)
+            if (controller.CurrentInputMode == BattleController.InputModeEnum.RotateMode)
+            {
+                HandleRotateMode();
+                return;
+            }
+
             // Fire 모드: 호버 갱신 + 무기 전환 + 목표 순환
             if (controller.CurrentInputMode == BattleController.InputModeEnum.Fire)
             {
@@ -73,6 +80,7 @@ namespace Crux.PlayerInput
         private void HandleWeaponSelectMode()
         {
             // 1/2/3: 무기 선택만 (확정 아님)
+            // TODO(J-4): 무기 가용성 체크 후 회색 처리 (현재 placeholder)
             if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha1))
                 controller.SelectWeapon(WeaponType.MainGun);
             else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha2))
@@ -87,6 +95,34 @@ namespace Crux.PlayerInput
             if (commit)
             {
                 controller.CommitWeaponSelection();
+            }
+        }
+
+        /// <summary>회전 모드 입력 처리 (Q=좌60° / E=우60° / Space=확정 / ESC=취소)</summary>
+        private void HandleRotateMode()
+        {
+            // Q: -60° (좌측 회전)
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Q))
+            {
+                controller.AccumulateRotation(-60f);
+            }
+
+            // E: +60° (우측 회전)
+            if (UnityEngine.Input.GetKeyDown(KeyCode.E))
+            {
+                controller.AccumulateRotation(60f);
+            }
+
+            // Space / Enter: 회전 확정
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetKeyDown(KeyCode.Return))
+            {
+                controller.CommitRotation();
+            }
+
+            // ESC: 회전 취소
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
+            {
+                controller.CancelRotateMode();
             }
         }
 
