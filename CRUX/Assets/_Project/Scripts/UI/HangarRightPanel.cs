@@ -14,7 +14,7 @@ namespace Crux.UI
         private void Awake()
         {
             if (hangarUI == null)
-                hangarUI = FindObjectOfType<HangarUI>();
+                hangarUI = FindFirstObjectByType<HangarUI>();
         }
 
         [SerializeField] private Text nameText;

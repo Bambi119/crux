@@ -96,7 +96,7 @@ namespace Crux.Core
         private BattleCamera battleCam;
 
         // UI 배너 큐 (Phase 4 큐 렌더링 구현 예정 — TD-08)
-        private class BannerEntry
+        public class BannerEntry
         {
             public string text;
             public Color color;
@@ -120,6 +120,7 @@ namespace Crux.Core
         public Vector2Int PendingMoveTarget => pendingMoveTarget;
         public float PendingFacingAngle => pendingFacingAngle;
         public int PendingMoveCost => pendingMoveCost;
+        public List<BannerEntry> BannerQueue => bannerQueue; // TD-08: uGUI 배너 렌더링용
         public WeaponType SelectedWeapon => selectedWeapon;
         public InputModeEnum CurrentInputMode => (InputModeEnum)(int)inputMode;
         public Data.MachineGunDataSO CoaxialMGData => coaxialMGData;

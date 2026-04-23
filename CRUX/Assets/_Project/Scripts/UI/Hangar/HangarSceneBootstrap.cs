@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using Crux.Core;
 using Crux.Data;
 using Crux.UI.Hangar.Composition;
+using Crux.UI.Hangar.Maintenance;
 
 namespace Crux.UI.Hangar
 {
@@ -44,6 +45,13 @@ namespace Crux.UI.Hangar
             var compositionTab = canvas.gameObject.AddComponent<CompositionTabBinder>();
             compositionTab.WireScene(controller.MutableState, convoy, leftPanel, centerPanel, rightPanel);
             controller.RegisterModule(compositionTab);
+
+            var maintenanceTab = canvas.gameObject.AddComponent<MaintenanceTabBinder>();
+            maintenanceTab.WireScene(controller.MutableState, convoy, leftPanel, centerPanel, rightPanel);
+            controller.RegisterModule(maintenanceTab);
+
+            var sideNav = canvas.gameObject.AddComponent<SideNavBar>();
+            sideNav.Bind(canvas, controller);
 
             controller.StartHub();
 

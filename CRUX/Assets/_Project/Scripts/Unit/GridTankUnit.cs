@@ -775,6 +775,67 @@ namespace Crux.Unit
                 cell.Occupant = null;
         }
 
+        // ===== 회전 & 무기 가용성 (Phase 2 UI 백엔드) =====
+
+        /// <summary>제자리 회전 — 60° 당 1 AP 소모. 모듈 손상 시 회전 불가.</summary>
+        /// <remarks>deltaDegrees는 음수(시계방향) 또는 양수(반시계방향) 각도 변위.
+        /// AP 비용 = ceil(|deltaDegrees| / 60). 모듈이 회전 가능하지 않으면 false.</remarks>
+        public bool RotateHullInPlace(float deltaDegrees)
+        {
+            if (!moduleManager.CanRotate()) return false;
+
+            int apCost = Mathf.CeilToInt(Mathf.Abs(deltaDegrees) / 60f);
+            if (apCost > currentAP) return false;
+
+            hullAngle += deltaDegrees;
+            hullAngle = (hullAngle % 360f + 360f) % 360f; // normalize to [0, 360)
+            transform.rotation = CompassToRotation(hullAngle);
+
+            currentAP -= apCost;
+            OnAPChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>이 유닛이 발사할 수 있는 무기 범위 내에 어떤 적도 있는지 확인.
+        /// 주포(10 cells) + 기관총(6 cells) + 연막(4 cells) 범위 내 적 감지.</summary>
+        public bool HasAnyEnemyInFireRange()
+        {
+            if (grid == null) return false;
+
+            // 간단히 모든 그리드 셀을 순회하며 적 감지
+            for (int x = 0; x < grid.Width; x++)
+            {
+                for (int y = 0; y < grid.Height; y++)
+                {
+                    var cell = grid.GetCell(new Vector2Int(x, y));
+                    if (cell?.Occupant == null) continue;
+
+                    var occupant = cell.Occupant.GetComponent<GridTankUnit>();
+                    if (occupant == null || occupant.side == side) continue; // 같은 팀 또는 유닛 아님
+
+                    int distance = grid.GetDistance(gridPosition, occupant.GridPosition);
+                    if (distance <= 10) // 주포 또는 기관총 범위
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>특정 대상에 대한 무기 가용성 (주포/기관총/연막 범위 내 여부).</summary>
+        public WeaponAvailability GetWeaponAvailability(GridTankUnit target)
+        {
+            if (grid == null || target == null)
+                return new WeaponAvailability { mainGunInRange = false, machineGunInRange = false, smokeInRange = false };
+
+            int distance = grid.GetDistance(gridPosition, target.GridPosition);
+            return new WeaponAvailability
+            {
+                mainGunInRange = distance <= 10,     // 주포: 10 cells
+                machineGunInRange = distance <= 6,   // 기관총: 6 cells
+                smokeInRange = distance <= 4         // 연막: 4 cells
+            };
+        }
+
         // ===== 시각 =====
 
         private void UpdateVisual()
@@ -793,5 +854,14 @@ namespace Crux.Unit
                 );
             }
         }
+    }
+
+    /// <summary>특정 대상에 대한 무기별 사거리 내 여부 (B-3 API 반환 타입)</summary>
+    [System.Serializable]
+    public struct WeaponAvailability
+    {
+        public bool mainGunInRange;
+        public bool machineGunInRange;
+        public bool smokeInRange;
     }
 }

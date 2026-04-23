@@ -147,7 +147,7 @@ namespace Crux.UI.Hangar.Composition
 
         GameObject CreateCard(TankInstance tank)
         {
-            var card = new GameObject($"Tank_{tank.instanceId}", typeof(RectTransform));
+            var card = new GameObject($"Tank_{tank.tankName}", typeof(RectTransform));
             card.transform.SetParent(listContainer, false);
 
             var img = card.AddComponent<Image>();
@@ -218,7 +218,7 @@ namespace Crux.UI.Hangar.Composition
             text.fontSize = 16;
             text.color = UIColorPalette.OnSurface;
             text.alignment = TextAnchor.MiddleLeft;
-            text.text = tank.instanceId ?? "전차";
+            text.text = tank.tankName ?? "전차";
         }
 
         void AddHullBadge(Transform parent, TankInstance tank)
@@ -253,9 +253,11 @@ namespace Crux.UI.Hangar.Composition
 
         static string HullClassLabel(HullClass hull) => hull switch
         {
-            HullClass.Light => "경전차",
-            HullClass.Medium => "중형",
-            HullClass.Heavy => "중(重)",
+            HullClass.Scout => "경전차",
+            HullClass.Assault => "돌격",
+            HullClass.Support => "지원",
+            HullClass.Heavy => "중전차",
+            HullClass.Siege => "공성",
             _ => hull.ToString()
         };
 

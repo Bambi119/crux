@@ -202,7 +202,7 @@ namespace Crux.EditorTools
             BattleController controller = null;
             while (Time.realtimeSinceStartup < deadline)
             {
-                controller = UnityEngine.Object.FindObjectOfType<BattleController>();
+                controller = UnityEngine.Object.FindFirstObjectByType<BattleController>();
                 if (controller != null) break;
                 yield return null;
             }

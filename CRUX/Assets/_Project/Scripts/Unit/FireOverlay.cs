@@ -6,7 +6,6 @@ namespace Crux.Unit
     public class FireOverlay : MonoBehaviour
     {
         private GridTankUnit unit;
-        private bool wasOnFire;
         private float spawnTimer;
         private const float spawnInterval = 0.15f;
 
@@ -24,12 +23,7 @@ namespace Crux.Unit
             }
 
             if (!unit.IsOnFire)
-            {
-                wasOnFire = false;
                 return;
-            }
-
-            wasOnFire = true;
             spawnTimer -= Time.deltaTime;
             if (spawnTimer <= 0)
             {
