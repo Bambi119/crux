@@ -30,26 +30,6 @@ namespace Crux.Combat
             // 스테일 액션 제거 — 첫 Enqueue 전에 컨텍스트 초기화
             FireActionContext.Clear();
 
-            // ===== Initiative 선제 반격 (§06 §3.5) =====
-            // defender.AP >= attacker.AP 일 때 선제 발사
-            if (ShouldDefenderCounterFirst(attacker, target))
-            {
-                Debug.Log($"[COUNTER] Initiative preempt: {target.Data?.tankName} (AP {target.CurrentAP}) ≥ {attacker.Data?.tankName} (AP {attacker.CurrentAP})");
-
-                // 선제 반격 실행
-                ExecuteCounter(target, attacker);
-
-                // 공격자가 사망했으면 원 공격 취소
-                if (attacker.IsDestroyed)
-                {
-                    Debug.Log($"[COUNTER] Initiative killed attacker — original attack cancelled");
-                    return;
-                }
-
-                // 공격자 생존 시 원 사격 진행 (반격 불가 마크 → 일회 교환 규칙)
-                target.SetCountered(true);
-            }
-
             // ===== 원 사격 실행 =====
             if (weapon == WeaponType.MainGun)
             {
@@ -198,7 +178,7 @@ namespace Crux.Combat
                     Debug.Log($"[FIRE] GunnerMech aim={gunnerMech.BaseAim} → {(aimBonus > 0 ? "+" : "")}{aimBonus:P1}");
 
                     // Trait aimBonus (% 단위)
-                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunnerMech.data.traitPositive, gunnerMech.data.traitNegative);
+                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunnerMech.data.traits);
                     if (traitMod.aimBonus != 0)
                     {
                         float traitDelta = traitMod.aimBonus * 0.01f;
@@ -379,7 +359,7 @@ namespace Crux.Combat
                     }
 
                     // Trait aimBonus (% 단위. hermit_eye +5 = +5%)
-                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunner.data.traitPositive, gunner.data.traitNegative);
+                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunner.data.traits);
                     if (traitMod.aimBonus != 0)
                     {
                         float traitDelta = traitMod.aimBonus * 0.01f;
@@ -577,16 +557,6 @@ namespace Crux.Combat
             if (container != null)
                 return container.localEulerAngles.z > 180 ? container.localEulerAngles.z - 360 : container.localEulerAngles.z;
             return 0f;
-        }
-
-        /// <summary>Initiative 선제 판정 — defender.CurrentAP >= attacker.GetFireCost() 인지 확인 (§06 §3.5)</summary>
-        private bool ShouldDefenderCounterFirst(GridTankUnit attacker, GridTankUnit defender)
-        {
-            if (defender == null || attacker == null) return false;
-            if (defender.IsDestroyed || attacker.IsDestroyed) return false;
-
-            int fireAPCost = attacker.GetFireCost();
-            return defender.CurrentAP >= fireAPCost && CounterFireResolver.CanCounter(defender, attacker, grid);
         }
 
         /// <summary>반격 사격 실행 — 명중률 −15% 페널티 적용, AP/탄약 소모 (Task #16)</summary>
