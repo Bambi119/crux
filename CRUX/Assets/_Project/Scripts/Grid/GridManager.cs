@@ -169,8 +169,8 @@ namespace Crux.Grid
             return reachable;
         }
 
-        /// <summary>AP 기반 이동 가능 범위 (tank 실효 이동 비용 + 지형 비용 포함)</summary>
-        /// <remarks>tank가 null이 아니면 엔진·궤도·화재 등의 이동 비용 보정 적용</remarks>
+        /// <summary>AP 기반 이동 가능 범위 (tank 실효 이동 비용 포함)</summary>
+        /// <remarks>tank의 실효 이동 비용(엔진·궤도·화재 보정 포함)으로 BFS. TryMove의 steps * GetMoveCostPerCell() 모델과 1:1 정합.</remarks>
         public List<Vector2Int> GetReachableCells(Vector2Int start, int maxCost, Crux.Unit.GridTankUnit tank)
         {
             var reachable = new List<Vector2Int>();
@@ -180,10 +180,8 @@ namespace Crux.Grid
             queue.Enqueue((start, 0));
             visited[start] = 0;
 
-            // tank의 기본 이동 비용 (엔진·궤도·화재 보정 포함)
-            int extraCostPerStep = 0;
-            if (tank != null)
-                extraCostPerStep = tank.GetMoveCostPerCell() - GameConstants.MoveCostPerCell;
+            // tank의 실효 이동 비용 (modulePenalty·화재·엔진 보정 포함)
+            int tankMoveCost = tank != null ? tank.GetMoveCostPerCell() : GameConstants.MoveCostPerCell;
 
             while (queue.Count > 0)
             {
@@ -191,7 +189,7 @@ namespace Crux.Grid
                 foreach (var neighbor in GetNeighbors(pos))
                 {
                     if (!IsGroundPassable(neighbor)) continue;
-                    float newCost = cost + StepCost(neighbor) + extraCostPerStep;
+                    float newCost = cost + tankMoveCost;
                     if (newCost > maxCost) continue;
                     if (visited.ContainsKey(neighbor.Position) && newCost >= visited[neighbor.Position]) continue;
 
