@@ -98,6 +98,7 @@ namespace Crux.Core
         private Vector2Int pendingMoveTarget; // 이동 목적지 (방향 선택 대기 중)
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
+        private float pendingRotationDelta;   // 축적된 회전각 (RotateMode)
 
         // 카메라
         private BattleCamera battleCam;
@@ -122,7 +123,7 @@ namespace Crux.Core
         public Data.MachineGunDataSO MountedMGData => mountedMGData;
 
         // InputMode를 외부에서 참조할 수 있게 enum으로 노출
-        public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
+        public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect, RotateMode }
 
         /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
         public List<GridTankUnit> GetAllUnitsForRangeCheck()
@@ -582,10 +583,52 @@ namespace Crux.Core
                 || (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
                 || (weapon == WeaponType.MountedMG && mountedMGData != null))
                 selectedWeapon = weapon;
+
+            // 무기 프리뷰 시 부위 바 깜빡임 표시 (Phase 4)
+            if (pendingTarget != null && selectedUnit != null)
+                UpdateWeaponPreview(selectedWeapon, pendingTarget);
+        }
+
+        /// <summary>무기 선택 프리뷰 — 예상 피해 부위 바 깜빡임 (Phase 4)</summary>
+        private void UpdateWeaponPreview(WeaponType weapon, GridTankUnit target)
+        {
+            // 예상 데미지: 무기 기본 데미지 (간단 구현)
+            float expectedDamage = weapon switch
+            {
+                WeaponType.MainGun => mainGunData?.baseDamage ?? 15f,
+                WeaponType.CoaxialMG => coaxialMGData?.baseDamage ?? 3f,
+                WeaponType.MountedMG => mountedMGData?.baseDamage ?? 3f,
+                _ => 0f
+            };
+
+            // TODO: HitZone 매핑 구현 (현재 간단히 Hull만)
+            // 복잡한 HitZone 로직은 FireExecutor 참조
+            var zone = HitZone.Front; // Placeholder
+
+            UpdateTargetWeaponPreview(target, zone, expectedDamage);
+        }
+
+        /// <summary>목표 유닛의 부위 바 프리뷰 갱신</summary>
+        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
+        {
+            // Placeholder: 실제 부위 매핑은 FireExecutor에서 가져올 예정
+            // 현재: Front → Hull 부위만 처리
+            if (target == null) return;
+
+            Debug.Log($"[CRUX] Weapon preview: {zone} zone, expected damage {expectedDamage:F1}");
+            // PartBarFlashAnimator 연결 예정 (prefab에 배치된 상태)
+        }
+
+        /// <summary>무기 프리뷰 종료</summary>
+        public void ClearWeaponPreview()
+        {
+            // PartBarFlashAnimator.StopFlash() 호출 예정
+            Debug.Log("[CRUX] Weapon preview cleared");
         }
 
         public void CommitWeaponSelection()
         {
+            ClearWeaponPreview();
             if (selectedUnit != null && pendingTarget != null)
                 CommitFire(selectedUnit, pendingTarget, selectedWeapon);
         }
@@ -771,7 +814,9 @@ namespace Crux.Core
         /// <summary>커맨드 박스 표시 — Select 모드에서 호출</summary>
         public void ShowCommandBox()
         {
-            if (commandBox != null)
+            if (commandBox != null && selectedUnit != null)
+                commandBox.ShowMenuAt(selectedUnit.transform.position);
+            else if (commandBox != null)
                 commandBox.ShowMenu();
         }
 
@@ -794,8 +839,7 @@ namespace Crux.Core
                     TryEnterFireMode();
                     break;
                 case CommandBoxController.MenuItem.Rotate:
-                    // 회전 입력 구현 (Phase 4)
-                    Debug.Log("[CommandBox] 방향전환 선택");
+                    TryEnterRotateMode();
                     break;
                 case CommandBoxController.MenuItem.Skill:
                     // 스킬 선택 구현 (Phase 4)
@@ -815,6 +859,64 @@ namespace Crux.Core
         {
             CancelToSelect();
         }
+
+        // ===== Rotate Mode (Phase 4) =====
+
+        /// <summary>방향전환 모드 진입</summary>
+        private void TryEnterRotateMode()
+        {
+            if (selectedUnit == null)
+            {
+                CancelToSelect();
+                return;
+            }
+
+            CurrentInputMode = InputModeEnum.RotateMode;
+            pendingRotationDelta = 0f;
+        }
+
+        /// <summary>축적된 회전각도 적용 및 RotateMode 종료</summary>
+        public void CommitRotation()
+        {
+            if (selectedUnit == null || CurrentInputMode != InputModeEnum.RotateMode)
+                return;
+
+            if (Mathf.Abs(pendingRotationDelta) < 1f)
+            {
+                // 회전 없음 — Select로 돌아감
+                CancelToSelect();
+                return;
+            }
+
+            bool success = selectedUnit.RotateHullInPlace(pendingRotationDelta);
+            if (success)
+            {
+                Debug.Log($"[CRUX] Rotate {pendingRotationDelta}° executed (AP cost)");
+                EndPlayerTurn();
+            }
+            else
+            {
+                Debug.Log("[CRUX] Rotate failed — insufficient AP or invalid angle");
+                CancelToSelect();
+            }
+        }
+
+        /// <summary>RotateMode 취소</summary>
+        public void CancelRotateMode()
+        {
+            if (CurrentInputMode == InputModeEnum.RotateMode)
+                CancelToSelect();
+        }
+
+        /// <summary>화면 내 회전각 누적 (양수=시계, 음수=반시계)</summary>
+        public void AccumulateRotation(float deltaDegrees)
+        {
+            if (CurrentInputMode == InputModeEnum.RotateMode)
+                pendingRotationDelta += deltaDegrees;
+        }
+
+        /// <summary>회전 모드: 누적된 회전각 조회</summary>
+        public float GetPendingRotationDelta() => pendingRotationDelta;
 
         /// <summary>Fire 모드: 목표 순환 가능 목표 목록 설정</summary>
         public void InitializeTargetCycler()

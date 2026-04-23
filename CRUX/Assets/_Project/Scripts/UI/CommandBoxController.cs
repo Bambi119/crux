@@ -71,6 +71,69 @@ namespace Crux.UI
             UpdateSelection();
         }
 
+        /// <summary>박스를 특정 월드 위치에 표시 (화면 경계 플립 자동 적용)</summary>
+        public void ShowMenuAt(Vector3 worldPos)
+        {
+            var rectTransform = GetComponent<RectTransform>();
+            if (rectTransform == null)
+            {
+                ShowMenu();
+                return;
+            }
+
+            gameObject.SetActive(true);
+            isActive = true;
+            selectedIndex = 0;
+
+            // PopupPositioner로 화면 좌표 계산
+            var size = rectTransform.sizeDelta;
+            var canvasRT = GetComponentInParent<Canvas>()?.GetComponent<RectTransform>();
+
+            if (canvasRT != null)
+            {
+                Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
+                Vector2 localPos;
+
+                // Canvas의 좌표계로 변환
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    canvasRT, screenPos, Camera.main, out localPos);
+
+                // 화면 경계 플립 판정
+                float screenWidth = Screen.width;
+                float screenHeight = Screen.height;
+
+                // 우측 경계 체크
+                float rightMargin = size.x + 20f;
+                if (screenPos.x + rightMargin > screenWidth)
+                {
+                    // 좌측 배치
+                    localPos.x = localPos.x - size.x - 20f;
+                }
+                else
+                {
+                    // 우측 배치 (기본)
+                    localPos.x = localPos.x + 80f;
+                }
+
+                // 하단 경계 체크
+                float bottomMargin = size.y + 20f;
+                if (screenPos.y + bottomMargin > screenHeight)
+                {
+                    // 상단 배치
+                    localPos.y = localPos.y + size.y + 20f;
+                }
+                else
+                {
+                    // 하단 배치 (기본)
+                    localPos.y = localPos.y - 20f;
+                }
+
+                rectTransform.anchoredPosition = localPos;
+            }
+
+            UpdateSelection();
+        }
+
         /// <summary>박스 비활성화</summary>
         public void HideMenu()
         {
