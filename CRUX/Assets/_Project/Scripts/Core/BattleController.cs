@@ -84,13 +84,14 @@ namespace Crux.Core
         private int currentEnemyIndex; // 적 턴 중 행동 중인 적 인덱스
 
         // UI 상태
-        private enum InputMode { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
+        private enum InputMode { Select, Move, MoveDirectionSelect, Fire, WeaponSelect, RotateMode }
         private InputMode inputMode = InputMode.Select;
         private WeaponType selectedWeapon = WeaponType.MainGun;
         private GridTankUnit pendingTarget; // 무기 선택 대기 중인 대상
         private Vector2Int pendingMoveTarget; // 이동 목적지 (방향 선택 대기 중)
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
+        private float pendingRotationDelta = 0f; // 회전 모드 누적 각도
 
         // 카메라
         private BattleCamera battleCam;
@@ -127,7 +128,10 @@ namespace Crux.Core
         public Data.MachineGunDataSO MountedMGData => mountedMGData;
 
         // InputMode를 외부에서 참조할 수 있게 enum으로 노출
-        public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
+        public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect, RotateMode }
+
+        // UI 복구용 이벤트
+        public event System.Action<GridTankUnit> OnSelectedUnitChanged;
 
         // ===== 상태 저장/복원 관리자 (P-S6) =====
         private BattleStateManager stateManager;
@@ -345,6 +349,7 @@ namespace Crux.Core
             currentPhase = TurnPhase.PlayerTurn;
             inputMode = InputMode.Select;
             selectedUnit = null;
+            OnSelectedUnitChanged?.Invoke(null);
             targetUnit = null;
 
             // 사전 스윕: 턴 시작 효과(화재 등) 처리 → 격파 유닛 제거 후 행동 부여
@@ -367,6 +372,7 @@ namespace Crux.Core
                     yield break; // DrawGameResult가 감지
                 }
                 selectedUnit = playerUnit;
+                OnSelectedUnitChanged?.Invoke(selectedUnit);
             }
 
             // 연막 턴 감소 (P-S7: GridManager로 이관)
@@ -522,6 +528,24 @@ namespace Crux.Core
             targetUnit = null;
             pendingTarget = null;
             hoveredTarget = null;
+            // selectedUnit은 그대로 유지 (이미 선택된 유닛)
+        }
+
+        public void TrySelectUnit(GridTankUnit unit)
+        {
+            if (unit == null || unit.side != PlayerSide.Player || unit.IsDestroyed) return;
+            selectedUnit = unit;
+            OnSelectedUnitChanged?.Invoke(selectedUnit);
+            inputMode = InputMode.Select;
+            visualizer.ClearHighlights();
+        }
+
+        public void DeselectUnit()
+        {
+            selectedUnit = null;
+            OnSelectedUnitChanged?.Invoke(null);
+            inputMode = InputMode.Select;
+            visualizer.ClearHighlights();
         }
 
         public void TryEnterMoveMode()
@@ -534,9 +558,41 @@ namespace Crux.Core
         public void TryEnterFireMode()
         {
             if (selectedUnit == null || !selectedUnit.CanFire()) return;
-            inputMode = InputMode.Fire;
+            bool multiWeapon = (selectedUnit.MainGunAmmoCount > 0 ? 1 : 0)
+                             + (coaxialMGData != null && selectedUnit.MGAmmoLoaded > 0 ? 1 : 0)
+                             + (mountedMGData != null && selectedUnit.MGAmmoLoaded > 0 ? 1 : 0) > 1;
+            inputMode = multiWeapon ? InputMode.WeaponSelect : InputMode.Fire;
             selectedWeapon = WeaponType.MainGun;
             visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
+        }
+
+        public void TryEnterWeaponSelect()
+        {
+            if (selectedUnit == null || !selectedUnit.CanFire()) return;
+            inputMode = InputMode.WeaponSelect;
+        }
+
+        public void SelectMainGunAmmo(AmmoDataSO ammo)
+        {
+            if (ammo == null || selectedUnit == null) return;
+            selectedUnit.currentAmmo = ammo;
+            selectedWeapon = WeaponType.MainGun;
+            UpdateWeaponPreview(WeaponType.MainGun, pendingTarget);
+        }
+
+        public void SelectMG(WeaponType weaponType, AmmoDataSO ammo)
+        {
+            if (ammo == null || selectedUnit == null) return;
+            if (weaponType != WeaponType.CoaxialMG && weaponType != WeaponType.MountedMG) return;
+            selectedUnit.currentAmmo = ammo;
+            selectedWeapon = weaponType;
+            UpdateWeaponPreview(weaponType, pendingTarget);
+        }
+
+        public void CancelWeaponSelect()
+        {
+            inputMode = InputMode.Fire;
+            selectedWeapon = WeaponType.MainGun;
         }
 
         public void SelectWeapon(WeaponType weapon)
@@ -544,13 +600,82 @@ namespace Crux.Core
             if (weapon == WeaponType.MainGun
                 || (weapon == WeaponType.CoaxialMG && coaxialMGData != null)
                 || (weapon == WeaponType.MountedMG && mountedMGData != null))
+            {
                 selectedWeapon = weapon;
+                UpdateWeaponPreview(weapon, pendingTarget);
+            }
         }
 
         public void CommitWeaponSelection()
         {
             if (selectedUnit != null && pendingTarget != null)
+            {
+                ClearWeaponPreview();
                 CommitFire(selectedUnit, pendingTarget, selectedWeapon);
+            }
+        }
+
+        /// <summary>회전 모드 진입 (Q/E로 ±60° 조정)</summary>
+        public void TryEnterRotateMode()
+        {
+            if (selectedUnit == null) { CancelToSelect(); return; }
+            inputMode = InputMode.RotateMode;
+            pendingRotationDelta = 0f;
+        }
+
+        /// <summary>회전 확정 — selectedUnit.RotateHullInPlace() 호출 후 턴 종료</summary>
+        public void CommitRotation()
+        {
+            if (selectedUnit == null || inputMode != InputMode.RotateMode) return;
+            if (Mathf.Abs(pendingRotationDelta) < 1f) { CancelToSelect(); return; }
+            bool success = selectedUnit.RotateHullInPlace(pendingRotationDelta);
+            if (success) EndPlayerTurn(); else CancelToSelect();
+        }
+
+        /// <summary>회전 모드 취소</summary>
+        public void CancelRotateMode() => CancelToSelect();
+
+        /// <summary>회전 모드 누적 각도 (Q=-60, E=+60)</summary>
+        public void AccumulateRotation(float deltaDegrees)
+        {
+            pendingRotationDelta += deltaDegrees;
+        }
+
+        /// <summary>회전 모드 누적 각도 조회</summary>
+        public float GetPendingRotationDelta() => pendingRotationDelta;
+
+        /// <summary>무기 선택 시 미리보기 업데이트 (expectedDamage 계산)</summary>
+        public void UpdateWeaponPreview(WeaponType weapon, GridTankUnit target)
+        {
+            if (target == null) return;
+
+            // 무기별 기본 피해량 (placeholder)
+            float expectedDamage = weapon switch
+            {
+                WeaponType.MainGun => 15f,    // 주포 기본 피해
+                WeaponType.CoaxialMG => 3f,   // 동축기총
+                WeaponType.MountedMG => 3f,   // 차체기총
+                _ => 0f
+            };
+
+            UpdateTargetWeaponPreview(target, HitZone.Front, expectedDamage);
+        }
+
+        /// <summary>대상 유닛의 부위별 피해 예상 표시 (PartBarFlashAnimator 연동)</summary>
+        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
+        {
+            if (target == null) return;
+            // TODO(J-3): PartBarFlashAnimator.StartFlash() 호출
+            // target의 대해당 부위(zone) Image 참조를 획득 후 StartFlash(barImage, maxHP, expectedDamage) 실행
+            Debug.Log($"[Preview] {target.name} {zone}: expectedDamage={expectedDamage}");
+        }
+
+        /// <summary>무기 미리보기 종료</summary>
+        public void ClearWeaponPreview()
+        {
+            // TODO(J-3): PartBarFlashAnimator.StopFlash() 호출 또는 비활성화
+            if (pendingTarget != null)
+                Debug.Log($"[Preview] Clear for {pendingTarget.name}");
         }
 
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
@@ -672,8 +797,15 @@ namespace Crux.Core
                 inspectedUnit = null;
                 return;
             }
-            // 아군 클릭 → 기본 상태 (selectedUnit 표시)
-            inspectedUnit = unit.side == PlayerSide.Player ? null : unit;
+            if (unit.side == PlayerSide.Player)
+            {
+                inspectedUnit = null;
+                TrySelectUnit(unit);
+            }
+            else
+            {
+                inspectedUnit = unit;
+            }
         }
 
         /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
