@@ -66,11 +66,18 @@ namespace Crux.UI
         private TextMeshProUGUI barrelBarText;
         private TextMeshProUGUI mgBarText;
 
-        // Footer badges (Morale, Overwatch, Fire, Misses)
+        // Footer badges (Morale, Overwatch, Fire, Misses, MG Ammo)
         private TextMeshProUGUI moraleBadge;
         private TextMeshProUGUI overwatchBadge;
         private TextMeshProUGUI fireBadge;
         private TextMeshProUGUI missBadge;
+        private TextMeshProUGUI mgAmmoText;
+
+        // Crew status badges
+        private TextMeshProUGUI crewCommanderBadge;
+        private TextMeshProUGUI crewGunnerBadge;
+        private TextMeshProUGUI crewLoaderBadge;
+        private TextMeshProUGUI crewDriverBadge;
 
         // InputModePanel — 플레이어 입력 상태 표시
         private GameObject inputModePanel;
@@ -206,7 +213,7 @@ namespace Crux.UI
                     }
                 }
 
-                // FooterBadges (MoraleBadge, OverwatchBadge, FireBadge, MissBadge) — 20px 높이
+                // FooterBadges (MoraleBadge, OverwatchBadge, FireBadge, MissBadge, MGAmmoBadge) — 20px 높이
                 var footerBadges = unitCard.Find("FooterBadges");
                 if (footerBadges != null)
                 {
@@ -214,6 +221,17 @@ namespace Crux.UI
                     overwatchBadge = footerBadges.Find("OverwatchBadge")?.GetComponent<TextMeshProUGUI>();
                     fireBadge = footerBadges.Find("FireBadge")?.GetComponent<TextMeshProUGUI>();
                     missBadge = footerBadges.Find("MissBadge")?.GetComponent<TextMeshProUGUI>();
+                    mgAmmoText = footerBadges.Find("MGAmmoBadge")?.GetComponent<TextMeshProUGUI>();
+                }
+
+                // CrewStatusRow — 승무원 상태 뱃지 행
+                var crewRow = unitCard.Find("CrewStatusRow");
+                if (crewRow != null)
+                {
+                    crewCommanderBadge = crewRow.Find("CommanderBadge")?.GetComponent<TextMeshProUGUI>();
+                    crewGunnerBadge = crewRow.Find("GunnerBadge")?.GetComponent<TextMeshProUGUI>();
+                    crewLoaderBadge = crewRow.Find("LoaderBadge")?.GetComponent<TextMeshProUGUI>();
+                    crewDriverBadge = crewRow.Find("DriverBadge")?.GetComponent<TextMeshProUGUI>();
                 }
             }
 
@@ -427,7 +445,9 @@ namespace Crux.UI
             // Morale badge
             if (moraleBadge != null)
             {
-                moraleBadge.text = selectedUnit.Crew != null ? GetMoraleBandLabel(selectedUnit.Crew.Band) : "—";
+                moraleBadge.text = selectedUnit.Crew != null
+                    ? $"{GetMoraleBandLabel(selectedUnit.Crew.Band)} {selectedUnit.Crew.Morale}"
+                    : "—";
                 moraleBadge.color = selectedUnit.Crew != null ? GetMoraleColor(selectedUnit.Crew.Band) : Color.white;
             }
 
@@ -456,6 +476,20 @@ namespace Crux.UI
                 if (hasMisses)
                     missBadge.text = $"Miss ×{selectedUnit.ConsecutiveMisses}";
             }
+
+            // MG Ammo badge
+            if (mgAmmoText != null)
+            {
+                mgAmmoText.text = $"MG {selectedUnit.MGAmmoLoaded}/{selectedUnit.MGAmmoTotal}";
+                mgAmmoText.color = selectedUnit.MGAmmoLoaded == 0 ? new Color(0.9f, 0.35f, 0.35f) : Color.white;
+            }
+
+            // Crew status badges
+            var crew = selectedUnit.Crew;
+            ApplyCrewBadge(crewCommanderBadge, crew?.commander);
+            ApplyCrewBadge(crewGunnerBadge, crew?.gunner);
+            ApplyCrewBadge(crewLoaderBadge, crew?.loader);
+            ApplyCrewBadge(crewDriverBadge, crew?.driver);
         }
 
         private void UpdatePartsBar(Image fillImage, TextMeshProUGUI labelText, GridTankUnit unit, ModuleType moduleType, string label)
@@ -653,6 +687,29 @@ namespace Crux.UI
             apCostPreviewText.color = canAfford
                 ? UIColorPalette.OnSurfaceVariant
                 : UIColorPalette.TertiaryContainer;
+        }
+
+        private void ApplyCrewBadge(TextMeshProUGUI badge, Crux.Data.CrewMemberRuntime member)
+        {
+            if (badge == null) return;
+            if (member == null)
+            {
+                badge.color = new Color(0.35f, 0.35f, 0.35f);
+                return;
+            }
+            badge.color = GetInjuryColor(member.injuryState);
+        }
+
+        private Color GetInjuryColor(Crux.Data.InjuryLevel lvl)
+        {
+            return lvl switch
+            {
+                Crux.Data.InjuryLevel.None => new Color(0.4f, 0.9f, 0.4f),
+                Crux.Data.InjuryLevel.Minor => new Color(0.95f, 0.85f, 0.35f),
+                Crux.Data.InjuryLevel.Severe => new Color(1.0f, 0.55f, 0.2f),
+                Crux.Data.InjuryLevel.Fatal => new Color(0.9f, 0.25f, 0.25f),
+                _ => Color.white
+            };
         }
     }
 }
