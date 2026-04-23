@@ -19,11 +19,21 @@ namespace Crux.PlayerInput
         {
             if (controller == null || !controller.CanHandleInput) return;
 
-            // ESC/Tab 취소 — 최우선
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) || UnityEngine.Input.GetKeyDown(KeyCode.Tab))
+            // ESC 취소 — 최우선
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
             {
                 controller.CancelToSelect();
                 return;
+            }
+
+            // Select 모드: M 또는 Q로 커맨드 박스 표시
+            if (controller.CurrentInputMode == BattleController.InputModeEnum.Select)
+            {
+                if (UnityEngine.Input.GetKeyDown(KeyCode.M) || UnityEngine.Input.GetKeyDown(KeyCode.Q))
+                {
+                    controller.ShowCommandBox();
+                    return;
+                }
             }
 
             // 무기 선택 모드
@@ -41,14 +51,12 @@ namespace Crux.PlayerInput
                 return;
             }
 
-            // Select 모드: Q/M 이동 진입, E/F 사격 진입
-            HandleSelectModeKeys();
-
-            // Fire 모드: 호버 갱신 + 무기 전환
+            // Fire 모드: 호버 갱신 + 무기 전환 + 목표 순환
             if (controller.CurrentInputMode == BattleController.InputModeEnum.Fire)
             {
                 controller.UpdateHoveredTarget();
                 HandleWeaponSwitch();
+                HandleTargetCycling();
             }
 
             // C/V/O/Space 액션 키
@@ -114,19 +122,21 @@ namespace Crux.PlayerInput
             }
         }
 
-        /// <summary>Select 모드: Q/M 이동 진입, E/F 사격 진입</summary>
-        private void HandleSelectModeKeys()
+        /// <summary>Fire 모드: Tab/Shift+Tab으로 목표 순환</summary>
+        private void HandleTargetCycling()
         {
-            if (controller.CurrentInputMode != BattleController.InputModeEnum.Select) return;
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Q) || UnityEngine.Input.GetKeyDown(KeyCode.M))
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
             {
-                controller.TryEnterMoveMode();
-            }
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.E) || UnityEngine.Input.GetKeyDown(KeyCode.F))
-            {
-                controller.TryEnterFireMode();
+                if (UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift))
+                {
+                    // Shift+Tab: 이전 목표
+                    controller.CycleTargetPrevious();
+                }
+                else
+                {
+                    // Tab: 다음 목표
+                    controller.CycleTargetNext();
+                }
             }
         }
 

@@ -64,6 +64,10 @@ namespace Crux.Core
         // HUD
         private BattleHUD hud;
 
+        // UI 컴포넌트 (Phase 3)
+        private CommandBoxController commandBox;
+        private TargetCycler targetCycler;
+
         // 입력 핸들러
         private PlayerInputHandler inputHandler;
 
@@ -256,6 +260,29 @@ namespace Crux.Core
             var hudObj = new GameObject("BattleHUD");
             hud = hudObj.AddComponent<BattleHUD>();
             hud.Initialize(this);
+
+            // CommandBox 초기화 (Phase 3) — prefab 로드
+            var cmdBoxPrefab = Resources.Load<GameObject>("Prefabs/UI/CommandBox");
+            if (cmdBoxPrefab != null)
+            {
+                var cmdBoxObj = Instantiate(cmdBoxPrefab);
+                commandBox = cmdBoxObj.GetComponent<CommandBoxController>();
+                if (commandBox != null)
+                {
+                    commandBox.OnMenuSelected += HandleCommandBoxMenuSelected;
+                    commandBox.OnMenuCanceled += HandleCommandBoxCanceled;
+                    commandBox.HideMenu();
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[BattleController] CommandBox prefab not found");
+            }
+
+            // TargetCycler 초기화 (Phase 3)
+            var cyclerObj = new GameObject("TargetCycler");
+            targetCycler = cyclerObj.AddComponent<TargetCycler>();
+            targetCycler.OnTargetChanged += HandleTargetCycled;
 
             // 반응 사격 시퀀스 초기화 (P-S5 추출)
             var rfsObj = new GameObject("ReactionFireSequence");
@@ -546,6 +573,7 @@ namespace Crux.Core
             inputMode = InputMode.Fire;
             selectedWeapon = WeaponType.MainGun;
             visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
+            InitializeTargetCycler(); // Phase 3: 목표 순환 초기화
         }
 
         public void SelectWeapon(WeaponType weapon)
@@ -736,6 +764,101 @@ namespace Crux.Core
         /// <summary>유닛의 현재 상태 (개활지/엄폐) — FireExecutor의 wrapper (호환성 유지)</summary>
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
+
+
+        // ===== Command Box & Target Cycler (Phase 3) =====
+
+        /// <summary>커맨드 박스 표시 — Select 모드에서 호출</summary>
+        public void ShowCommandBox()
+        {
+            if (commandBox != null)
+                commandBox.ShowMenu();
+        }
+
+        /// <summary>커맨드 박스 숨김</summary>
+        public void HideCommandBox()
+        {
+            if (commandBox != null)
+                commandBox.HideMenu();
+        }
+
+        /// <summary>커맨드 박스에서 메뉴 항목 선택 콜백</summary>
+        private void HandleCommandBoxMenuSelected(CommandBoxController.MenuItem item)
+        {
+            switch (item)
+            {
+                case CommandBoxController.MenuItem.Move:
+                    TryEnterMoveMode();
+                    break;
+                case CommandBoxController.MenuItem.Fire:
+                    TryEnterFireMode();
+                    break;
+                case CommandBoxController.MenuItem.Rotate:
+                    // 회전 입력 구현 (Phase 4)
+                    Debug.Log("[CommandBox] 방향전환 선택");
+                    break;
+                case CommandBoxController.MenuItem.Skill:
+                    // 스킬 선택 구현 (Phase 4)
+                    Debug.Log("[CommandBox] 전차장스킬 선택");
+                    break;
+                case CommandBoxController.MenuItem.Wait:
+                    EndPlayerTurn();
+                    break;
+                case CommandBoxController.MenuItem.Cancel:
+                    // Cancel은 OnMenuCanceled에서 처리
+                    break;
+            }
+        }
+
+        /// <summary>커맨드 박스 취소 콜백</summary>
+        private void HandleCommandBoxCanceled()
+        {
+            CancelToSelect();
+        }
+
+        /// <summary>Fire 모드: 목표 순환 가능 목표 목록 설정</summary>
+        public void InitializeTargetCycler()
+        {
+            if (selectedUnit == null || targetCycler == null)
+                return;
+
+            // 선택된 유닛의 사격 범위 내 적 필터링
+            var validTargets = new List<GridTankUnit>();
+            var fireRange = selectedUnit.GetFireRange();
+            foreach (var enemy in enemyUnits)
+            {
+                if (enemy != null && !enemy.IsDestroyed)
+                {
+                    int dist = HexCoord.Distance(selectedUnit.GridPosition, enemy.GridPosition);
+                    if (dist <= fireRange)
+                        validTargets.Add(enemy);
+                }
+            }
+
+            targetCycler.SetValidTargets(validTargets);
+        }
+
+        /// <summary>목표 순환 콜백 — 새 목표 선택됨</summary>
+        private void HandleTargetCycled(GridTankUnit newTarget)
+        {
+            targetUnit = newTarget;
+            if (newTarget != null)
+                Debug.Log($"[TargetCycler] 목표 변경: {newTarget.gameObject.name}");
+        }
+
+        /// <summary>Fire 모드: 다음 목표로 순환</summary>
+        public void CycleTargetNext()
+        {
+            if (inputMode != InputMode.Fire || targetCycler == null) return;
+            targetCycler.CycleToNext();
+        }
+
+        /// <summary>Fire 모드: 이전 목표로 순환</summary>
+        public void CycleTargetPrevious()
+        {
+            if (inputMode != InputMode.Fire || targetCycler == null) return;
+            targetCycler.CycleToPrevious();
+        }
 
 
         // ===== UI (OnGUI) =====
