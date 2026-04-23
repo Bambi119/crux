@@ -122,24 +122,28 @@ namespace Crux.Core
                 ctrl.TurnCountInternal = state.turnCount;
                 ctrl.CurrentPhaseInternal = state.phase;
 
-                // 연출 결과 데미지 적용
-                var actionData = FireActionContext.Current;
-                GridTankUnit target = null;
-
-                if (actionData.targetSide == PlayerSide.Enemy
-                    && actionData.targetUnitIndex >= 0
-                    && actionData.targetUnitIndex < ctrl.EnemyUnitsRef.Count)
-                    target = ctrl.EnemyUnitsRef[actionData.targetUnitIndex];
-                else if (actionData.targetSide == PlayerSide.Player)
-                    target = ctrl.PlayerUnitRef;
-
-                if (target != null && !target.IsDestroyed)
+                // 연출 결과 데미지 적용 — 모든 큐된 액션 순회 (메인 공격 + 반격 양쪽)
+                Debug.Log($"[CRUX] ApplyPendingResult — action queue count: {FireActionContext.Actions.Count}");
+                for (int ai = 0; ai < FireActionContext.Actions.Count; ai++)
                 {
+                    var actionData = FireActionContext.Actions[ai];
+                    GridTankUnit target = null;
+
+                    if (actionData.targetSide == PlayerSide.Enemy
+                        && actionData.targetUnitIndex >= 0
+                        && actionData.targetUnitIndex < ctrl.EnemyUnitsRef.Count)
+                        target = ctrl.EnemyUnitsRef[actionData.targetUnitIndex];
+                    else if (actionData.targetSide == PlayerSide.Player)
+                        target = ctrl.PlayerUnitRef;
+
+                    if (target == null || target.IsDestroyed) continue;
+
                     if (actionData.weaponType == WeaponType.MainGun)
                     {
                         // 주포 데미지 — 사전 롤된 결과 적용
                         if (actionData.result.hit && actionData.result.damageDealt > 0)
                         {
+                            Debug.Log($"[CRUX] Apply action[{ai}] main → {target.Data?.tankName} dmg={actionData.result.damageDealt}");
                             target.ApplyPrerolledDamage(new DamageInfo
                             {
                                 damage = actionData.result.damageDealt,
@@ -165,6 +169,7 @@ namespace Crux.Core
                         }
                         if (total > 0)
                         {
+                            Debug.Log($"[CRUX] Apply action[{ai}] MG → {target.Data?.tankName} dmg={total}");
                             target.ApplyPrerolledDamage(new DamageInfo
                             {
                                 damage = total,

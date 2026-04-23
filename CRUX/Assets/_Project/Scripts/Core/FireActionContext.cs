@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Crux.Core;
 using Crux.Data;
@@ -5,23 +6,39 @@ using Crux.Combat;
 
 namespace Crux.Core
 {
-    /// <summary>전략맵 → 연출 씬 간 데이터 전달 (static)</summary>
+    /// <summary>연속 사격 연출 큐 — 공격→피격→반격→피격 등 다중 액션</summary>
     public static class FireActionContext
     {
-        public static FireActionData Current;
-        public static bool HasPendingAction;
+        public static List<FireActionData> Actions = new();
+        public static int CurrentIndex;
 
-        /// <summary>사격 결과를 저장하고 연출 씬 준비</summary>
-        public static void SetAction(FireActionData data)
+        /// <summary>현재 처리 중인 사격 데이터</summary>
+        public static FireActionData Current => Actions.Count > 0 && CurrentIndex < Actions.Count ? Actions[CurrentIndex] : default;
+
+        /// <summary>대기 중인 사격이 있는가</summary>
+        public static bool HasPendingAction => Actions.Count > 0;
+
+        /// <summary>현재 다음 사격이 있는가</summary>
+        public static bool HasNext => CurrentIndex + 1 < Actions.Count;
+
+        /// <summary>사격 데이터를 큐에 추가</summary>
+        public static void Enqueue(FireActionData data)
         {
-            Current = data;
-            HasPendingAction = true;
+            Actions.Add(data);
         }
 
-        /// <summary>연출 완료 후 클리어</summary>
+        /// <summary>다음 사격으로 진행</summary>
+        public static void Advance()
+        {
+            if (HasNext)
+                CurrentIndex++;
+        }
+
+        /// <summary>큐 전체 초기화</summary>
         public static void Clear()
         {
-            HasPendingAction = false;
+            Actions.Clear();
+            CurrentIndex = 0;
         }
     }
 

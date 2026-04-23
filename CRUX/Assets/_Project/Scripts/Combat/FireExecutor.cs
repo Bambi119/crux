@@ -27,6 +27,9 @@ namespace Crux.Combat
         /// <summary>무기 분기 — FireActionContext까지 설정. 반격 로직 포함.</summary>
         public void Execute(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
+            // 스테일 액션 제거 — 첫 Enqueue 전에 컨텍스트 초기화
+            FireActionContext.Clear();
+
             // ===== Initiative 선제 반격 (§06 §3.5) =====
             // defender.AP >= attacker.AP 일 때 선제 발사
             if (ShouldDefenderCounterFirst(attacker, target))
@@ -67,13 +70,21 @@ namespace Crux.Combat
 
             // ===== 후속 반격 판정 (§06 §3.4) =====
             // 반격 조건: target 생존 + HasCounteredThisExchange == false + CanCounter == true
+            Debug.Log($"[FIRE] Post-main gate — queue={FireActionContext.Actions.Count}, target.IsDestroyed={target.IsDestroyed}, HasCountered={target.HasCounteredThisExchange}");
             if (target.IsDestroyed || target.HasCounteredThisExchange)
                 return;
 
-            if (CounterFireResolver.CanCounter(target, attacker, grid))
+            var checkResult = CounterFireResolver.CheckWithReason(target, attacker, grid);
+#if UNITY_EDITOR
+            CounterFireResolver.LogDetailedResult(target, attacker, checkResult, grid);
+#else
+            CounterFireResolver.LogResult(target, attacker, checkResult);
+#endif
+            if (checkResult.canCounter)
             {
                 Debug.Log($"[COUNTER] Counter-attack triggered: {target.Data?.tankName} ← {attacker.Data?.tankName}");
                 ExecuteCounter(target, attacker);
+                Debug.Log($"[FIRE] Post-counter — queue={FireActionContext.Actions.Count}");
             }
         }
 
@@ -130,7 +141,7 @@ namespace Crux.Combat
             var attackerTurretSr = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
             var targetSr = target.GetComponentInChildren<SpriteRenderer>();
 
-            FireActionContext.SetAction(new FireActionData
+            FireActionContext.Enqueue(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
                 attackerHullAngle = attacker.HullAngle,
@@ -268,7 +279,7 @@ namespace Crux.Combat
                 });
             }
 
-            FireActionContext.SetAction(new FireActionData
+            FireActionContext.Enqueue(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
                 attackerHullAngle = attacker.HullAngle,
@@ -524,7 +535,7 @@ namespace Crux.Combat
                                    && defenderCell.Cover != null && !defenderCell.Cover.IsDestroyed;
             string defenderCoverName = defenderInCover ? defenderCell.Cover.coverName : "";
 
-            FireActionContext.SetAction(new FireActionData
+            FireActionContext.Enqueue(new FireActionData
             {
                 attackerWorldPos = defender.transform.position,
                 attackerHullAngle = defender.HullAngle,

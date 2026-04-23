@@ -35,8 +35,6 @@ namespace Crux.Cinematic
                 return;
             }
 
-            data = FireActionContext.Current;
-
             cam = UnityEngine.Camera.main;
             cam.orthographic = true;
             cam.orthographicSize = 3f;
@@ -44,15 +42,44 @@ namespace Crux.Cinematic
             cam.transform.rotation = Quaternion.identity;
             cam.backgroundColor = new Color(0.05f, 0.05f, 0.08f);
 
+            InitializeForCurrentAction();
             StartCoroutine(PlaySequence());
+        }
+
+        /// <summary>현재 큐 항목에 대한 초기화 — Start 및 Update의 루프 재진입에서 사용</summary>
+        private void InitializeForCurrentAction()
+        {
+            data = FireActionContext.Current;
+            narrativeText = "";
+            subText = "";
+            showNarrative = false;
         }
 
         private void Update()
         {
             if (sequenceDone && (Input.anyKeyDown || Input.GetMouseButtonDown(0)))
             {
-                // Clear는 복귀 씬의 ApplyPendingResult에서 처리
-                SceneManager.LoadScene(GetReturnScene());
+                // 다음 사격이 큐에 있으면 로드하지 말고 다음 시퀀스 재시작
+                if (FireActionContext.HasNext)
+                {
+                    // 이전 공격자/대상 객체 정리
+                    if (attackerObj != null) Destroy(attackerObj);
+                    if (targetObj != null) Destroy(targetObj);
+                    attackerTurret = null;
+
+                    // 다음 액션으로 진행
+                    FireActionContext.Advance();
+                    InitializeForCurrentAction();
+
+                    // 다음 시퀀스 재시작
+                    sequenceDone = false;
+                    StartCoroutine(PlaySequence());
+                }
+                else
+                {
+                    // 큐 비었으면 복귀 — Clear는 복귀 씬의 ApplyPendingResult에서 처리
+                    SceneManager.LoadScene(GetReturnScene());
+                }
             }
         }
 
