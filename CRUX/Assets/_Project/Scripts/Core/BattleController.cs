@@ -120,6 +120,17 @@ namespace Crux.Core
         // InputMode를 외부에서 참조할 수 있게 enum으로 노출
         public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
 
+        /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
+        public List<GridTankUnit> GetAllUnitsForRangeCheck()
+        {
+            var allUnits = new List<GridTankUnit>();
+            if (playerUnit != null)
+                allUnits.Add(playerUnit);
+            if (enemyUnits != null)
+                allUnits.AddRange(enemyUnits);
+            return allUnits;
+        }
+
         // ===== 상태 저장/복원 관리자 (P-S6) =====
         private BattleStateManager stateManager;
 
@@ -191,6 +202,13 @@ namespace Crux.Core
 
             playerUnit = mapSetup.PlayerUnit;
             enemyUnits = mapSetup.EnemyUnits;
+
+            // Phase 2 API 초기화 — 사격 범위 판정용 컨트롤러 참조 바인딩
+            if (playerUnit != null)
+                playerUnit.BindBattleController(this);
+            foreach (var enemy in enemyUnits)
+                if (enemy != null)
+                    enemy.BindBattleController(this);
 
             // 화재 사망 처리 (P-S7: FireKillHandler 초기화)
             fireKillHandler = new Crux.Combat.FireKillHandler(grid, (t, c, d) => hud?.ShowBanner(t, c, d));

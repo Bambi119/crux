@@ -46,12 +46,19 @@ namespace Crux.Unit
         private Color baseHullColor = Color.white; // Initialize 시점의 원본 색 (HP별 암전 기준)
         private GridManager grid;
         private TankCrew crew;  // 승무원 시스템 캐시
+        private Crux.Core.BattleController battleController;  // Phase 2 API용 (HasAnyEnemyInFireRange, GetWeaponAvailability)
 
         // ===== 승무원 바인딩 =====
         /// <summary>승무원 컴포넌트 연결 (BattleController · 통합 테스트가 호출)</summary>
         public void BindCrew(TankCrew tankCrew)
         {
             crew = tankCrew;
+        }
+
+        /// <summary>BattleController 참조 설정 (Phase 2 API 전투 범위 체크용)</summary>
+        public void BindBattleController(Crux.Core.BattleController controller)
+        {
+            battleController = controller;
         }
 
         // ===== 회전 유틸 =====
@@ -264,6 +271,96 @@ namespace Crux.Unit
 
         /// <summary>실효 사격 AP 비용</summary>
         public int GetFireCost() => GameConstants.FireCost + moduleManager.GetFireAPPenalty() + (isOnFire ? 1 : 0);
+
+        // ===== Phase 2: 사격 범위 판정 및 무기 가용성 (Phase 4 입력 체인용) =====
+
+        /// <summary>사격 범위 내 적이 존재하는가 (Phase 2 — Fire 모드 입력 진입 가능 여부)</summary>
+        public bool HasAnyEnemyInFireRange()
+        {
+            if (battleController == null) return false;
+
+            // BattleController의 playerUnit/enemyUnits 접근 — internal 필드이므로 직접 참조 불가
+            // 대신 battle controller를 통해 모든 유닛 순회
+            var allUnits = battleController.GetAllUnitsForRangeCheck();
+            if (allUnits == null || allUnits.Count == 0) return false;
+
+            foreach (var unit in allUnits)
+            {
+                // 자신과 같은 편이거나 격파된 유닛은 제외
+                if (unit.side == this.side || unit.IsDestroyed) continue;
+
+                // 사격 범위 내인가? (기본값 8 hex)
+                int distance = grid.GetDistance(gridPosition, unit.GridPosition);
+                if (distance <= GameConstants.MaxFireRange)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>특정 목표에 대한 무기 가용성 (Phase 2 — 어느 무기로 사격 가능한가)</summary>
+        public struct WeaponAvailability
+        {
+            public bool mainGunInRange;
+            public bool coaxialMGInRange;
+            public bool mountedMGInRange;
+            public bool smokeInRange;
+        }
+
+        public WeaponAvailability GetWeaponAvailability(GridTankUnit target)
+        {
+            var result = new WeaponAvailability
+            {
+                mainGunInRange = false,
+                coaxialMGInRange = false,
+                mountedMGInRange = false,
+                smokeInRange = false
+            };
+
+            if (target == null || target.IsDestroyed) return result;
+
+            // 거리 계산
+            int distance = grid.GetDistance(gridPosition, target.GridPosition);
+
+            // 모든 무기는 MaxFireRange(8) 적용 — 세부 무기별 거리 한계는 미정
+            if (distance <= GameConstants.MaxFireRange)
+            {
+                result.mainGunInRange = true;
+                result.coaxialMGInRange = true;
+                result.mountedMGInRange = true;
+            }
+
+            // 연막은 별도 규칙 없음 — 범위 제약 없음 (향후 조정 가능)
+            result.smokeInRange = true;
+
+            return result;
+        }
+
+        /// <summary>차체 제자리 회전 — AP 소모 (Phase 2 — Rotate 분기 처리용)</summary>
+        /// <remarks>비용 = ceiling(|deltaDegrees| / 60) AP. docs/10 §3 참조</remarks>
+        public bool RotateHullInPlace(float deltaDegrees)
+        {
+            // 회전 불가능한 모듈 상태
+            if (!CanRotate())
+                return false;
+
+            // AP 비용 계산: ceiling(|deltaDegrees| / 60)
+            float absDelta = Mathf.Abs(deltaDegrees);
+            int apCost = Mathf.CeilToInt(absDelta / 60f);
+            if (apCost <= 0) apCost = 1; // 최소 1 AP
+
+            // AP 부족
+            if (currentAP < apCost)
+                return false;
+
+            // 회전 실행
+            hullAngle = (hullAngle + deltaDegrees + 360f) % 360f;
+            currentAP -= apCost;
+            transform.rotation = CompassToRotation(hullAngle);
+            OnAPChanged?.Invoke();
+
+            Debug.Log($"[CRUX] {tankData?.tankName} 회전: {deltaDegrees}° → {hullAngle}° (AP -{apCost})");
+            return true;
+        }
 
         // ===== 오버워치 (반응 사격) =====
 

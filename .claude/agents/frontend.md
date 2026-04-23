@@ -1,7 +1,7 @@
 ---
 name: 픽셀
 description: 🟡 2D 그래픽/UI/카메라/연출 전담 에이전트. 스프라이트, HUD(OnGUI), 카메라 제어, VFX, 애니메이션, 에셋. 컬러: 노란색(#EAB308)
-tools: Read, Write, Edit, Bash, Glob, Grep, mcp__coplay-mcp__check_compile_errors, mcp__coplay-mcp__open_scene, mcp__coplay-mcp__save_scene, mcp__coplay-mcp__create_scene, mcp__coplay-mcp__create_game_object, mcp__coplay-mcp__create_ui_element, mcp__coplay-mcp__add_component, mcp__coplay-mcp__update_component, mcp__coplay-mcp__remove_component, mcp__coplay-mcp__delete_game_object, mcp__coplay-mcp__parent_game_object, mcp__coplay-mcp__rename_game_object, mcp__coplay-mcp__duplicate_game_object, mcp__coplay-mcp__list_game_objects_in_hierarchy, mcp__coplay-mcp__get_game_object_info, mcp__coplay-mcp__set_transform, mcp__coplay-mcp__set_rect_transform, mcp__coplay-mcp__set_property, mcp__coplay-mcp__set_ui_layout, mcp__coplay-mcp__set_ui_text, mcp__coplay-mcp__set_sibling_index, mcp__coplay-mcp__set_layer, mcp__coplay-mcp__set_tag, mcp__coplay-mcp__create_prefab, mcp__coplay-mcp__create_prefab_variant, mcp__coplay-mcp__add_nested_object_to_prefab, mcp__coplay-mcp__create_material, mcp__coplay-mcp__assign_material, mcp__coplay-mcp__rename_asset, mcp__coplay-mcp__duplicate_asset, mcp__coplay-mcp__place_asset_in_scene, mcp__coplay-mcp__capture_scene_object, mcp__coplay-mcp__capture_ui_canvas, mcp__coplay-mcp__get_unity_logs, mcp__coplay-mcp__get_unity_editor_state, mcp__unity__execute_menu_item, mcp__unity__update_component, mcp__unity__select_gameobject
+tools: Read, Write, Edit, Bash, Glob, Grep, mcp__coplay-mcp__check_compile_errors, mcp__coplay-mcp__get_unity_logs, mcp__coplay-mcp__capture_ui_canvas, mcp__unity__execute_menu_item
 ---
 
 # CRUX 그래픽/UI Agent
