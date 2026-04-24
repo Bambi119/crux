@@ -64,9 +64,8 @@ namespace Crux.Core
         // HUD
         private BattleHUD hud;
 
-        // UI 컴포넌트 (Phase 3)
-        private CommandBoxController commandBox;
-        private TargetCycler targetCycler;
+        // Phase 3 UI 명령 라우터
+        private BattleCommandRouter commandRouter;
 
         // 입력 핸들러
         private PlayerInputHandler inputHandler;
@@ -91,14 +90,13 @@ namespace Crux.Core
         private int currentEnemyIndex; // 적 턴 중 행동 중인 적 인덱스
 
         // UI 상태
-        private enum InputMode { Select, Move, MoveDirectionSelect, Fire, WeaponSelect }
+        private enum InputMode { Select, Move, MoveDirectionSelect, Fire, WeaponSelect, RotateMode }
         private InputMode inputMode = InputMode.Select;
         private WeaponType selectedWeapon = WeaponType.MainGun;
         private GridTankUnit pendingTarget; // 무기 선택 대기 중인 대상
         private Vector2Int pendingMoveTarget; // 이동 목적지 (방향 선택 대기 중)
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
-        private float pendingRotationDelta;   // 축적된 회전각 (RotateMode)
 
         // 카메라
         private BattleCamera battleCam;
@@ -124,6 +122,10 @@ namespace Crux.Core
 
         // InputMode를 외부에서 참조할 수 있게 enum으로 노출
         public enum InputModeEnum { Select, Move, MoveDirectionSelect, Fire, WeaponSelect, RotateMode }
+
+        // BattleCommandRouter용 internal setter
+        internal void SetInputModeInternal(InputModeEnum mode) => inputMode = (InputMode)(int)mode;
+        internal void SetTargetUnitInternal(GridTankUnit t) => targetUnit = t;
 
         /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
         public List<GridTankUnit> GetAllUnitsForRangeCheck()
@@ -153,6 +155,7 @@ namespace Crux.Core
         private void Start()
         {
             stateManager = new BattleStateManager(this);
+            commandRouter = new BattleCommandRouter(this);
 
             if (FireActionContext.HasPendingAction)
             {
@@ -262,28 +265,9 @@ namespace Crux.Core
             hud = hudObj.AddComponent<BattleHUD>();
             hud.Initialize(this);
 
-            // CommandBox 초기화 (Phase 3) — prefab 로드
-            var cmdBoxPrefab = Resources.Load<GameObject>("Prefabs/UI/CommandBox");
-            if (cmdBoxPrefab != null)
-            {
-                var cmdBoxObj = Instantiate(cmdBoxPrefab);
-                commandBox = cmdBoxObj.GetComponent<CommandBoxController>();
-                if (commandBox != null)
-                {
-                    commandBox.OnMenuSelected += HandleCommandBoxMenuSelected;
-                    commandBox.OnMenuCanceled += HandleCommandBoxCanceled;
-                    commandBox.HideMenu();
-                }
-            }
-            else
-            {
-                Debug.LogWarning("[BattleController] CommandBox prefab not found");
-            }
-
-            // TargetCycler 초기화 (Phase 3)
-            var cyclerObj = new GameObject("TargetCycler");
-            targetCycler = cyclerObj.AddComponent<TargetCycler>();
-            targetCycler.OnTargetChanged += HandleTargetCycled;
+            // CommandBox · TargetCycler 초기화 (Phase 3) — Router에 위임
+            commandRouter.SetupCommandBox();
+            commandRouter.SetupTargetCycler();
 
             // 반응 사격 시퀀스 초기화 (P-S5 추출)
             var rfsObj = new GameObject("ReactionFireSequence");
@@ -574,7 +558,7 @@ namespace Crux.Core
             inputMode = InputMode.Fire;
             selectedWeapon = WeaponType.MainGun;
             visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
-            InitializeTargetCycler(); // Phase 3: 목표 순환 초기화
+            commandRouter.InitializeTargetCycler(selectedUnit, enemyUnits);
         }
 
         public void SelectWeapon(WeaponType weapon)
@@ -586,49 +570,12 @@ namespace Crux.Core
 
             // 무기 프리뷰 시 부위 바 깜빡임 표시 (Phase 4)
             if (pendingTarget != null && selectedUnit != null)
-                UpdateWeaponPreview(selectedWeapon, pendingTarget);
-        }
-
-        /// <summary>무기 선택 프리뷰 — 예상 피해 부위 바 깜빡임 (Phase 4)</summary>
-        private void UpdateWeaponPreview(WeaponType weapon, GridTankUnit target)
-        {
-            // 예상 데미지: 무기 기본 데미지 (간단 구현)
-            float expectedDamage = weapon switch
-            {
-                WeaponType.MainGun => mainGunData?.baseDamage ?? 15f,
-                WeaponType.CoaxialMG => coaxialMGData?.baseDamage ?? 3f,
-                WeaponType.MountedMG => mountedMGData?.baseDamage ?? 3f,
-                _ => 0f
-            };
-
-            // TODO: HitZone 매핑 구현 (현재 간단히 Hull만)
-            // 복잡한 HitZone 로직은 FireExecutor 참조
-            var zone = HitZone.Front; // Placeholder
-
-            UpdateTargetWeaponPreview(target, zone, expectedDamage);
-        }
-
-        /// <summary>목표 유닛의 부위 바 프리뷰 갱신</summary>
-        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
-        {
-            // Placeholder: 실제 부위 매핑은 FireExecutor에서 가져올 예정
-            // 현재: Front → Hull 부위만 처리
-            if (target == null) return;
-
-            Debug.Log($"[CRUX] Weapon preview: {zone} zone, expected damage {expectedDamage:F1}");
-            // PartBarFlashAnimator 연결 예정 (prefab에 배치된 상태)
-        }
-
-        /// <summary>무기 프리뷰 종료</summary>
-        public void ClearWeaponPreview()
-        {
-            // PartBarFlashAnimator.StopFlash() 호출 예정
-            Debug.Log("[CRUX] Weapon preview cleared");
+                commandRouter.UpdateWeaponPreview(selectedWeapon, pendingTarget, coaxialMGData, mountedMGData);
         }
 
         public void CommitWeaponSelection()
         {
-            ClearWeaponPreview();
+            commandRouter.ClearWeaponPreview();
             if (selectedUnit != null && pendingTarget != null)
                 CommitFire(selectedUnit, pendingTarget, selectedWeapon);
         }
@@ -809,159 +756,35 @@ namespace Crux.Core
             => fireExecutor.GetUnitCoverStatus(unit);
 
 
-        // ===== Command Box & Target Cycler (Phase 3) =====
+        // ===== Command Box · Target Cycler · Rotate Mode · 무기 프리뷰 (Phase 3/4) — Router 위임 =====
 
-        /// <summary>커맨드 박스 표시 — Select 모드에서 호출</summary>
-        public void ShowCommandBox()
-        {
-            if (commandBox != null && selectedUnit != null)
-                commandBox.ShowMenuAt(selectedUnit.transform.position);
-            else if (commandBox != null)
-                commandBox.ShowMenu();
-        }
+        /// <summary>커맨드 박스 표시</summary>
+        public void ShowCommandBox() => commandRouter.ShowCommandBox();
 
         /// <summary>커맨드 박스 숨김</summary>
-        public void HideCommandBox()
-        {
-            if (commandBox != null)
-                commandBox.HideMenu();
-        }
-
-        /// <summary>커맨드 박스에서 메뉴 항목 선택 콜백</summary>
-        private void HandleCommandBoxMenuSelected(CommandBoxController.MenuItem item)
-        {
-            switch (item)
-            {
-                case CommandBoxController.MenuItem.Move:
-                    TryEnterMoveMode();
-                    break;
-                case CommandBoxController.MenuItem.Fire:
-                    TryEnterFireMode();
-                    break;
-                case CommandBoxController.MenuItem.Rotate:
-                    TryEnterRotateMode();
-                    break;
-                case CommandBoxController.MenuItem.Skill:
-                    // 스킬 선택 구현 (Phase 4)
-                    Debug.Log("[CommandBox] 전차장스킬 선택");
-                    break;
-                case CommandBoxController.MenuItem.Wait:
-                    EndPlayerTurn();
-                    break;
-                case CommandBoxController.MenuItem.Cancel:
-                    // Cancel은 OnMenuCanceled에서 처리
-                    break;
-            }
-        }
-
-        /// <summary>커맨드 박스 취소 콜백</summary>
-        private void HandleCommandBoxCanceled()
-        {
-            CancelToSelect();
-        }
-
-        // ===== Rotate Mode (Phase 4) =====
-
-        /// <summary>방향전환 모드 진입</summary>
-        private void TryEnterRotateMode()
-        {
-            if (selectedUnit == null)
-            {
-                CancelToSelect();
-                return;
-            }
-
-            CurrentInputMode = InputModeEnum.RotateMode;
-            pendingRotationDelta = 0f;
-        }
+        public void HideCommandBox() => commandRouter.HideCommandBox();
 
         /// <summary>축적된 회전각도 적용 및 RotateMode 종료</summary>
-        public void CommitRotation()
-        {
-            if (selectedUnit == null || CurrentInputMode != InputModeEnum.RotateMode)
-                return;
-
-            if (Mathf.Abs(pendingRotationDelta) < 1f)
-            {
-                // 회전 없음 — Select로 돌아감
-                CancelToSelect();
-                return;
-            }
-
-            bool success = selectedUnit.RotateHullInPlace(pendingRotationDelta);
-            if (success)
-            {
-                Debug.Log($"[CRUX] Rotate {pendingRotationDelta}° executed (AP cost)");
-                EndPlayerTurn();
-            }
-            else
-            {
-                Debug.Log("[CRUX] Rotate failed — insufficient AP or invalid angle");
-                CancelToSelect();
-            }
-        }
+        public void CommitRotation() => commandRouter.CommitRotation();
 
         /// <summary>RotateMode 취소</summary>
-        public void CancelRotateMode()
-        {
-            if (CurrentInputMode == InputModeEnum.RotateMode)
-                CancelToSelect();
-        }
+        public void CancelRotateMode() => commandRouter.CancelRotateMode();
 
         /// <summary>화면 내 회전각 누적 (양수=시계, 음수=반시계)</summary>
-        public void AccumulateRotation(float deltaDegrees)
-        {
-            if (CurrentInputMode == InputModeEnum.RotateMode)
-                pendingRotationDelta += deltaDegrees;
-        }
+        public void AccumulateRotation(float deltaDegrees) => commandRouter.AccumulateRotation(deltaDegrees);
 
         /// <summary>회전 모드: 누적된 회전각 조회</summary>
-        public float GetPendingRotationDelta() => pendingRotationDelta;
-
-        /// <summary>Fire 모드: 목표 순환 가능 목표 목록 설정</summary>
-        public void InitializeTargetCycler()
-        {
-            if (selectedUnit == null || targetCycler == null)
-                return;
-
-            // 선택된 유닛의 사격 범위 내 적 필터링
-            var validTargets = new List<GridTankUnit>();
-            var fireRange = selectedUnit.GetFireRange();
-            foreach (var enemy in enemyUnits)
-            {
-                if (enemy != null && !enemy.IsDestroyed)
-                {
-                    int dist = HexCoord.Distance(selectedUnit.GridPosition, enemy.GridPosition);
-                    if (dist <= fireRange)
-                        validTargets.Add(enemy);
-                }
-            }
-
-            targetCycler.SetValidTargets(validTargets);
-        }
-
-        /// <summary>목표 순환 콜백 — 새 목표 선택됨</summary>
-        private void HandleTargetCycled(GridTankUnit newTarget)
-        {
-            targetUnit = newTarget;
-            if (newTarget != null)
-                Debug.Log($"[TargetCycler] 목표 변경: {newTarget.gameObject.name}");
-        }
+        public float GetPendingRotationDelta() => commandRouter.GetPendingRotationDelta();
 
         /// <summary>Fire 모드: 다음 목표로 순환</summary>
-        public void CycleTargetNext()
-        {
-            if (inputMode != InputMode.Fire || targetCycler == null) return;
-            targetCycler.CycleToNext();
-        }
+        public void CycleTargetNext() => commandRouter.CycleTargetNext();
 
         /// <summary>Fire 모드: 이전 목표로 순환</summary>
-        public void CycleTargetPrevious()
-        {
-            if (inputMode != InputMode.Fire || targetCycler == null) return;
-            targetCycler.CycleToPrevious();
-        }
+        public void CycleTargetPrevious() => commandRouter.CycleTargetPrevious();
 
+        /// <summary>목표 유닛의 부위 바 프리뷰 갱신 (외부 호출용 — 시그니처 유지)</summary>
+        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
+            => commandRouter.UpdateTargetWeaponPreview(target, zone, expectedDamage);
 
         // ===== UI (OnGUI) =====
 
