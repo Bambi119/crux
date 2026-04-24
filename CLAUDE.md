@@ -102,6 +102,13 @@ Data ──┐
 
 ## 7. 하네스 엔지니어링 원칙
 
+### 7.0 작업 시작 전 필수 확인
+
+- **세션 시작 시 `.claude/rules/mistake-log.md` 반드시 열람**. 활성 섹션 전량 1회 통독 후 작업 착수
+- 동일 영역(예: Unity·워크플로우) 작업 시 해당 섹션 항목을 암기·반영
+- 새로운 실수 발생 시 **즉시** 해당 파일의 형식(`- [날짜] [영역] 실수 내용 → 교훈/예방책`)으로 추가. 나중에 몰아서 기록 금지
+- 동일 실수 반복 감지 시 빈도 표기([3회] 등)로 업데이트
+
 ### 7.1 편집→검증 루프
 - **편집 직후 재읽기 금지** — Edit/Write는 성공 시 상태 보장
 - **비트 단위 편집 후 즉시 `check_compile_errors`** — 쌓아놓지 말 것
@@ -112,6 +119,9 @@ Data ──┐
 - `GameConstants.GridWidth/Height` 하드코드 금지 — `grid.Width/Height` 사용
 - `EditorBuildSettings.asset` 편집 시 scene guid 일치 필수
 - `.meta` 수동 삭제 금지, 이동 시 동행
+- **씬 파일 저장 경로 = `Assets/_Project/Scenes/<name>.unity` 전용**. `Assets/` 루트 저장 금지 (GUID 분리·BuildSettings 참조 깨짐)
+- **다중 워크트리** (`C:/01_Project/03_Crux` 메인 · `Crux-dev` · `Crux-planning`): 각 워크트리에 독립 `CRUX/` 프로젝트. 에이전트 작업 시작 시 `list_unity_project_roots`로 Unity가 연 프로젝트가 현재 워크트리인지 1회 확인 후 진행
+- 에셋 경로 규칙: 프리팹 런타임 로드 `Assets/_Project/Resources/Prefabs/<domain>/` · 일반 프리팹 `Assets/_Project/Prefabs/<domain>/` · SO `Assets/_Project/ScriptableObjects/<category>/`
 
 ### 7.3 기능 검증 경로
 - **새 기능 → TerrainTestScene에서 먼저** (12×12 + 지형 + F1 디버그 오버레이)
@@ -226,3 +236,4 @@ Data ──┐
 | 2026-04-16 | §1 Camera/Input/UI 폴더 상태 갱신 · §9 P-S1~S7 완료 표시 · §10 TD-01/TD-04 현재 상태 반영 |
 | 2026-04-20 | Phase 3: BattleHUD OnGUI 제거 — ShowBanner/ShowAlert 큐 BattleController 이관 · TD-08 신규 |
 | 2026-04-24 | §8 자율 루프 확장 — 4-역할 MCP 도구 경계 표·보고 규율 신설 / §9 P-S 로드맵 git 이력으로 이관 / 전반 압축 |
+| 2026-04-25 | §7.2 씬 파일 경로 규칙 신설 — `Assets/_Project/Scenes/` 전용, 다중 워크트리 `list_unity_project_roots` 시작 확인 의무화 (픽셀 UI 배선 루트 저장 사고 재발 방지) |

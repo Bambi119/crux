@@ -65,6 +65,30 @@ model: sonnet
 - RectTransform: `set_rect_transform`
 - 씬 저장: `save_scene`. 저장 없이 종료하면 소실
 
+### 씬 파일 경로 절대 규칙 (워크트리 이중화 방지)
+CRUX는 다중 워크트리 환경(`C:/01_Project/03_Crux` · `…/Crux-dev` · `…/Crux-planning`). 각 워크트리에 독립 `CRUX/` Unity 프로젝트 존재.
+
+1. **작업 시작 1회 확인**: `list_unity_project_roots`로 Unity 에디터가 연 프로젝트 경로가 **현재 워크트리**(예: `Crux-dev/CRUX`)인지 검증. 다른 워크트리면 즉시 중단 보고
+2. **씬 저장 경로 = `Assets/_Project/Scenes/<name>.unity` 유일**
+   - ❌ `Assets/<name>.unity` (루트) — GUID 분리·EditorBuildSettings 참조 깨짐
+   - ❌ 다른 워크트리 경로 — 크로스 워크트리 오염
+3. **기존 씬 편집 흐름 (표준)**:
+   ```
+   open_scene(path="Assets/_Project/Scenes/TerrainTestScene.unity")
+   → 편집 …
+   → save_scene  (path 인자 생략 — 연 씬 경로 유지)
+   ```
+4. **신규 씬 생성 흐름**:
+   ```
+   create_scene(path="Assets/_Project/Scenes/<NewName>.unity")  ← path 필수 명시
+   ```
+5. **에셋 저장 경로 유사 규칙**:
+   - 프리팹 Resources 로드용: `Assets/_Project/Resources/Prefabs/<domain>/<name>.prefab`
+   - 프리팹 일반: `Assets/_Project/Prefabs/<domain>/<name>.prefab`
+   - ScriptableObject: `Assets/_Project/ScriptableObjects/<category>/<name>.asset`
+   - Material/Sprite: `Assets/_Project/Materials|Sprites/…`
+6. **검증**: 씬/프리팹 저장 직후 `git status` 또는 Glob으로 실제 파일 경로 확인. 예상 경로와 다르면 즉시 중단 보고 (이동은 사용자 승인 필요 — tracked 파일 덮어쓰기 리스크)
+
 ### 데이터 바인딩
 - MonoBehaviour가 `TankInstance`·`ConvoyInventory` 등 `Crux.Data` 읽어 UI 갱신
 - C# 스크립트 작성도 픽셀 영역 (`Crux.UI` 전체)
