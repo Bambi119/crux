@@ -534,7 +534,8 @@ namespace Crux.Core
 
         // ===== PlayerInputHandler 공개 API =====
 
-        public bool CanHandleInput => selectedUnit != null && !selectedUnit.IsDestroyed && !selectedUnit.IsMoving;
+        public bool CanHandleInput => selectedUnit == null
+            || (!selectedUnit.IsDestroyed && !selectedUnit.IsMoving);
 
         public void CancelToSelect()
         {
