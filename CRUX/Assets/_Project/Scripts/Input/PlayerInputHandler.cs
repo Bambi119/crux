@@ -216,6 +216,7 @@ namespace Crux.PlayerInput
         /// <summary>좌클릭 처리 — 월드 좌표에서 그리드 좌표로 변환 후 dispatch</summary>
         private void HandleLeftClick()
         {
+            Debug.Log($"[TRACE] HandleLeftClick mouse={UnityEngine.Input.mousePosition}");
             var mainCam = controller.MainCam;
             if (mainCam == null) return;
 

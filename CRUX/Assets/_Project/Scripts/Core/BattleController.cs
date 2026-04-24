@@ -631,6 +631,7 @@ namespace Crux.Core
 
         public void HandleClickAt(Vector2Int gridPos)
         {
+            Debug.Log($"[TRACE] HandleClickAt gridPos={gridPos} mode={CurrentInputMode}");
             if (!grid.IsInBounds(gridPos)) return;
             switch (inputMode)
             {
@@ -685,6 +686,7 @@ namespace Crux.Core
         private void InspectCell(Vector2Int pos)
         {
             var cell = grid.GetCell(pos);
+            Debug.Log($"[TRACE] InspectCell pos={pos} cell={cell?.Type.ToString() ?? "null"} occupant={cell?.Occupant?.name ?? "null"}");
             if (cell == null || cell.Occupant == null)
             {
                 inspectedUnit = null;

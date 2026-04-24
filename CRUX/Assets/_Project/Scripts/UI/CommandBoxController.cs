@@ -103,7 +103,9 @@ namespace Crux.UI
         }
 
         /// <summary>박스를 특정 월드 위치에 표시 (화면 경계 플립 자동 적용)</summary>
-        public void ShowMenuAt(Vector3 worldPos)
+        /// <param name="worldPos">월드 좌표</param>
+        /// <param name="cam">사용할 카메라 — null이면 Camera.main 폴백</param>
+        public void ShowMenuAt(Vector3 worldPos, UnityEngine.Camera cam = null)
         {
             var rectTransform = GetComponent<RectTransform>();
             if (rectTransform == null)
@@ -120,14 +122,15 @@ namespace Crux.UI
             var size = rectTransform.sizeDelta;
             var canvasRT = GetComponentInParent<Canvas>()?.GetComponent<RectTransform>();
 
-            if (canvasRT != null)
+            var resolvedCam = cam ?? UnityEngine.Camera.main;
+            if (canvasRT != null && resolvedCam != null)
             {
-                Vector3 screenPos = UnityEngine.Camera.main.WorldToScreenPoint(worldPos);
+                Vector3 screenPos = resolvedCam.WorldToScreenPoint(worldPos);
                 Vector2 localPos;
 
                 // Canvas의 좌표계로 변환
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRT, screenPos, UnityEngine.Camera.main, out localPos);
+                    canvasRT, screenPos, resolvedCam, out localPos);
 
                 // 화면 경계 플립 판정
                 float screenWidth = Screen.width;

@@ -63,9 +63,10 @@ namespace Crux.Core
             commandBox = cmdBoxObj.GetComponent<CommandBoxController>();
             if (commandBox != null)
             {
+                // Instantiate 직후 SetActive(false) — HideMenu() 전에 한 프레임도 렌더되지 않도록 보장
+                cmdBoxObj.SetActive(false);
                 commandBox.OnMenuSelected += HandleCommandBoxMenuSelected;
                 commandBox.OnMenuCanceled += HandleCommandBoxCanceled;
-                commandBox.HideMenu();
             }
         }
 
@@ -83,9 +84,11 @@ namespace Crux.Core
         internal void ShowCommandBox()
         {
             if (commandBox == null) return;
+            // SetActive(true) — SetupCommandBox에서 false로 초기화된 GameObject를 활성화
+            commandBox.gameObject.SetActive(true);
             var selected = controller.SelectedUnit;
             if (selected != null)
-                commandBox.ShowMenuAt(selected.transform.position);
+                commandBox.ShowMenuAt(selected.transform.position, controller.MainCam);
             else
                 commandBox.ShowMenu();
         }
@@ -94,7 +97,7 @@ namespace Crux.Core
         internal void HideCommandBox()
         {
             if (commandBox != null)
-                commandBox.HideMenu();
+                commandBox.HideMenu(); // HideMenu 내부에서 gameObject.SetActive(false) 처리
         }
 
         // ===== CommandBox 이벤트 콜백 =====
