@@ -34,20 +34,38 @@ namespace Crux.Core
         internal void SetupCommandBox()
         {
             var cmdBoxPrefab = Resources.Load<GameObject>("Prefabs/UI/CommandBox");
-            if (cmdBoxPrefab != null)
+            if (cmdBoxPrefab == null)
             {
-                var cmdBoxObj = Object.Instantiate(cmdBoxPrefab);
-                commandBox = cmdBoxObj.GetComponent<CommandBoxController>();
-                if (commandBox != null)
-                {
-                    commandBox.OnMenuSelected += HandleCommandBoxMenuSelected;
-                    commandBox.OnMenuCanceled += HandleCommandBoxCanceled;
-                    commandBox.HideMenu();
-                }
+                Debug.LogWarning("[BattleController] CommandBox prefab not found");
+                return;
+            }
+
+            // Canvas 부모 탐색: HUDContainer → Canvas → world root 순
+            Transform hudParent = null;
+            var hudContainer = GameObject.Find("Canvas/HUDContainer");
+            if (hudContainer != null)
+            {
+                hudParent = hudContainer.transform;
             }
             else
             {
-                Debug.LogWarning("[BattleController] CommandBox prefab not found");
+                var canvas = Object.FindFirstObjectByType<Canvas>();
+                if (canvas != null)
+                    hudParent = canvas.transform;
+                else
+                    Debug.LogWarning("[BattleController] Canvas/HUDContainer not found — CommandBox left at world root");
+            }
+
+            var cmdBoxObj = hudParent != null
+                ? Object.Instantiate(cmdBoxPrefab, hudParent, worldPositionStays: false)
+                : Object.Instantiate(cmdBoxPrefab);
+
+            commandBox = cmdBoxObj.GetComponent<CommandBoxController>();
+            if (commandBox != null)
+            {
+                commandBox.OnMenuSelected += HandleCommandBoxMenuSelected;
+                commandBox.OnMenuCanceled += HandleCommandBoxCanceled;
+                commandBox.HideMenu();
             }
         }
 
