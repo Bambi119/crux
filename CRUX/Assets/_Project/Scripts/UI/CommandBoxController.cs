@@ -40,11 +40,42 @@ namespace Crux.UI
         /// <summary>박스 취소 콜백</summary>
         public event Action OnMenuCanceled;
 
+        // 자식 이름 → MenuItem 인덱스 매핑
+        private static readonly string[] ButtonNames =
+            { "BtnMove", "BtnFire", "BtnRotate", "BtnSkill", "BtnWait", "BtnCancel" };
+
+        private void Awake()
+        {
+            // SerializeField 배열이 비어 있을 때 자식 이름으로 자동 탐색
+            AutoBindButtonsIfNeeded();
+        }
+
         private void Start()
         {
-            // 메뉴 버튼들을 인덱스와 일치하도록 정렬 (Move, Fire, Rotate, Skill, Wait, Cancel)
-            // 예: 레이아웃 2×3 그리드라면 인덱스 순서 확인 필요
             ValidateMenuButtons();
+        }
+
+        /// <summary>SerializeField 배열 미연결 시 자식 이름으로 Button을 자동 바인딩</summary>
+        private void AutoBindButtonsIfNeeded()
+        {
+            bool needsBind = menuButtons == null || menuButtons.Length != 6;
+            if (!needsBind)
+            {
+                foreach (var btn in menuButtons)
+                    if (btn == null) { needsBind = true; break; }
+            }
+
+            if (!needsBind) return;
+
+            menuButtons = new Button[6];
+            for (int i = 0; i < ButtonNames.Length; i++)
+            {
+                Transform child = transform.Find(ButtonNames[i]);
+                if (child != null)
+                    menuButtons[i] = child.GetComponent<Button>();
+                else
+                    Debug.LogWarning($"[CommandBox] 자식 '{ButtonNames[i]}' 없음 — 프리팹 구조 확인 필요");
+            }
         }
 
         private void ValidateMenuButtons()
