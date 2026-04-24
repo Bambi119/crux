@@ -695,8 +695,9 @@ namespace Crux.Core
                 inspectedUnit = null;
                 return;
             }
-            // 아군 클릭 → 기본 상태 (selectedUnit 표시)
+            // 아군 클릭 → selectedUnit 갱신 + CommandBox 표시 / 적군 → inspectedUnit
             inspectedUnit = unit.side == PlayerSide.Player ? null : unit;
+            if (unit.side == PlayerSide.Player) { selectedUnit = unit; ShowCommandBox(); }
         }
 
         /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
