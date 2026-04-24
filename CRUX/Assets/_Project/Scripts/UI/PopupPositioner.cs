@@ -28,7 +28,7 @@ namespace Crux.UI
         /// 아군 유닛이 화면 경계에 가까우면 팝업을 반대쪽으로 배치.
         /// 예: 우측 근처 → 팝업을 좌측 배치
         /// </summary>
-        public static Vector2 GetFlippedPosition(Vector3 unitWorldPos, Camera mainCam, PopupSize popupSize)
+        public static Vector2 GetFlippedPosition(Vector3 unitWorldPos, UnityEngine.Camera mainCam, PopupSize popupSize)
         {
             if (mainCam == null) return Vector2.zero;
 

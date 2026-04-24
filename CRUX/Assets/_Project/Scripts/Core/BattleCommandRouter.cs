@@ -223,8 +223,8 @@ namespace Crux.Core
             float expectedDamage = weapon switch
             {
                 WeaponType.MainGun   => 15f,                            // mainGunData 미연결 — fallback
-                WeaponType.CoaxialMG => coaxialMGData?.baseDamage ?? 3f,
-                WeaponType.MountedMG => mountedMGData?.baseDamage ?? 3f,
+                WeaponType.CoaxialMG => coaxialMGData?.damagePerShot ?? 3f,
+                WeaponType.MountedMG => mountedMGData?.damagePerShot ?? 3f,
                 _ => 0f
             };
 

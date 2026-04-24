@@ -91,12 +91,12 @@ namespace Crux.UI
 
             if (canvasRT != null)
             {
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
+                Vector3 screenPos = UnityEngine.Camera.main.WorldToScreenPoint(worldPos);
                 Vector2 localPos;
 
                 // Canvas의 좌표계로 변환
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRT, screenPos, Camera.main, out localPos);
+                    canvasRT, screenPos, UnityEngine.Camera.main, out localPos);
 
                 // 화면 경계 플립 판정
                 float screenWidth = Screen.width;
