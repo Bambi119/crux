@@ -120,7 +120,8 @@ namespace Crux.UI
 
             // PopupPositioner로 화면 좌표 계산
             var size = rectTransform.sizeDelta;
-            var canvasRT = GetComponentInParent<Canvas>()?.GetComponent<RectTransform>();
+            var parentCanvas = GetComponentInParent<Canvas>();
+            var canvasRT = parentCanvas != null ? parentCanvas.GetComponent<RectTransform>() : null;
 
             var resolvedCam = cam ?? UnityEngine.Camera.main;
             if (canvasRT != null && resolvedCam != null)
@@ -128,9 +129,15 @@ namespace Crux.UI
                 Vector3 screenPos = resolvedCam.WorldToScreenPoint(worldPos);
                 Vector2 localPos;
 
-                // Canvas의 좌표계로 변환
+                // Canvas renderMode에 따라 cam 인자 조정:
+                // ScreenSpaceOverlay → null (Unity 공식 규칙)
+                // ScreenSpaceCamera / WorldSpace → 실제 카메라
+                UnityEngine.Camera uiCam = parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay
+                    ? null
+                    : resolvedCam;
+
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRT, screenPos, resolvedCam, out localPos);
+                    canvasRT, screenPos, uiCam, out localPos);
 
                 // 화면 경계 플립 판정
                 float screenWidth = Screen.width;
