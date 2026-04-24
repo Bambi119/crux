@@ -216,10 +216,6 @@ namespace Crux.PlayerInput
         /// <summary>좌클릭 처리 — 월드 좌표에서 그리드 좌표로 변환 후 dispatch</summary>
         private void HandleLeftClick()
         {
-            // uGUI 위 클릭은 월드 좌표 변환 차단 — CommandBox 버튼 뒤 유닛 오선택 방지
-            var es = UnityEngine.EventSystems.EventSystem.current;
-            if (es != null && es.IsPointerOverGameObject()) return;
-
             var mainCam = controller.MainCam;
             if (mainCam == null) return;
 
