@@ -335,7 +335,10 @@ namespace Crux.Core
         {
             controller.SetTargetUnitInternal(newTarget);
             if (newTarget != null)
+            {
+                controller.BattleCam?.PanTo(newTarget.transform.position);
                 Debug.Log($"[TargetCycler] 목표 변경: {newTarget.gameObject.name}");
+            }
         }
 
         /// <summary>Fire 모드: 다음 목표로 순환</summary>

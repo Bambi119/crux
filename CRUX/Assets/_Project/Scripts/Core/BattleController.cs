@@ -134,6 +134,7 @@ namespace Crux.Core
         // BattleCommandRouter용 internal setter
         internal void SetInputModeInternal(InputModeEnum mode) => inputMode = (InputMode)(int)mode;
         internal void SetTargetUnitInternal(GridTankUnit t) => targetUnit = t;
+        internal BattleCamera BattleCam => battleCam;
 
         /// <summary>post-move CommandBox 표시 중인가 (이동 완료 후 행동 선택 대기)</summary>
         public bool IsPostMoveContext => isPostMoveContext;
