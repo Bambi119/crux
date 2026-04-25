@@ -282,7 +282,8 @@ namespace Crux.Core
             {
                 Debug.Log($"[CRUX] Rotate {pendingRotationDelta}° executed (AP cost)");
                 controller.SetInputModeInternal(BattleController.InputModeEnum.Select);
-                controller.EndPlayerTurn();
+                if (controller.IsPostMoveContext)
+                    ShowPostMoveCommandBox();
             }
             else
             {
