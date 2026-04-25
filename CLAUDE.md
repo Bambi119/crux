@@ -218,7 +218,7 @@ Data ──┐
 
 | ID | 부채 | 심각도 | 해결 경로 |
 |---|---|---|---|
-| TD-01 | `BattleController.cs` 671 LOC — 500 LOC 목표 미달 | 🟢 P3 | §4 트리거 재발동 시 |
+| TD-01 | `BattleController.cs` 859 LOC — 하드 리밋 800 초과 (+59) | 🟡 P2 | post-move 스냅샷·언두 별도 클래스 추출 (차기 PR) |
 | TD-02 | `FireSequenceController.cs` 1,137 LOC 단일 파일 | 🟡 P2 | 시퀀스 단계별 분할 |
 | TD-03 | `FireActionContext.cs` 4개 타입 혼재 | 🟢 P3 | 부가 정리 |
 | TD-04 | 빈 의도 폴더 Enemy/Loot/Vision | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
