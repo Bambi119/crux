@@ -362,6 +362,33 @@ namespace Crux.Unit
             return true;
         }
 
+        /// <summary>이동 직전 스냅샷으로 복원 — 그리드 텔레포트 + AP/각도 복원. cell.Occupant 갱신.</summary>
+        public void UndoMove(Vector2Int snapGridPos, float snapHullAngle, int snapAP, GridManager gridManager)
+        {
+            // 진행 중인 코루틴 중단 (이동 애니메이션 등)
+            StopAllCoroutines();
+            isMoving = false;
+
+            // 현재 점유 셀 비우기
+            var currentCell = gridManager.GetCell(gridPosition);
+            if (currentCell != null && currentCell.Occupant == gameObject)
+                currentCell.Occupant = null;
+
+            // 스냅샷 위치로 텔레포트
+            gridPosition = snapGridPos;
+            transform.position = gridManager.GridToWorld(snapGridPos);
+
+            // 새 셀 점유
+            var newCell = gridManager.GetCell(snapGridPos);
+            if (newCell != null) newCell.Occupant = gameObject;
+
+            // 각도·AP 복원
+            hullAngle = snapHullAngle;
+            transform.rotation = CompassToRotation(snapHullAngle);
+            currentAP = snapAP;
+            OnAPChanged?.Invoke();
+        }
+
         // ===== 오버워치 (반응 사격) =====
 
         /// <summary>오버워치 설정 가능 여부 — 주포 발사 가능 + 잔탄 + AP 충분 + 아직 설정 안됨</summary>

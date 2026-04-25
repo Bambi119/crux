@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Crux.Data;
 using Crux.Unit;
@@ -129,7 +130,121 @@ namespace Crux.Core
 
         private void HandleCommandBoxCanceled()
         {
-            controller.CancelToSelect();
+            // post-move 중 취소 → 이동 취소(원위치 복귀), 일반 취소 → Select 모드
+            if (controller.IsPostMoveContext)
+                controller.UndoMoveSnapshot();
+            else
+                controller.CancelToSelect();
+        }
+
+        // ===== post-move CommandBox + RotationWheel =====
+
+        /// <summary>이동 완료 후 CommandBox 표시 — 컨텍스트 필터 적용 (CommitMoveDirection에서 호출)</summary>
+        internal void ShowPostMoveCommandBox()
+        {
+            if (commandBox == null || controller.SelectedUnit == null) return;
+
+            var unit = controller.SelectedUnit;
+            var visibleItems = BuildPostMoveMenuItems(unit);
+
+            commandBox.gameObject.SetActive(true);
+            commandBox.ShowMenuFiltered(visibleItems, unit.transform.position, controller.MainCam);
+        }
+
+        /// <summary>post-move 시점 표시할 MenuItem 배열 결정</summary>
+        private CommandBoxController.MenuItem[] BuildPostMoveMenuItems(GridTankUnit unit)
+        {
+            var items = new List<CommandBoxController.MenuItem>();
+
+            // Fire: CanFire() + 사거리 내 생존 적 존재
+            if (unit.CanFire() && HasEnemyInRange(unit))
+                items.Add(CommandBoxController.MenuItem.Fire);
+
+            // Rotate: 추가 회전 가능 시
+            if (unit.CanRotate())
+                items.Add(CommandBoxController.MenuItem.Rotate);
+
+            // Skill(연막): CanUseSmoke()
+            if (unit.CanUseSmoke())
+                items.Add(CommandBoxController.MenuItem.Skill);
+
+            // Wait: 항상
+            items.Add(CommandBoxController.MenuItem.Wait);
+
+            // Cancel: 항상 (이동 취소)
+            items.Add(CommandBoxController.MenuItem.Cancel);
+
+            return items.ToArray();
+        }
+
+        private bool HasEnemyInRange(GridTankUnit unit)
+        {
+            var allUnits = controller.GetAllUnitsForRangeCheck();
+            foreach (var other in allUnits)
+            {
+                if (other == null || other.IsDestroyed) continue;
+                if (other.side == unit.side) continue;
+                if (HexCoord.Distance(unit.GridPosition, other.GridPosition) <= GameConstants.MaxFireRange)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>post-move 방향 선택 시 RotationWheel UI 표시 (픽셀 담당 prefab 로드)</summary>
+        internal void ShowRotationWheelForPostMove()
+        {
+            var wheelPrefab = Resources.Load<GameObject>("Prefabs/UI/RotationWheel");
+            if (wheelPrefab == null)
+            {
+                // 픽셀이 prefab을 아직 만들지 않았거나 경로 불일치 — 키보드 fallback으로 진행
+                Debug.LogWarning("[BattleCommandRouter] RotationWheel prefab not found — keyboard fallback active");
+                return;
+            }
+
+            // Canvas 부모 탐색 (SetupCommandBox와 동일 패턴)
+            Transform hudParent = null;
+            var canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas != null) hudParent = canvas.transform;
+
+            var wheelObj = hudParent != null
+                ? Object.Instantiate(wheelPrefab, hudParent, worldPositionStays: false)
+                : Object.Instantiate(wheelPrefab);
+
+            var wheel = wheelObj.GetComponent<RotationWheelController>();
+            if (wheel == null)
+            {
+                Object.Destroy(wheelObj);
+                Debug.LogWarning("[BattleCommandRouter] RotationWheelController component not found on prefab");
+                return;
+            }
+
+            var unit = controller.SelectedUnit;
+            wheel.Show(unit.transform.position, unit.HullAngle, controller.MainCam);
+
+            wheel.OnAngleSelected += (absAngle) =>
+            {
+                float delta = absAngle - unit.HullAngle;
+                while (delta > 180f)  delta -= 360f;
+                while (delta < -180f) delta += 360f;
+                bool ok = unit.RotateHullInPlace(delta);
+                Object.Destroy(wheelObj);
+                if (ok)
+                {
+                    controller.SetInputModeInternal(BattleController.InputModeEnum.Select);
+                    ShowPostMoveCommandBox();
+                }
+                else
+                    controller.CancelToSelect();
+            };
+
+            wheel.OnCanceled += () =>
+            {
+                Object.Destroy(wheelObj);
+                // 방향 선택 취소 → 현재 각도 유지하고 post-move CommandBox로
+                controller.CommitMoveDirection();
+            };
+
+            controller.SetInputModeInternal(BattleController.InputModeEnum.RotateMode);
         }
 
         // ===== RotateMode =====

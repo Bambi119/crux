@@ -26,6 +26,13 @@ namespace Crux.PlayerInput
                 return;
             }
 
+            // 우클릭 — 한 단계 뒤로 (이전 명령 단계 복귀)
+            if (UnityEngine.Input.GetMouseButtonDown(1))
+            {
+                HandleRightClickStepBack();
+                return;
+            }
+
             // Select 모드: M 또는 Q로 커맨드 박스 표시
             if (controller.CurrentInputMode == BattleController.InputModeEnum.Select)
             {
@@ -73,6 +80,39 @@ namespace Crux.PlayerInput
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
                 HandleLeftClick();
+            }
+        }
+
+        /// <summary>우클릭 — 현재 입력 모드에서 한 단계 뒤로</summary>
+        private void HandleRightClickStepBack()
+        {
+            switch (controller.CurrentInputMode)
+            {
+                case BattleController.InputModeEnum.Select:
+                    // post-move CommandBox 표시 중 우클릭 → 이동 취소(원위치 복귀)
+                    if (controller.IsPostMoveContext)
+                        controller.UndoMoveSnapshot();
+                    else
+                        controller.HideCommandBox();
+                    break;
+                case BattleController.InputModeEnum.Move:
+                    controller.CancelToSelect();
+                    controller.ShowCommandBox();
+                    break;
+                case BattleController.InputModeEnum.MoveDirectionSelect:
+                    controller.TryEnterMoveMode();
+                    break;
+                case BattleController.InputModeEnum.Fire:
+                    controller.CancelToSelect();
+                    controller.ShowCommandBox();
+                    break;
+                case BattleController.InputModeEnum.WeaponSelect:
+                    controller.TryEnterFireMode();
+                    break;
+                case BattleController.InputModeEnum.RotateMode:
+                    controller.CancelRotateMode();
+                    controller.ShowCommandBox();
+                    break;
             }
         }
 

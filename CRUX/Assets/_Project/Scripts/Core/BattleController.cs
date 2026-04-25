@@ -98,6 +98,14 @@ namespace Crux.Core
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
 
+        // post-move 흐름 제어
+        private bool postMovePendingDirection;  // 이동 완료 대기 중 — EnterPostMoveDirectionSelect 트리거
+        private bool isPostMoveContext;          // post-move CommandBox 표시 중
+        // 이동 직전 스냅샷 (UndoMove용)
+        private Vector2Int preMoveGridPos;
+        private float preMoveHullAngle;
+        private int preMoveAP;
+
         // 카메라
         private BattleCamera battleCam;
 
@@ -126,6 +134,21 @@ namespace Crux.Core
         // BattleCommandRouter용 internal setter
         internal void SetInputModeInternal(InputModeEnum mode) => inputMode = (InputMode)(int)mode;
         internal void SetTargetUnitInternal(GridTankUnit t) => targetUnit = t;
+
+        /// <summary>post-move CommandBox 표시 중인가 (이동 완료 후 행동 선택 대기)</summary>
+        public bool IsPostMoveContext => isPostMoveContext;
+
+        /// <summary>이동 취소 — preMoveSnapshot으로 유닛 원위치 복귀. isPostMoveContext 해제.</summary>
+        public void UndoMoveSnapshot()
+        {
+            if (selectedUnit == null) return;
+            selectedUnit.UndoMove(preMoveGridPos, preMoveHullAngle, preMoveAP, grid);
+            isPostMoveContext = false;
+            postMovePendingDirection = false;
+            visualizer.ClearHighlights();
+            commandRouter.HideCommandBox();
+            Debug.Log($"[CRUX] 이동 취소 — {selectedUnit.Data?.tankName} 원위치 복귀 ({preMoveGridPos})");
+        }
 
         /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
         public List<GridTankUnit> GetAllUnitsForRangeCheck()
@@ -301,6 +324,13 @@ namespace Crux.Core
             if (currentPhase == TurnPhase.PlayerTurn)
             {
                 inputHandler?.Tick();
+
+                // 즉시 이동 완료 감시 — 이동 종료 시 방향 선택 진입
+                if (postMovePendingDirection && selectedUnit != null && !selectedUnit.IsMoving)
+                {
+                    postMovePendingDirection = false;
+                    EnterPostMoveDirectionSelect();
+                }
             }
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
@@ -540,6 +570,8 @@ namespace Crux.Core
         public void CancelToSelect()
         {
             inputMode = InputMode.Select;
+            isPostMoveContext = false;
+            postMovePendingDirection = false;
             visualizer.ClearHighlights();
             targetUnit = null;
             pendingTarget = null;
@@ -583,12 +615,34 @@ namespace Crux.Core
 
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
 
+        /// <summary>이동 완료 후 방향 선택 모드 진입 — Update의 postMovePendingDirection 감시에서 호출</summary>
+        private void EnterPostMoveDirectionSelect()
+        {
+            if (selectedUnit == null) return;
+            pendingFacingAngle = selectedUnit.HullAngle; // 현재 각도를 기본값으로
+            inputMode = InputMode.MoveDirectionSelect;
+            visualizer.HighlightCell(pendingMoveTarget, Color.cyan);
+            // 휠 UI는 BattleCommandRouter가 담당 (작업 5)
+            commandRouter.ShowRotationWheelForPostMove();
+        }
+
         public void CommitMoveDirection()
         {
             if (selectedUnit == null) return;
-            selectedUnit.MoveToWithFacing(pendingMoveTarget, pendingFacingAngle);
+            // 이동은 이미 완료됨 — 방향만 RotateHullInPlace로 적용
+            float delta = pendingFacingAngle - selectedUnit.HullAngle;
+            // 각도 정규화: delta를 -180~180 범위로
+            while (delta > 180f)  delta -= 360f;
+            while (delta < -180f) delta += 360f;
+
+            if (Mathf.Abs(delta) > 1f)
+                selectedUnit.RotateHullInPlace(delta);
+
             visualizer.ClearHighlights();
+            isPostMoveContext = true;
             inputMode = InputMode.Select;
+            // post-move CommandBox 표시 (BattleCommandRouter가 컨텍스트 필터 적용)
+            commandRouter.ShowPostMoveCommandBox();
         }
 
         public void CommitMoveDirectionFromMouse()
@@ -725,13 +779,20 @@ namespace Crux.Core
             int cost = (path.Count - 1) * selectedUnit.GetMoveCostPerCell();
             if (cost > selectedUnit.CurrentAP) return;
 
-            // 방향 선택 단계로 전환
+            // 이동 직전 스냅샷 저장
+            preMoveGridPos = selectedUnit.GridPosition;
+            preMoveHullAngle = selectedUnit.HullAngle;
+            preMoveAP = selectedUnit.CurrentAP;
+
+            // 즉시 이동 (현재 각도 유지) — 방향은 이동 완료 후 선택
             pendingMoveTarget = pos;
             pendingMoveCost = cost;
-            pendingFacingAngle = selectedUnit.HullAngle; // 기본: 현재 방향 유지
-            inputMode = InputMode.MoveDirectionSelect;
+            bool moved = selectedUnit.MoveToWithFacing(pos, selectedUnit.HullAngle);
+            if (!moved) return;
+
+            // 이동 완료 대기 플래그 ON — Update에서 IsMoving=false 감지 시 EnterPostMoveDirectionSelect
+            postMovePendingDirection = true;
             visualizer.ClearHighlights();
-            visualizer.HighlightCell(pos, Color.cyan);
         }
 
         private void TrySelectTarget(Vector2Int pos)
