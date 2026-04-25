@@ -100,7 +100,7 @@ namespace Crux.PlayerInput
                     controller.ShowCommandBox();
                     break;
                 case BattleController.InputModeEnum.MoveDirectionSelect:
-                    controller.TryEnterMoveMode();
+                    controller.UndoMoveSnapshot();
                     break;
                 case BattleController.InputModeEnum.Fire:
                     controller.CancelToSelect();

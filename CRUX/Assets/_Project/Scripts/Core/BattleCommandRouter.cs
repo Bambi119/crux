@@ -198,6 +198,7 @@ namespace Crux.Core
             {
                 // 픽셀이 prefab을 아직 만들지 않았거나 경로 불일치 — 키보드 fallback으로 진행
                 Debug.LogWarning("[BattleCommandRouter] RotationWheel prefab not found — keyboard fallback active");
+                controller.SetInputModeInternal(BattleController.InputModeEnum.MoveDirectionSelect);
                 return;
             }
 
@@ -215,6 +216,7 @@ namespace Crux.Core
             {
                 Object.Destroy(wheelObj);
                 Debug.LogWarning("[BattleCommandRouter] RotationWheelController component not found on prefab");
+                controller.SetInputModeInternal(BattleController.InputModeEnum.MoveDirectionSelect);
                 return;
             }
 
@@ -279,6 +281,7 @@ namespace Crux.Core
             if (success)
             {
                 Debug.Log($"[CRUX] Rotate {pendingRotationDelta}° executed (AP cost)");
+                controller.SetInputModeInternal(BattleController.InputModeEnum.Select);
                 controller.EndPlayerTurn();
             }
             else
