@@ -548,11 +548,23 @@ namespace Crux.Core
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
 
-                        // 플레이어 대상 사격 시 LastEnemyAttackerIndex 기록 — 씬 복귀 후 반격 세션 판단용
-                        if (decision.fireTarget == playerUnit)
-                            BattleStateStorage.SaveLastAttacker(i);
-                        else
-                            BattleStateStorage.SaveLastAttacker(-1);
+                        // 플레이어 대상 사격 시 반격 가능 여부 사전 체크 — FireActionScene 내부 패널용
+                        bool playerCanCounter = false;
+                        if (decision.fireTarget == playerUnit && playerUnit != null && !playerUnit.IsDestroyed)
+                        {
+                            var counterCheck = Combat.CounterFireResolver.CheckWithReason(
+                                playerUnit, enemy, grid);
+                            playerCanCounter = counterCheck.canCounter;
+                            if (playerCanCounter)
+                            {
+                                // 반격 콜백 등록 — CounterFireUIPanel이 선택 확정 시 호출
+                                var capturedEnemy = enemy;
+                                FireActionContext.OnCounterWeaponSelected = w =>
+                                    fireExecutor.EnqueueCounterFire(playerUnit, capturedEnemy, w);
+                                FireActionContext.PendingCounterSelect = true;
+                                Debug.Log($"[CRUX] 플레이어 반격 대기 설정 — 공격자: {enemy.Data?.tankName}");
+                            }
+                        }
 
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
                         stateManager.Save();
@@ -639,9 +651,7 @@ namespace Crux.Core
         /// <summary>반격 취소 — 타이머 중단 + 적 턴 재개</summary>
         public void CancelCounterFire() => counterFireCtrl.Cancel();
 
-        // BattleStateManager / FireExecutor용 내부 접근자
-        internal void StartCounterFireWeaponSelectInternal(GridTankUnit attacker)
-            => counterFireCtrl.Enter(attacker);
+        // FireExecutor용 내부 접근자
         internal Crux.Combat.FireExecutor FireExecutorRef => fireExecutor;
 
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
@@ -730,6 +740,11 @@ namespace Crux.Core
         private void CommitFire(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
             fireExecutor.Execute(attacker, target, weapon);
+
+            // AI 반격 체크 — 공격 대상 적이 플레이어를 반격할 수 있으면 자동 큐 추가
+            if (target != null && target.side == PlayerSide.Enemy)
+                fireExecutor.TryEnqueueAIRetaliation(target, attacker, grid);
+
             stateManager.Save();
             SceneManager.LoadScene("FireActionScene");
         }

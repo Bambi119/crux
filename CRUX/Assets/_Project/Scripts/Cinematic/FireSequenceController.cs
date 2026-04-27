@@ -31,6 +31,8 @@ namespace Crux.Cinematic
         private FireCinematicFX fx;
         private FirePostImpactHandler postImpact;
 
+        [SerializeField] private CounterFireUIPanel counterUIPanel;
+
         // ===== internal accessor — FirePostImpactHandler 사용 =====
 
         /// <summary>PostImpactHandler에서 내러티브 텍스트 설정</summary>
@@ -80,30 +82,56 @@ namespace Crux.Cinematic
         {
             if (sequenceDone && (Input.anyKeyDown || Input.GetMouseButtonDown(0)))
             {
-                if (FireActionContext.HasNext)
-                {
-                    // 반격 연출 — 기존 전차 오브젝트 제거 후 다음 액션으로
-                    if (attackerObj != null) Destroy(attackerObj);
-                    if (targetObj != null) Destroy(targetObj);
-                    attackerObj = null;
-                    targetObj = null;
-                    attackerTurret = null;
-
-                    FireActionContext.Advance();
-                    sequenceDone = false;
-                    showNarrative = false;
-                    narrativeText = "";
-                    subText = "";
-
-                    InitializeForCurrentAction();
-                    StartCoroutine(PlaySequence());
-                }
-                else
-                {
-                    // Clear는 복귀 씬의 ApplyPendingResult에서 처리
-                    SceneManager.LoadScene(GetReturnScene());
-                }
+                HandleSequenceDone();
             }
+        }
+
+        /// <summary>시퀀스 완료 처리 — HasNext / PendingCounterSelect / 복귀 분기</summary>
+        private void HandleSequenceDone()
+        {
+            if (FireActionContext.HasNext)
+            {
+                AdvanceToNextAction();
+            }
+            else if (FireActionContext.PendingCounterSelect && counterUIPanel != null)
+            {
+                sequenceDone = false; // 패널 활성 중 재입력 차단
+                string attackerName = data.attackerName ?? "적";
+                counterUIPanel.Show(null, attackerName,
+                    confirmCallback: w =>
+                    {
+                        FireActionContext.OnCounterWeaponSelected?.Invoke(w);
+                        FireActionContext.PendingCounterSelect = false;
+                        if (FireActionContext.HasNext) AdvanceToNextAction();
+                        else SceneManager.LoadScene(GetReturnScene());
+                    },
+                    cancelCallback: () =>
+                    {
+                        FireActionContext.PendingCounterSelect = false;
+                        SceneManager.LoadScene(GetReturnScene());
+                    });
+            }
+            else
+            {
+                SceneManager.LoadScene(GetReturnScene()); // Clear는 ApplyPendingResult에서
+            }
+        }
+
+        /// <summary>다음 액션으로 전환 — 기존 오브젝트 제거 후 재시작</summary>
+        private void AdvanceToNextAction()
+        {
+            if (attackerObj != null) Destroy(attackerObj);
+            if (targetObj != null) Destroy(targetObj);
+            attackerObj = null;
+            targetObj = null;
+            attackerTurret = null;
+            FireActionContext.Advance();
+            sequenceDone = false;
+            showNarrative = false;
+            narrativeText = "";
+            subText = "";
+            InitializeForCurrentAction();
+            StartCoroutine(PlaySequence());
         }
 
         /// <summary>현재 FireActionContext.Current 기준으로 data 갱신</summary>

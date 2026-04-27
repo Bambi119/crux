@@ -491,6 +491,26 @@ namespace Crux.Combat
             };
         }
 
+        /// <summary>
+        /// AI 반격 자동 처리 — 플레이어 사격 후 대상 적이 반격 가능하면 자동 Enqueue.
+        /// UI 없음. 조건 미충족 시 조용히 무시.
+        /// </summary>
+        public void TryEnqueueAIRetaliation(GridTankUnit aiUnit, GridTankUnit playerUnit, GridManager gridMgr)
+        {
+            if (aiUnit == null || aiUnit.IsDestroyed) return;
+            if (playerUnit == null || playerUnit.IsDestroyed) return;
+
+            var check = CounterFireResolver.CheckWithReason(aiUnit, playerUnit, gridMgr);
+            if (!check.canCounter)
+            {
+                Debug.Log($"[CRUX] AI 반격 불가 — {aiUnit.Data?.tankName}: {check.reason}");
+                return;
+            }
+
+            EnqueueCounterFire(aiUnit, playerUnit, WeaponType.MainGun);
+            Debug.Log($"[CRUX] AI counter enqueued — {aiUnit.Data?.tankName} → {playerUnit.Data?.tankName}");
+        }
+
         /// <summary>SpriteContainer가 있으면 그 회전 오프셋을 반환</summary>
         private float GetSpriteRotOffset(Transform unitRoot)
         {

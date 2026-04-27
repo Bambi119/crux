@@ -180,40 +180,13 @@ namespace Crux.Core
                 // 먼저 클리어 — 적 턴 재개 시 새 데이터를 덮어쓸 수 있도록
                 int nextEnemy = state.nextEnemyIndex;
                 TurnPhase savedPhase = state.phase;
-                int lastAttackerIdx = BattleStateStorage.LastEnemyAttackerIndex;
 
                 BattleStateStorage.Clear();
+                // FireActionContext는 반격 여부 판단 후 클리어 (PendingCounterSelect 보존 필요 없음)
                 FireActionContext.Clear();
 
-                // 적 턴 중이었으며 마지막 적이 플레이어를 공격했고 플레이어 생존 → 반격 세션 체크
-                if (savedPhase == TurnPhase.EnemyTurn && lastAttackerIdx >= 0
-                    && ctrl.PlayerUnitRef != null && !ctrl.PlayerUnitRef.IsDestroyed)
-                {
-                    GridTankUnit lastAttacker = null;
-                    if (lastAttackerIdx < ctrl.EnemyUnitsRef.Count)
-                        lastAttacker = ctrl.EnemyUnitsRef[lastAttackerIdx];
-
-                    if (lastAttacker != null && !lastAttacker.IsDestroyed)
-                    {
-                        var checkResult = CounterFireResolver.CheckWithReason(
-                            ctrl.PlayerUnitRef, lastAttacker, ctrl.GridRef);
-
-                        if (checkResult.canCounter)
-                        {
-                            ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
-                            ctrl.CurrentEnemyIndexInternal = nextEnemy;
-                            // 반격 WeaponSelect 세션 진입 — 적 턴 재개 차단
-                            ctrl.StartCounterFireWeaponSelectInternal(lastAttacker);
-                            return;
-                        }
-                        else
-                        {
-                            CounterFireResolver.LogResult(ctrl.PlayerUnitRef, lastAttacker, checkResult);
-                        }
-                    }
-                }
-
                 // 반격 세션 없음 — 적 턴 재개 또는 플레이어 사격 후 복귀
+                // 반격 WeaponSelect는 FireActionScene 내부에서 처리 완료됨.
                 if (savedPhase == TurnPhase.EnemyTurn)
                 {
                     ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;

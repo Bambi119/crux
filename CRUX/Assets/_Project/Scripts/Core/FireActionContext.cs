@@ -22,6 +22,18 @@ namespace Crux.Core
         /// <summary>현재 다음 사격이 있는가</summary>
         public static bool HasNext => CurrentIndex + 1 < Actions.Count;
 
+        /// <summary>
+        /// 반격 WeaponSelect 필요 플래그.
+        /// 적이 플레이어를 공격하고 플레이어가 반격 가능한 상황 — FireActionScene 내부에서 처리.
+        /// </summary>
+        public static bool PendingCounterSelect;
+
+        /// <summary>
+        /// 반격 무기 선택 완료 콜백 — BattleController 측이 등록, CounterFireUIPanel이 호출.
+        /// 선택된 WeaponType을 인자로 전달.
+        /// </summary>
+        public static System.Action<WeaponType> OnCounterWeaponSelected;
+
         /// <summary>사격 데이터를 큐에 추가</summary>
         public static void Enqueue(FireActionData data)
         {
@@ -40,6 +52,8 @@ namespace Crux.Core
         {
             Actions.Clear();
             CurrentIndex = 0;
+            PendingCounterSelect = false;
+            OnCounterWeaponSelected = null;
         }
     }
 
