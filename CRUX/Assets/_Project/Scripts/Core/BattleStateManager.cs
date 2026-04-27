@@ -122,19 +122,21 @@ namespace Crux.Core
                 ctrl.TurnCountInternal = state.turnCount;
                 ctrl.CurrentPhaseInternal = state.phase;
 
-                // 연출 결과 데미지 적용
-                var actionData = FireActionContext.Current;
-                GridTankUnit target = null;
-
-                if (actionData.targetSide == PlayerSide.Enemy
-                    && actionData.targetUnitIndex >= 0
-                    && actionData.targetUnitIndex < ctrl.EnemyUnitsRef.Count)
-                    target = ctrl.EnemyUnitsRef[actionData.targetUnitIndex];
-                else if (actionData.targetSide == PlayerSide.Player)
-                    target = ctrl.PlayerUnitRef;
-
-                if (target != null && !target.IsDestroyed)
+                // 연출 결과 데미지 적용 — 큐 전체 순회 (주포 + 반격 포함)
+                for (int ai = 0; ai < FireActionContext.Actions.Count; ai++)
                 {
+                    var actionData = FireActionContext.Actions[ai];
+                    GridTankUnit target = null;
+
+                    if (actionData.targetSide == PlayerSide.Enemy
+                        && actionData.targetUnitIndex >= 0
+                        && actionData.targetUnitIndex < ctrl.EnemyUnitsRef.Count)
+                        target = ctrl.EnemyUnitsRef[actionData.targetUnitIndex];
+                    else if (actionData.targetSide == PlayerSide.Player)
+                        target = ctrl.PlayerUnitRef;
+
+                    if (target == null || target.IsDestroyed) continue;
+
                     if (actionData.weaponType == WeaponType.MainGun)
                     {
                         // 주포 데미지 — 사전 롤된 결과 적용

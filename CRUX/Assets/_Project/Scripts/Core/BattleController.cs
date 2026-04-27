@@ -537,6 +537,17 @@ namespace Crux.Core
                     {
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
+
+                        // 플레이어가 대상일 경우 — 반격 프롬프트 (Y/N, 1.5초 자동 확인)
+                        if (decision.fireTarget == playerUnit)
+                        {
+                            var prompt = CounterFirePromptController.Prompt(
+                                playerUnit, enemy, grid,
+                                (text, col, dur) => hud?.ShowBanner(text, col, dur));
+                            if (prompt != null)
+                                yield return StartCoroutine(prompt);
+                        }
+
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
                         stateManager.Save();
                         SceneManager.LoadScene("FireActionScene");

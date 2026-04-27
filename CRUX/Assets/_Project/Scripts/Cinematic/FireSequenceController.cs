@@ -61,8 +61,6 @@ namespace Crux.Cinematic
                 return;
             }
 
-            data = FireActionContext.Current;
-
             cam = UnityEngine.Camera.main;
             cam.orthographic = true;
             cam.orthographicSize = 3f;
@@ -74,6 +72,7 @@ namespace Crux.Cinematic
             fx.SetCamera(cam);
             postImpact = new FirePostImpactHandler(this, fx);
 
+            InitializeForCurrentAction();
             StartCoroutine(PlaySequence());
         }
 
@@ -81,9 +80,36 @@ namespace Crux.Cinematic
         {
             if (sequenceDone && (Input.anyKeyDown || Input.GetMouseButtonDown(0)))
             {
-                // Clear는 복귀 씬의 ApplyPendingResult에서 처리
-                SceneManager.LoadScene(GetReturnScene());
+                if (FireActionContext.HasNext)
+                {
+                    // 반격 연출 — 기존 전차 오브젝트 제거 후 다음 액션으로
+                    if (attackerObj != null) Destroy(attackerObj);
+                    if (targetObj != null) Destroy(targetObj);
+                    attackerObj = null;
+                    targetObj = null;
+                    attackerTurret = null;
+
+                    FireActionContext.Advance();
+                    sequenceDone = false;
+                    showNarrative = false;
+                    narrativeText = "";
+                    subText = "";
+
+                    InitializeForCurrentAction();
+                    StartCoroutine(PlaySequence());
+                }
+                else
+                {
+                    // Clear는 복귀 씬의 ApplyPendingResult에서 처리
+                    SceneManager.LoadScene(GetReturnScene());
+                }
             }
+        }
+
+        /// <summary>현재 FireActionContext.Current 기준으로 data 갱신</summary>
+        private void InitializeForCurrentAction()
+        {
+            data = FireActionContext.Current;
         }
 
         /// <summary>연출 종료 후 복귀할 전략 씬 — BattleStateStorage에 기록된 이름 우선</summary>

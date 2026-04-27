@@ -27,6 +27,9 @@ namespace Crux.Combat
         /// <summary>무기 분기 — FireActionContext까지 설정. 씬 전환은 호출자가 수행.</summary>
         public void Execute(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
+            // 스테일 액션 제거 — 첫 Enqueue 전에 컨텍스트 초기화
+            FireActionContext.Clear();
+
             if (weapon == WeaponType.MainGun)
             {
                 ExecuteMainGun(attacker, target);
@@ -42,6 +45,23 @@ namespace Crux.Combat
             else
             {
                 ExecuteMainGun(attacker, target);
+            }
+
+            // 반격 조건 검사 — 주포 사격 후에만 (기총 반격은 Phase 2)
+            if (weapon == WeaponType.MainGun)
+            {
+                if (!target.IsDestroyed && !target.HasCounteredThisExchange)
+                {
+                    var checkResult = CounterFireResolver.CheckWithReason(target, attacker, grid);
+                    if (checkResult.canCounter)
+                    {
+                        ExecuteCounter(target, attacker);
+                    }
+                    else
+                    {
+                        CounterFireResolver.LogResult(target, attacker, checkResult);
+                    }
+                }
             }
         }
 
@@ -176,7 +196,7 @@ namespace Crux.Combat
                 });
             }
 
-            FireActionContext.SetAction(new FireActionData
+            FireActionContext.Enqueue(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
                 attackerHullAngle = attacker.HullAngle,
@@ -292,7 +312,7 @@ namespace Crux.Combat
                 });
             }
 
-            FireActionContext.SetAction(new FireActionData
+            FireActionContext.Enqueue(new FireActionData
             {
                 attackerWorldPos = attacker.transform.position,
                 attackerHullAngle = attacker.HullAngle,
@@ -394,6 +414,86 @@ namespace Crux.Combat
             }
 
             return "개활지";
+        }
+
+        /// <summary>반격 사격 — 방어측이 공격측에게 반격 (−15% 명중 페널티)</summary>
+        private void ExecuteCounter(GridTankUnit attacker, GridTankUnit target)
+        {
+            attacker.ConsumeFireAP();
+            attacker.ConsumeMainGunRound();
+            attacker.SetCountered(true);
+
+            float hitChance = Mathf.Clamp01(CalculateHitChanceWithCover(attacker, target) - 0.15f);
+            bool hit = Random.value <= hitChance;
+
+            ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
+            Unit.DamageOutcome mainOutcome = default;
+
+            if (hit)
+            {
+                var hitZone = PenetrationCalculator.DetermineHitZone(
+                    attacker.transform.position, target.transform.position, target.HullAngle);
+                float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
+                float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                    attacker.transform.position, target.transform.position, target.HullAngle, hitZone);
+                float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+                float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+                var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+                float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                float finalDmg = outcome switch
+                {
+                    ShotOutcome.Ricochet    => dmg * 0.03f,
+                    ShotOutcome.Hit         => dmg,
+                    ShotOutcome.Penetration => dmg * 2.5f,
+                    _                       => 0f
+                };
+                result = new ShotResult
+                {
+                    hit = true, outcome = outcome, hitZone = hitZone,
+                    effectiveArmor = effectiveArmor, damageDealt = finalDmg, hitChance = hitChance
+                };
+                if (finalDmg > 0)
+                    mainOutcome = target.PreRollDamage(new DamageInfo
+                    {
+                        damage = finalDmg, outcome = outcome, hitZone = hitZone, attacker = attacker
+                    });
+            }
+
+            FireActionContext.Enqueue(BuildCounterFireActionData(attacker, target, result, mainOutcome));
+            Debug.Log($"[FIRE] 반격 Enqueue — {attacker.Data?.tankName} → {target.Data?.tankName} hit={hit} outcome={result.outcome}");
+        }
+
+        /// <summary>반격 FireActionData 빌드 (엄폐 없음 — 반격은 개활지 판정)</summary>
+        private FireActionData BuildCounterFireActionData(GridTankUnit attacker, GridTankUnit target,
+                                                          ShotResult result, Unit.DamageOutcome mainOutcome)
+        {
+            int targetIndex = target.side == PlayerSide.Enemy ? enemyUnits.IndexOf(target) : -1;
+            var attackerSr = attacker.GetComponentInChildren<SpriteRenderer>();
+            var attackerTurretSr = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
+            var targetSr = target.GetComponentInChildren<SpriteRenderer>();
+            return new FireActionData
+            {
+                attackerWorldPos = attacker.transform.position,
+                attackerHullAngle = attacker.HullAngle,
+                attackerName = attacker.Data.tankName,
+                attackerSide = attacker.side,
+                targetWorldPos = target.transform.position,
+                targetHullAngle = target.HullAngle,
+                targetName = target.Data.tankName,
+                weaponType = WeaponType.MainGun,
+                ammoData = attacker.currentAmmo,
+                result = result,
+                mainOutcome = mainOutcome,
+                targetUnitIndex = targetIndex,
+                targetSide = target.side,
+                attackerHullSprite = attackerSr != null ? attackerSr.sprite : null,
+                attackerTurretSprite = attackerTurretSr != null ? attackerTurretSr.sprite : null,
+                attackerSpriteRotOffset = GetSpriteRotOffset(attacker.transform),
+                attackerMuzzleOffset = attacker.Data.muzzleOffset,
+                targetHullSprite = targetSr != null ? targetSr.sprite : null,
+                targetTurretSprite = target.transform.Find("Turret")?.GetComponent<SpriteRenderer>()?.sprite,
+                targetSpriteRotOffset = GetSpriteRotOffset(target.transform)
+            };
         }
 
         /// <summary>SpriteContainer가 있으면 그 회전 오프셋을 반환</summary>
