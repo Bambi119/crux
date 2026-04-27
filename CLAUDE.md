@@ -218,7 +218,6 @@ Data ──┐
 
 | ID | 부채 | 심각도 | 해결 경로 |
 |---|---|---|---|
-| TD-02 | `FireSequenceController.cs` 1,137 LOC 단일 파일 | 🟡 P2 | 시퀀스 단계별 분할 |
 | TD-03 | `FireActionContext.cs` 4개 타입 혼재 | 🟢 P3 | 부가 정리 |
 | TD-04 | 빈 의도 폴더 Enemy/Loot/Vision | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
 | TD-05 | `HitEffects`/`MuzzleFlash`/VFX 렌더 상수 하드코드 | 🟢 P4 | 밸런스 패스 때 Data SO로 |
@@ -237,3 +236,4 @@ Data ──┐
 | 2026-04-24 | §8 자율 루프 확장 — 4-역할 MCP 도구 경계 표·보고 규율 신설 / §9 P-S 로드맵 git 이력으로 이관 / 전반 압축 |
 | 2026-04-25 | §7.2 씬 파일 경로 규칙 신설 — `Assets/_Project/Scenes/` 전용, 다중 워크트리 `list_unity_project_roots` 시작 확인 의무화 (픽셀 UI 배선 루트 저장 사고 재발 방지) |
 | 2026-04-27 | §9 TD-01 해소 — `PostMoveController` 추출, `BattleController.cs` 863 → 780 LOC (`8f673dc`) |
+| 2026-04-27 | §9 TD-02 해소 — `FireCinematicFX`/`FirePostImpactHandler` 추출, `FireSequenceController.cs` 1153 → 727 LOC (`23b0e11`) |
