@@ -30,7 +30,7 @@ Crux.Core       /Scripts/Core        전투 상태·턴 오케스트레이션만
 - **한 폴더 안쪽만 자기 namespace 사용**. 폴더 밖에 같은 namespace 코드 금지
 - **`Crux.Core`는 순수 오케스트레이션**. `OnGUI`·`Input.Get*`·카메라 조작·스프라이트 생성 금지
 - **ScriptableObject 데이터 정의는 `Crux.Data`만**. 다른 namespace `[CreateAssetMenu]` 금지
-- `Editor/` 코드는 런타임 코드를 참조하지 않음 (반대는 OK)
+- 런타임 코드는 `Editor/` 코드를 참조하지 않음 (`Editor/` → 런타임은 OK)
 
 ## 2. 파일·메서드 크기 예산
 
