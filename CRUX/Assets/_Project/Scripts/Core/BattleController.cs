@@ -98,13 +98,8 @@ namespace Crux.Core
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
 
-        // post-move 흐름 제어
-        private bool postMovePendingDirection;  // 이동 완료 대기 중 — EnterPostMoveDirectionSelect 트리거
-        private bool isPostMoveContext;          // post-move CommandBox 표시 중
-        // 이동 직전 스냅샷 (UndoMove용)
-        private Vector2Int preMoveGridPos;
-        private float preMoveHullAngle;
-        private int preMoveAP;
+        // post-move 흐름 제어 (PostMoveController로 추출됨)
+        private PostMoveController postMoveController;
 
         // 카메라
         private BattleCamera battleCam;
@@ -137,21 +132,10 @@ namespace Crux.Core
         internal BattleCamera BattleCam => battleCam;
 
         /// <summary>post-move CommandBox 표시 중인가 (이동 완료 후 행동 선택 대기)</summary>
-        public bool IsPostMoveContext => isPostMoveContext;
+        public bool IsPostMoveContext => postMoveController.IsPostMoveContext;
 
         /// <summary>이동 취소 — preMoveSnapshot으로 유닛 원위치 복귀. RotationWheel·CommandBox·InputMode 모두 정리.</summary>
-        public void UndoMoveSnapshot()
-        {
-            if (selectedUnit == null) return;
-            selectedUnit.UndoMove(preMoveGridPos, preMoveHullAngle, preMoveAP, grid);
-            isPostMoveContext = false;
-            postMovePendingDirection = false;
-            visualizer.ClearHighlights();
-            commandRouter.HideRotationWheel();
-            commandRouter.HideCommandBox();
-            inputMode = InputMode.Select;
-            Debug.Log($"[CRUX] 이동 취소 — {selectedUnit.Data?.tankName} 원위치 복귀 ({preMoveGridPos})");
-        }
+        public void UndoMoveSnapshot() => postMoveController.UndoMoveSnapshot();
 
         /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
         public List<GridTankUnit> GetAllUnitsForRangeCheck()
@@ -178,10 +162,23 @@ namespace Crux.Core
         internal void ReinitializeBattle() => InitializeBattle();
         internal void StartProcessEnemyTurnFrom(int startIdx) => StartCoroutine(ProcessEnemyTurn(startIdx));
 
+        // PostMoveController용 internal 접근자
+        internal GridTankUnit SelectedUnitInternal   { get => selectedUnit;      set => selectedUnit = value; }
+        internal GridTankUnit InspectedUnitInternal  { get => inspectedUnit;     set => inspectedUnit = value; }
+        internal GridTankUnit TargetUnitInternal     { get => targetUnit;        set => targetUnit = value; }
+        internal GridTankUnit PendingTargetInternal  { get => pendingTarget;     set => pendingTarget = value; }
+        internal Vector2Int   PendingMoveTargetInternal { get => pendingMoveTarget; set => pendingMoveTarget = value; }
+        internal int          PendingMoveCostInternal   { get => pendingMoveCost;   set => pendingMoveCost = value; }
+        internal float        PendingFacingAngleInternal { get => pendingFacingAngle; set => pendingFacingAngle = value; }
+        internal InputModeEnum InputModeInternal { get => (InputModeEnum)(int)inputMode; set => inputMode = (InputMode)(int)value; }
+        internal BattleCommandRouter CommandRouterRef => commandRouter;
+        internal void ShowCommandBoxInternal() => commandRouter.ShowCommandBox();
+
         private void Start()
         {
             stateManager = new BattleStateManager(this);
             commandRouter = new BattleCommandRouter(this);
+            postMoveController = new PostMoveController(this);
 
             if (FireActionContext.HasPendingAction)
             {
@@ -327,13 +324,7 @@ namespace Crux.Core
             if (currentPhase == TurnPhase.PlayerTurn)
             {
                 inputHandler?.Tick();
-
-                // 즉시 이동 완료 감시 — 이동 종료 시 방향 선택 진입
-                if (postMovePendingDirection && selectedUnit != null && !selectedUnit.IsMoving)
-                {
-                    postMovePendingDirection = false;
-                    EnterPostMoveDirectionSelect();
-                }
+                postMoveController.Tick();
             }
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
@@ -573,8 +564,6 @@ namespace Crux.Core
         public void CancelToSelect()
         {
             inputMode = InputMode.Select;
-            isPostMoveContext = false;
-            postMovePendingDirection = false;
             visualizer.ClearHighlights();
             targetUnit = null;
             pendingTarget = null;
@@ -618,18 +607,6 @@ namespace Crux.Core
 
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
 
-        /// <summary>이동 완료 후 방향 선택 모드 진입 — Update의 postMovePendingDirection 감시에서 호출</summary>
-        private void EnterPostMoveDirectionSelect()
-        {
-            if (selectedUnit == null) return;
-            isPostMoveContext = true;
-            pendingFacingAngle = selectedUnit.HullAngle; // 현재 각도를 기본값으로
-            inputMode = InputMode.MoveDirectionSelect;
-            visualizer.HighlightCell(pendingMoveTarget, Color.cyan);
-            // 휠 UI는 BattleCommandRouter가 담당 (작업 5)
-            commandRouter.ShowRotationWheel();
-        }
-
         public void CommitMoveDirection()
         {
             if (selectedUnit == null) return;
@@ -643,7 +620,7 @@ namespace Crux.Core
                 selectedUnit.RotateHullInPlace(delta);
 
             visualizer.ClearHighlights();
-            isPostMoveContext = true;
+            postMoveController.IsPostMoveContext = true;
             inputMode = InputMode.Select;
             // post-move CommandBox 표시 (BattleCommandRouter가 컨텍스트 필터 적용)
             commandRouter.ShowPostMoveCommandBox();
@@ -692,9 +669,9 @@ namespace Crux.Core
             if (!grid.IsInBounds(gridPos)) return;
             switch (inputMode)
             {
-                case InputMode.Move: TryMoveToCell(gridPos); break;
-                case InputMode.Fire: TrySelectTarget(gridPos); break;
-                case InputMode.Select: InspectCell(gridPos); break;
+                case InputMode.Move:   postMoveController.TryMoveToCell(gridPos); break;
+                case InputMode.Fire:   postMoveController.TrySelectTarget(gridPos); break;
+                case InputMode.Select: postMoveController.InspectCell(gridPos); break;
             }
         }
 
@@ -739,26 +716,6 @@ namespace Crux.Core
             SceneManager.LoadScene("FireActionScene");
         }
 
-        /// <summary>Select 모드에서 셀 클릭 — 유닛이면 정보 조회</summary>
-        private void InspectCell(Vector2Int pos)
-        {
-            var cell = grid.GetCell(pos);
-            if (cell == null || cell.Occupant == null)
-            {
-                inspectedUnit = null;
-                return;
-            }
-            var unit = cell.Occupant.GetComponent<GridTankUnit>();
-            if (unit == null || unit.IsDestroyed)
-            {
-                inspectedUnit = null;
-                return;
-            }
-            // 아군 클릭 → selectedUnit 갱신 + CommandBox 표시 / 적군 → inspectedUnit
-            inspectedUnit = unit.side == PlayerSide.Player ? null : unit;
-            if (unit.side == PlayerSide.Player) { selectedUnit = unit; ShowCommandBox(); }
-        }
-
         /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
         private float GetSnappedDirectionFromMouse(Vector2Int targetCell)
         {
@@ -773,46 +730,6 @@ namespace Crux.Core
             if (deg < 0) deg += 360f;
             return AngleUtil.SnapTo60(deg);
         }
-
-        private void TryMoveToCell(Vector2Int pos)
-        {
-            // 경로 비용 계산
-            var path = grid.FindPath(selectedUnit.GridPosition, pos);
-            if (path == null || path.Count <= 1) return;
-
-            int cost = (path.Count - 1) * selectedUnit.GetMoveCostPerCell();
-            if (cost > selectedUnit.CurrentAP) return;
-
-            // 이동 직전 스냅샷 저장
-            preMoveGridPos = selectedUnit.GridPosition;
-            preMoveHullAngle = selectedUnit.HullAngle;
-            preMoveAP = selectedUnit.CurrentAP;
-
-            // 즉시 이동 (현재 각도 유지) — 방향은 이동 완료 후 선택
-            pendingMoveTarget = pos;
-            pendingMoveCost = cost;
-            bool moved = selectedUnit.MoveToWithFacing(pos, selectedUnit.HullAngle);
-            if (!moved) return;
-
-            // 이동 완료 대기 플래그 ON — Update에서 IsMoving=false 감지 시 EnterPostMoveDirectionSelect
-            postMovePendingDirection = true;
-            visualizer.ClearHighlights();
-        }
-
-        private void TrySelectTarget(Vector2Int pos)
-        {
-            var cell = grid.GetCell(pos);
-            if (cell == null || cell.Occupant == null) return;
-
-            var target = cell.Occupant.GetComponent<GridTankUnit>();
-            if (target == null || target.IsDestroyed || target.side == PlayerSide.Player) return;
-
-            targetUnit = target;
-            pendingTarget = target;
-            inputMode = InputMode.WeaponSelect;
-            visualizer.ClearHighlights();
-        }
-
 
         /// <summary>거리 기반 명중률 — FireExecutor의 wrapper (호환성 유지)</summary>
         public float CalculateHitChance(int distance, GridTankUnit target)
