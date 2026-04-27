@@ -148,6 +148,10 @@ namespace Crux.Core
             return allUnits;
         }
 
+        // 반격 WeaponSelect 세션 헬퍼 (CounterFireController 위임)
+        private Crux.Combat.CounterFireSession counterFireSession;
+        private CounterFireController counterFireCtrl;
+
         // ===== 상태 저장/복원 관리자 (P-S6) =====
         private BattleStateManager stateManager;
 
@@ -161,6 +165,9 @@ namespace Crux.Core
         internal int CurrentEnemyIndexInternal { get => currentEnemyIndex; set => currentEnemyIndex = value; }
         internal void ReinitializeBattle() => InitializeBattle();
         internal void StartProcessEnemyTurnFrom(int startIdx) => StartCoroutine(ProcessEnemyTurn(startIdx));
+        internal BattleStateManager StateManagerRef => stateManager;
+        internal WeaponType SelectedWeaponInternal { get => selectedWeapon; set => selectedWeapon = value; }
+        internal void StartCoroutinePublic(System.Collections.IEnumerator routine) => StartCoroutine(routine);
 
         // PostMoveController용 internal 접근자
         internal GridTankUnit SelectedUnitInternal   { get => selectedUnit;      set => selectedUnit = value; }
@@ -179,6 +186,8 @@ namespace Crux.Core
             stateManager = new BattleStateManager(this);
             commandRouter = new BattleCommandRouter(this);
             postMoveController = new PostMoveController(this);
+            counterFireSession = new Crux.Combat.CounterFireSession();
+            counterFireCtrl = new CounterFireController(this, counterFireSession);
 
             if (FireActionContext.HasPendingAction)
             {
@@ -198,6 +207,7 @@ namespace Crux.Core
 
         private void InitializeBattle()
         {
+            counterFireSession?.Reset();
             moraleRouter?.Detach();
             // 그리드 — 테스트 맵일 경우 차원 확장
             var gridObj = new GameObject("Grid");
@@ -538,15 +548,11 @@ namespace Crux.Core
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
 
-                        // 플레이어가 대상일 경우 — 반격 프롬프트 (Y/N, 1.5초 자동 확인)
+                        // 플레이어 대상 사격 시 LastEnemyAttackerIndex 기록 — 씬 복귀 후 반격 세션 판단용
                         if (decision.fireTarget == playerUnit)
-                        {
-                            var prompt = CounterFirePromptController.Prompt(
-                                playerUnit, enemy, grid,
-                                (text, col, dur) => hud?.ShowBanner(text, col, dur));
-                            if (prompt != null)
-                                yield return StartCoroutine(prompt);
-                        }
+                            BattleStateStorage.SaveLastAttacker(i);
+                        else
+                            BattleStateStorage.SaveLastAttacker(-1);
 
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
                         stateManager.Save();
@@ -616,32 +622,33 @@ namespace Crux.Core
                 CommitFire(selectedUnit, pendingTarget, selectedWeapon);
         }
 
+        // ===== 반격 WeaponSelect 세션 API (CounterFireController 위임) =====
+
+        /// <summary>반격 WeaponSelect 세션 활성 여부</summary>
+        public bool IsCounterFireMode => counterFireCtrl.IsCounterFireMode;
+
+        /// <summary>반격 타이머 잔여 초 (HUD 카운트다운용)</summary>
+        public int CounterFireSecondsLeft => counterFireCtrl.CounterFireSecondsLeft;
+
+        /// <summary>피격 후 반격 WeaponSelect 세션 진입</summary>
+        public void EnterCounterFireWeaponSelect(GridTankUnit attackerEnemy) => counterFireCtrl.Enter(attackerEnemy);
+
+        /// <summary>사용자가 무기 선택 후 반격 확정 — 씬 전환으로 이어짐</summary>
+        public void CommitCounterFire(WeaponType weapon) => counterFireCtrl.Commit(weapon);
+
+        /// <summary>반격 취소 — 타이머 중단 + 적 턴 재개</summary>
+        public void CancelCounterFire() => counterFireCtrl.Cancel();
+
+        // BattleStateManager / FireExecutor용 내부 접근자
+        internal void StartCounterFireWeaponSelectInternal(GridTankUnit attacker)
+            => counterFireCtrl.Enter(attacker);
+        internal Crux.Combat.FireExecutor FireExecutorRef => fireExecutor;
+
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
 
-        public void CommitMoveDirection()
-        {
-            if (selectedUnit == null) return;
-            // 이동은 이미 완료됨 — 방향만 RotateHullInPlace로 적용
-            float delta = pendingFacingAngle - selectedUnit.HullAngle;
-            // 각도 정규화: delta를 -180~180 범위로
-            while (delta > 180f)  delta -= 360f;
-            while (delta < -180f) delta += 360f;
+        public void CommitMoveDirection() => postMoveController.CommitMoveDirection();
 
-            if (Mathf.Abs(delta) > 1f)
-                selectedUnit.RotateHullInPlace(delta);
-
-            visualizer.ClearHighlights();
-            postMoveController.IsPostMoveContext = true;
-            inputMode = InputMode.Select;
-            // post-move CommandBox 표시 (BattleCommandRouter가 컨텍스트 필터 적용)
-            commandRouter.ShowPostMoveCommandBox();
-        }
-
-        public void CommitMoveDirectionFromMouse()
-        {
-            pendingFacingAngle = GetSnappedDirectionFromMouse(pendingMoveTarget);
-            CommitMoveDirection();
-        }
+        public void CommitMoveDirectionFromMouse(float snappedAngle) => postMoveController.CommitMoveDirectionFromMouse(snappedAngle);
 
         public void TryExtinguishAction()
         {
@@ -725,21 +732,6 @@ namespace Crux.Core
             fireExecutor.Execute(attacker, target, weapon);
             stateManager.Save();
             SceneManager.LoadScene("FireActionScene");
-        }
-
-        /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
-        private float GetSnappedDirectionFromMouse(Vector2Int targetCell)
-        {
-            var clickWorld = battleCam?.Cam.ScreenToWorldPoint(Input.mousePosition) ?? Vector3.zero;
-            var cellWorld = grid.GridToWorld(targetCell);
-            var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
-
-            if (diff.sqrMagnitude < 0.01f)
-                return pendingFacingAngle;
-
-            float deg = AngleUtil.FromDir(diff);
-            if (deg < 0) deg += 360f;
-            return AngleUtil.SnapTo60(deg);
         }
 
         /// <summary>거리 기반 명중률 — FireExecutor의 wrapper (호환성 유지)</summary>

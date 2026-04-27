@@ -268,17 +268,23 @@ namespace Crux.UI
             var box = GetBoxStyle();
             var label = GetLabelStyle();
 
-            // 무기 선택 패널
-            float panelW = 420, panelH = 138;
+            // 반격 모드 여부에 따라 패널 높이 분기
+            bool isCounter = controller.IsCounterFireMode;
+            float panelW = 420;
+            float panelH = isCounter ? 160f : 138f;   // 반격: 취소 행 한 줄 추가
             float px = ScaledW / 2 - panelW / 2;
             float py = ScaledH / 2 + 40;
 
             GUI.Box(new Rect(px, py, panelW, panelH), "", box);
 
+            // 타이틀 — 반격 모드이면 카운트다운 포함
             var titleStyle = new GUIStyle(label);
             titleStyle.fontSize = 21;
             titleStyle.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(px, py + 5, panelW, 22), $"무기 선택 — 대상: {controller.PendingTarget.Data.tankName}", titleStyle);
+            string title = isCounter
+                ? $"반격 선택 — [{controller.CounterFireSecondsLeft}s]"
+                : $"무기 선택 — 대상: {controller.PendingTarget.Data.tankName}";
+            GUI.Label(new Rect(px, py + 5, panelW, 22), title, titleStyle);
 
             var normalCol = new Color(0.75f, 0.75f, 0.8f);
             var selCol = new Color(1f, 0.95f, 0.3f);
@@ -312,12 +318,29 @@ namespace Crux.UI
                 DrawItem(3, WeaponType.MountedMG,
                     $"{controller.MountedMGData.mgName} {controller.MountedMGData.burstCount}발  AP:{controller.MountedMGData.apCost}");
 
+            // 반격 모드 전용: [0] 반격 취소 행 (붉은 톤, 무기 행 바로 아래)
+            if (isCounter)
+            {
+                var prevColor = GUI.color;
+                GUI.color = new Color(0.8f, 0.4f, 0.4f, 1f);
+                var cancelStyle = new GUIStyle(label);
+                cancelStyle.fontSize = 18;
+                cancelStyle.normal.textColor = new Color(0.8f, 0.4f, 0.4f, 1f);
+                GUI.Label(new Rect(px + 10, py + 30 + 3 * 23, panelW - 20, 20),
+                    "  [0] 반격 취소", cancelStyle);
+                GUI.color = prevColor;
+            }
+
+            // 힌트 라인 — 반격 모드이면 0/N 취소 안내 포함
             var hintStyle = new GUIStyle(label);
             hintStyle.fontSize = 15;
             hintStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
             hintStyle.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(px, py + 110, panelW, 18),
-                "1/2/3: 선택   Space/클릭: 사격   Tab: 취소", hintStyle);
+            float hintY = py + panelH - 28f;   // 패널 높이에 맞게 상대 위치 계산
+            string hintText = isCounter
+                ? "1/2/3: 선택   Space: 반격   0/N: 취소"
+                : "1/2/3: 선택   Space/클릭: 사격   Tab: 취소";
+            GUI.Label(new Rect(px, hintY, panelW, 18), hintText, hintStyle);
         }
 
         // ===== 모듈 상태 =====

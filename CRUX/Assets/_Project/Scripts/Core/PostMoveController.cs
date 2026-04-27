@@ -1,6 +1,7 @@
 using UnityEngine;
 using Crux.Grid;
 using Crux.Unit;
+using Crux.Combat;
 
 namespace Crux.Core
 {
@@ -137,6 +138,34 @@ namespace Crux.Core
                 bc.SelectedUnitInternal = unit;
                 bc.ShowCommandBoxInternal();
             }
+        }
+
+        // ===== 방향 확정 (BattleController에서 이관) =====
+
+        /// <summary>키보드 방향 선택 후 이동 방향 확정</summary>
+        internal void CommitMoveDirection()
+        {
+            var unit = bc.SelectedUnitInternal;
+            if (unit == null) return;
+            float angle = bc.PendingFacingAngleInternal;
+            float delta = angle - unit.HullAngle;
+            while (delta > 180f)  delta -= 360f;
+            while (delta < -180f) delta += 360f;
+
+            if (Mathf.Abs(delta) > 1f)
+                unit.RotateHullInPlace(delta);
+
+            bc.VisualizerRef.ClearHighlights();
+            isPostMoveContext = true;
+            bc.InputModeInternal = BattleController.InputModeEnum.Select;
+            bc.CommandRouterRef.ShowPostMoveCommandBox();
+        }
+
+        /// <summary>입력 레이어에서 계산된 스냅 각도를 받아 방향 확정 — 마우스 입력은 Crux.PlayerInput 레이어에서 처리</summary>
+        internal void CommitMoveDirectionFromMouse(float snappedAngle)
+        {
+            bc.PendingFacingAngleInternal = snappedAngle;
+            CommitMoveDirection();
         }
     }
 }

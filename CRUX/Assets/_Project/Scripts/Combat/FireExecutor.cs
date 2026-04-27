@@ -47,22 +47,6 @@ namespace Crux.Combat
                 ExecuteMainGun(attacker, target);
             }
 
-            // 반격 조건 검사 — 주포 사격 후에만 (기총 반격은 Phase 2)
-            if (weapon == WeaponType.MainGun)
-            {
-                if (!target.IsDestroyed && !target.HasCounteredThisExchange)
-                {
-                    var checkResult = CounterFireResolver.CheckWithReason(target, attacker, grid);
-                    if (checkResult.canCounter)
-                    {
-                        ExecuteCounter(target, attacker);
-                    }
-                    else
-                    {
-                        CounterFireResolver.LogResult(target, attacker, checkResult);
-                    }
-                }
-            }
         }
 
         /// <summary>주포 사격 실행</summary>
@@ -416,14 +400,25 @@ namespace Crux.Combat
             return "개활지";
         }
 
-        /// <summary>반격 사격 — 방어측이 공격측에게 반격 (−15% 명중 페널티)</summary>
-        private void ExecuteCounter(GridTankUnit attacker, GridTankUnit target)
+        /// <summary>
+        /// 반격 사격 큐 추가 — 피격 후 WeaponSelect 세션에서 사용자가 확정 시 호출.
+        /// Execute()에서 자동 Enqueue하던 방식을 대체.
+        /// weapon이 MainGun 외의 경우 현재 MainGun으로 강등 (Phase 2 TD).
+        /// </summary>
+        public void EnqueueCounterFire(GridTankUnit counterAttacker, GridTankUnit target, WeaponType weapon)
         {
-            attacker.ConsumeFireAP();
-            attacker.ConsumeMainGunRound();
-            attacker.SetCountered(true);
+            // Phase 2 TD: CoaxialMG/MountedMG 반격은 아직 미구현 — MainGun으로 강등
+            if (weapon != WeaponType.MainGun)
+            {
+                Debug.LogWarning($"[FIRE] 반격 무기 {weapon}은 미지원 — MainGun으로 강등 (Phase 2 TD)");
+                weapon = WeaponType.MainGun;
+            }
 
-            float hitChance = Mathf.Clamp01(CalculateHitChanceWithCover(attacker, target) - 0.15f);
+            counterAttacker.ConsumeFireAP();
+            counterAttacker.ConsumeMainGunRound();
+            counterAttacker.SetCountered(true);
+
+            float hitChance = Mathf.Clamp01(CalculateHitChanceWithCover(counterAttacker, target) - 0.15f);
             bool hit = Random.value <= hitChance;
 
             ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
@@ -432,14 +427,14 @@ namespace Crux.Combat
             if (hit)
             {
                 var hitZone = PenetrationCalculator.DetermineHitZone(
-                    attacker.transform.position, target.transform.position, target.HullAngle);
+                    counterAttacker.transform.position, target.transform.position, target.HullAngle);
                 float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
                 float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
-                    attacker.transform.position, target.transform.position, target.HullAngle, hitZone);
+                    counterAttacker.transform.position, target.transform.position, target.HullAngle, hitZone);
                 float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
-                float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+                float pen = counterAttacker.currentAmmo != null ? counterAttacker.currentAmmo.penetration : 100f;
                 var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
-                float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                float dmg = counterAttacker.currentAmmo != null ? counterAttacker.currentAmmo.damage : 10f;
                 float finalDmg = outcome switch
                 {
                     ShotOutcome.Ricochet    => dmg * 0.03f,
@@ -455,12 +450,12 @@ namespace Crux.Combat
                 if (finalDmg > 0)
                     mainOutcome = target.PreRollDamage(new DamageInfo
                     {
-                        damage = finalDmg, outcome = outcome, hitZone = hitZone, attacker = attacker
+                        damage = finalDmg, outcome = outcome, hitZone = hitZone, attacker = counterAttacker
                     });
             }
 
-            FireActionContext.Enqueue(BuildCounterFireActionData(attacker, target, result, mainOutcome));
-            Debug.Log($"[FIRE] 반격 Enqueue — {attacker.Data?.tankName} → {target.Data?.tankName} hit={hit} outcome={result.outcome}");
+            FireActionContext.Enqueue(BuildCounterFireActionData(counterAttacker, target, result, mainOutcome));
+            Debug.Log($"[FIRE] 반격 Enqueue — {counterAttacker.Data?.tankName} → {target.Data?.tankName} hit={hit} outcome={result.outcome}");
         }
 
         /// <summary>반격 FireActionData 빌드 (엄폐 없음 — 반격은 개활지 판정)</summary>

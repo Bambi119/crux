@@ -180,11 +180,40 @@ namespace Crux.Core
                 // 먼저 클리어 — 적 턴 재개 시 새 데이터를 덮어쓸 수 있도록
                 int nextEnemy = state.nextEnemyIndex;
                 TurnPhase savedPhase = state.phase;
+                int lastAttackerIdx = BattleStateStorage.LastEnemyAttackerIndex;
 
                 BattleStateStorage.Clear();
                 FireActionContext.Clear();
 
-                // 적 턴 중이었으면 나머지 적 행동 이어서 진행
+                // 적 턴 중이었으며 마지막 적이 플레이어를 공격했고 플레이어 생존 → 반격 세션 체크
+                if (savedPhase == TurnPhase.EnemyTurn && lastAttackerIdx >= 0
+                    && ctrl.PlayerUnitRef != null && !ctrl.PlayerUnitRef.IsDestroyed)
+                {
+                    GridTankUnit lastAttacker = null;
+                    if (lastAttackerIdx < ctrl.EnemyUnitsRef.Count)
+                        lastAttacker = ctrl.EnemyUnitsRef[lastAttackerIdx];
+
+                    if (lastAttacker != null && !lastAttacker.IsDestroyed)
+                    {
+                        var checkResult = CounterFireResolver.CheckWithReason(
+                            ctrl.PlayerUnitRef, lastAttacker, ctrl.GridRef);
+
+                        if (checkResult.canCounter)
+                        {
+                            ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
+                            ctrl.CurrentEnemyIndexInternal = nextEnemy;
+                            // 반격 WeaponSelect 세션 진입 — 적 턴 재개 차단
+                            ctrl.StartCounterFireWeaponSelectInternal(lastAttacker);
+                            return;
+                        }
+                        else
+                        {
+                            CounterFireResolver.LogResult(ctrl.PlayerUnitRef, lastAttacker, checkResult);
+                        }
+                    }
+                }
+
+                // 반격 세션 없음 — 적 턴 재개 또는 플레이어 사격 후 복귀
                 if (savedPhase == TurnPhase.EnemyTurn)
                 {
                     ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
@@ -195,6 +224,16 @@ namespace Crux.Core
             }
 
             FireActionContext.Clear();
+        }
+
+        /// <summary>
+        /// 반격 취소 후 적 턴 재개 — CancelCounterFire()가 호출.
+        /// currentEnemyIndex는 이미 갱신됨 (공격한 적 i+1).
+        /// </summary>
+        public void ResumeEnemyTurn()
+        {
+            ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
+            ctrl.StartProcessEnemyTurnFrom(ctrl.CurrentEnemyIndexInternal);
         }
     }
 }

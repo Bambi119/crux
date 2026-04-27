@@ -107,7 +107,11 @@ namespace Crux.PlayerInput
                     controller.ShowCommandBox();
                     break;
                 case BattleController.InputModeEnum.WeaponSelect:
-                    controller.TryEnterFireMode();
+                    // 반격 세션 중 우클릭 → 반격 취소
+                    if (controller.IsCounterFireMode)
+                        controller.CancelCounterFire();
+                    else
+                        controller.TryEnterFireMode();
                     break;
                 case BattleController.InputModeEnum.RotateMode:
                     if (controller.IsPostMoveContext)
@@ -136,13 +140,28 @@ namespace Crux.PlayerInput
             else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha3))
                 controller.SelectWeapon(WeaponType.MountedMG);
 
-            // Space / Enter / 좌클릭: 선택된 무기로 사격 확정
+            // 반격 세션 활성 시: N 또는 Alpha0 → 반격 취소
+            if (controller.IsCounterFireMode)
+            {
+                if (UnityEngine.Input.GetKeyDown(KeyCode.N)
+                    || UnityEngine.Input.GetKeyDown(KeyCode.Alpha0))
+                {
+                    controller.CancelCounterFire();
+                    return;
+                }
+            }
+
+            // Space / Enter / 좌클릭: 확정
             bool commit = UnityEngine.Input.GetKeyDown(KeyCode.Space)
                           || UnityEngine.Input.GetKeyDown(KeyCode.Return)
                           || UnityEngine.Input.GetMouseButtonDown(0);
             if (commit)
             {
-                controller.CommitWeaponSelection();
+                // 반격 세션이면 반격 확정, 아니면 일반 무기 선택 확정
+                if (controller.IsCounterFireMode)
+                    controller.CommitCounterFire(controller.SelectedWeapon);
+                else
+                    controller.CommitWeaponSelection();
             }
         }
 
@@ -180,7 +199,8 @@ namespace Crux.PlayerInput
             // 좌클릭: 클릭 방향 스냅 + 이동 확정
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
-                controller.CommitMoveDirectionFromMouse();
+                float snapped = ComputeSnappedAngleFromMouse(controller.PendingMoveTarget);
+                controller.CommitMoveDirectionFromMouse(snapped);
             }
         }
 
@@ -249,6 +269,24 @@ namespace Crux.PlayerInput
             var gridPos = controller.Grid.WorldToGrid(worldPos);
 
             controller.HandleClickAt(gridPos);
+        }
+
+        /// <summary>마우스 클릭 위치 → 대상 셀 기준 6방향(60°) 스냅 각도 계산 — Input 레이어 전용</summary>
+        private float ComputeSnappedAngleFromMouse(Vector2Int targetCell)
+        {
+            var cam = controller.MainCam;
+            var clickWorld = cam != null
+                ? cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition)
+                : Vector3.zero;
+            var cellWorld = controller.Grid.GridToWorld(targetCell);
+            var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
+
+            if (diff.sqrMagnitude < 0.01f)
+                return controller.PendingFacingAngle;
+
+            float deg = Crux.Core.AngleUtil.FromDir(diff);
+            if (deg < 0) deg += 360f;
+            return Crux.Core.AngleUtil.SnapTo60(deg);
         }
     }
 }

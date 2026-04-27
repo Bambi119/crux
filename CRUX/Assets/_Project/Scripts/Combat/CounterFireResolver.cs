@@ -5,7 +5,7 @@ using Crux.Unit;
 namespace Crux.Combat
 {
     /// <summary>
-    /// 반격 시스템 — 8조건 검사 (§06_combat_system §3.4)
+    /// 반격 시스템 — 7조건 검사 (§06_combat_system §3.4)
     /// 1. 방어측 생존
     /// 2. 주포 무손상
     /// 3. 전방 호 ±60° LOS
@@ -13,7 +13,7 @@ namespace Crux.Combat
     /// 5. 사수 무손상 (Phase 1: 항상 true)
     /// 6. 반격 면역 아님
     /// 7. 연쇄 반격 차단
-    /// 8. 플레이어 반격 확정 (플레이어만)
+    /// 구 8번(플레이어 반격 확정) — 폐기. 피격 후 WeaponSelect 세션으로 대체.
     /// </summary>
     public static class CounterFireResolver
     {
@@ -54,9 +54,7 @@ namespace Crux.Combat
             if (defender.HasCounteredThisExchange)
                 return new CounterCheckResult { canCounter = false, reason = CounterFailReason.ChainBlocked };
 
-            // 8. 플레이어 반격 확정 여부
-            if (!defender.CounterConfirmed)
-                return new CounterCheckResult { canCounter = false, reason = CounterFailReason.PlayerDeclined };
+            // 구 8번(PlayerDeclined/CounterConfirmed) 제거 — 피격 후 WeaponSelect 세션으로 대체
 
             return new CounterCheckResult { canCounter = true, reason = CounterFailReason.None };
         }
@@ -111,7 +109,6 @@ namespace Crux.Combat
             Debug.Log($"  4. AP sufficient: {defender.CurrentAP}/{defender.GetFireCost()}");
             Debug.Log($"  6. Not CounterImmune: {!defender.IsCounterImmune}");
             Debug.Log($"  7. Not already countered: {!defender.HasCounteredThisExchange}");
-            Debug.Log($"  8. CounterConfirmed: {defender.CounterConfirmed}");
             Debug.Log($"  Result: {result.reason}");
         }
 #endif
