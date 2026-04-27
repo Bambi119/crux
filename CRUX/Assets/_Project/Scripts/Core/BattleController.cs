@@ -139,7 +139,7 @@ namespace Crux.Core
         /// <summary>post-move CommandBox 표시 중인가 (이동 완료 후 행동 선택 대기)</summary>
         public bool IsPostMoveContext => isPostMoveContext;
 
-        /// <summary>이동 취소 — preMoveSnapshot으로 유닛 원위치 복귀. isPostMoveContext 해제.</summary>
+        /// <summary>이동 취소 — preMoveSnapshot으로 유닛 원위치 복귀. RotationWheel·CommandBox·InputMode 모두 정리.</summary>
         public void UndoMoveSnapshot()
         {
             if (selectedUnit == null) return;
@@ -147,7 +147,9 @@ namespace Crux.Core
             isPostMoveContext = false;
             postMovePendingDirection = false;
             visualizer.ClearHighlights();
+            commandRouter.HideRotationWheel();
             commandRouter.HideCommandBox();
+            inputMode = InputMode.Select;
             Debug.Log($"[CRUX] 이동 취소 — {selectedUnit.Data?.tankName} 원위치 복귀 ({preMoveGridPos})");
         }
 
@@ -620,11 +622,12 @@ namespace Crux.Core
         private void EnterPostMoveDirectionSelect()
         {
             if (selectedUnit == null) return;
+            isPostMoveContext = true;
             pendingFacingAngle = selectedUnit.HullAngle; // 현재 각도를 기본값으로
             inputMode = InputMode.MoveDirectionSelect;
             visualizer.HighlightCell(pendingMoveTarget, Color.cyan);
             // 휠 UI는 BattleCommandRouter가 담당 (작업 5)
-            commandRouter.ShowRotationWheelForPostMove();
+            commandRouter.ShowRotationWheel();
         }
 
         public void CommitMoveDirection()

@@ -24,6 +24,9 @@ namespace Crux.Core
         // RotateMode 누적 회전각
         private float pendingRotationDelta;
 
+        // 활성 RotationWheel 인스턴스 (post-move 또는 일반 Rotate 진입 중)
+        private GameObject activeWheelObj;
+
         internal BattleCommandRouter(BattleController controller)
         {
             this.controller = controller;
@@ -190,13 +193,18 @@ namespace Crux.Core
             return false;
         }
 
-        /// <summary>post-move 방향 선택 시 RotationWheel UI 표시 (픽셀 담당 prefab 로드)</summary>
-        internal void ShowRotationWheelForPostMove()
+        /// <summary>RotationWheel UI 표시 — post-move flow와 일반 Rotate(제자리) 양쪽에서 호출</summary>
+        internal void ShowRotationWheel()
         {
+            if (controller.SelectedUnit == null)
+            {
+                controller.CancelToSelect();
+                return;
+            }
+
             var wheelPrefab = Resources.Load<GameObject>("Prefabs/UI/RotationWheel");
             if (wheelPrefab == null)
             {
-                // 픽셀이 prefab을 아직 만들지 않았거나 경로 불일치 — 키보드 fallback으로 진행
                 Debug.LogWarning("[BattleCommandRouter] RotationWheel prefab not found — keyboard fallback active");
                 controller.SetInputModeInternal(BattleController.InputModeEnum.MoveDirectionSelect);
                 return;
@@ -220,6 +228,7 @@ namespace Crux.Core
                 return;
             }
 
+            activeWheelObj = wheelObj;
             var unit = controller.SelectedUnit;
             wheel.Show(unit.transform.position, unit.HullAngle, controller.MainCam);
 
@@ -228,12 +237,17 @@ namespace Crux.Core
                 float delta = absAngle - unit.HullAngle;
                 while (delta > 180f)  delta -= 360f;
                 while (delta < -180f) delta += 360f;
+                bool postMove = controller.IsPostMoveContext;
                 bool ok = unit.RotateHullInPlace(delta);
+                if (activeWheelObj == wheelObj) activeWheelObj = null;
                 Object.Destroy(wheelObj);
                 if (ok)
                 {
                     controller.SetInputModeInternal(BattleController.InputModeEnum.Select);
-                    ShowPostMoveCommandBox();
+                    if (postMove)
+                        ShowPostMoveCommandBox();
+                    else
+                        ShowCommandBox();
                 }
                 else
                     controller.CancelToSelect();
@@ -241,17 +255,37 @@ namespace Crux.Core
 
             wheel.OnCanceled += () =>
             {
+                bool postMove = controller.IsPostMoveContext;
+                if (activeWheelObj == wheelObj) activeWheelObj = null;
                 Object.Destroy(wheelObj);
-                // 방향 선택 취소 → 현재 각도 유지하고 post-move CommandBox로
-                controller.CommitMoveDirection();
+                if (postMove)
+                {
+                    // post-move 방향 선택 취소 → 이동 스냅샷 UNDO
+                    controller.UndoMoveSnapshot();
+                }
+                else
+                {
+                    controller.CancelToSelect();
+                    ShowCommandBox();
+                }
             };
 
             controller.SetInputModeInternal(BattleController.InputModeEnum.RotateMode);
         }
 
+        /// <summary>활성 RotationWheel 인스턴스 즉시 파괴 — 외부 취소 경로(UndoMoveSnapshot 등)용</summary>
+        internal void HideRotationWheel()
+        {
+            if (activeWheelObj != null)
+            {
+                Object.Destroy(activeWheelObj);
+                activeWheelObj = null;
+            }
+        }
+
         // ===== RotateMode =====
 
-        /// <summary>방향전환 모드 진입</summary>
+        /// <summary>방향전환 모드 진입 — RotationWheel UI 표시</summary>
         private void TryEnterRotateMode()
         {
             if (controller.SelectedUnit == null)
@@ -260,8 +294,10 @@ namespace Crux.Core
                 return;
             }
 
-            controller.SetInputModeInternal(BattleController.InputModeEnum.RotateMode);
             pendingRotationDelta = 0f;
+            // CommandBox 닫고 휠 표시 (휠 내부에서 RotateMode 설정)
+            HideCommandBox();
+            ShowRotationWheel();
         }
 
         /// <summary>축적된 회전각도 적용 및 RotateMode 종료</summary>
@@ -292,11 +328,14 @@ namespace Crux.Core
             }
         }
 
-        /// <summary>RotateMode 취소</summary>
+        /// <summary>RotateMode 취소 — 휠 destroy 포함</summary>
         internal void CancelRotateMode()
         {
             if (controller.CurrentInputMode == BattleController.InputModeEnum.RotateMode)
+            {
+                HideRotationWheel();
                 controller.CancelToSelect();
+            }
         }
 
         /// <summary>화면 내 회전각 누적 (양수=시계, 음수=반시계)</summary>

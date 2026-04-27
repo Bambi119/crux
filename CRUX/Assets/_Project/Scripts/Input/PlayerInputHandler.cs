@@ -110,8 +110,16 @@ namespace Crux.PlayerInput
                     controller.TryEnterFireMode();
                     break;
                 case BattleController.InputModeEnum.RotateMode:
-                    controller.CancelRotateMode();
-                    controller.ShowCommandBox();
+                    if (controller.IsPostMoveContext)
+                    {
+                        // post-move 컨텍스트: 우클릭 → 이동 취소(원위치 복귀). 휠·CommandBox 모두 정리.
+                        controller.UndoMoveSnapshot();
+                    }
+                    else
+                    {
+                        controller.CancelRotateMode();
+                        controller.ShowCommandBox();
+                    }
                     break;
             }
         }
@@ -138,32 +146,10 @@ namespace Crux.PlayerInput
             }
         }
 
-        /// <summary>회전 모드 입력 처리 (Q=좌60° / E=우60° / Space=확정 / ESC=취소)</summary>
+        /// <summary>회전 모드 입력 처리 — RotationWheelController가 키보드 전담. 우클릭만 PlayerInputHandler가 처리(HandleRightClickStepBack).</summary>
         private void HandleRotateMode()
         {
-            // Q: -60° (좌측 회전)
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Q))
-            {
-                controller.AccumulateRotation(-60f);
-            }
-
-            // E: +60° (우측 회전)
-            if (UnityEngine.Input.GetKeyDown(KeyCode.E))
-            {
-                controller.AccumulateRotation(60f);
-            }
-
-            // Space / Enter: 회전 확정
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetKeyDown(KeyCode.Return))
-            {
-                controller.CommitRotation();
-            }
-
-            // ESC: 회전 취소
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
-            {
-                controller.CancelRotateMode();
-            }
+            // 의도적으로 비움. 휠 UI가 Q/E/W/A/S/D/Space/Esc 전부 처리.
         }
 
         /// <summary>방향 선택 모드 입력 처리 (QWEASD + Space/Enter/Click)</summary>
