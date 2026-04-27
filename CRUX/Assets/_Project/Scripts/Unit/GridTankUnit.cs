@@ -30,6 +30,11 @@ namespace Crux.Unit
         // 오버워치 (반응 사격) — 활성화 시 FireCost 선지불, 이동 적에게 즉시 반격 1회
         private bool isOverwatching;
 
+        // 반격 상태 — CounterFireResolver가 참조
+        private bool isCounterImmune;           // true면 반격 불가 (오버워치 중인 유닛 등)
+        private bool hasCounteredThisExchange;  // 이번 교환에서 이미 반격 실행했으면 true
+        private bool counterConfirmed = true;   // 플레이어 반격 확정 (기본 true, 프롬프트에서 설정)
+
         // 탄약 잔량
         private int mainGunAmmoCount;
         private int mgAmmoLoaded;
@@ -80,6 +85,9 @@ namespace Crux.Unit
         public bool IsOnFire => isOnFire;
         public int RemainingSmokeCharges => remainingSmokeCharges;
         public bool IsOverwatching => isOverwatching;
+        public bool IsCounterImmune => isCounterImmune;
+        public bool HasCounteredThisExchange => hasCounteredThisExchange;
+        public bool CounterConfirmed => counterConfirmed;
         public int MainGunAmmoCount => mainGunAmmoCount;
         public int MaxMainGunAmmo => tankData != null ? tankData.maxMainGunAmmo : 0;
         public int MGAmmoLoaded => mgAmmoLoaded;
@@ -111,7 +119,10 @@ namespace Crux.Unit
                 mainGunAmmoCount = mainGunAmmoCount,
                 mgAmmoLoaded = mgAmmoLoaded,
                 mgAmmoTotal = mgAmmoTotal,
-                isOverwatching = isOverwatching
+                isOverwatching = isOverwatching,
+                isCounterImmune = isCounterImmune,
+                hasCounteredThisExchange = hasCounteredThisExchange,
+                counterConfirmed = counterConfirmed
             };
         }
 
@@ -152,6 +163,9 @@ namespace Crux.Unit
             mgAmmoLoaded = state.mgAmmoLoaded;
             mgAmmoTotal = state.mgAmmoTotal;
             isOverwatching = state.isOverwatching;
+            isCounterImmune = state.isCounterImmune;
+            hasCounteredThisExchange = state.hasCounteredThisExchange;
+            counterConfirmed = state.counterConfirmed;
 
             UpdateVisual();
 
@@ -206,6 +220,11 @@ namespace Crux.Unit
 
             // 오버워치는 다음 턴 시작 시 해제 — 트리거되지 않았다면 사전 지불 AP는 손실
             isOverwatching = false;
+
+            // 반격 상태 리셋
+            hasCounteredThisExchange = false;
+            isCounterImmune = false;
+            counterConfirmed = true;  // 기본값: 자동 확정
 
             // 화재 처리
             if (isOnFire)
@@ -415,6 +434,26 @@ namespace Crux.Unit
         public void ConsumeOverwatchShot()
         {
             isOverwatching = false;
+        }
+
+        // ===== 반격 상태 =====
+
+        /// <summary>반격 면역 설정 (오버워치 유닛이 피반격되지 않도록)</summary>
+        public void SetCounterImmune(bool value)
+        {
+            isCounterImmune = value;
+        }
+
+        /// <summary>반격 실행 표시 — 연쇄 반격 차단용</summary>
+        public void SetCountered(bool value)
+        {
+            hasCounteredThisExchange = value;
+        }
+
+        /// <summary>플레이어 반격 확정 여부 설정 (프롬프트 결과)</summary>
+        public void SetCounterConfirmed(bool value)
+        {
+            counterConfirmed = value;
         }
 
         // ===== 이동 (애니메이션) =====

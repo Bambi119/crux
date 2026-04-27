@@ -132,5 +132,8 @@ namespace Crux.Core
 
         // 연출
         public const float CinematicDuration = 5f;
+
+        /// <summary>오버워치 AP 비용 = 주포 사격 AP * 2</summary>
+        public static int GetOverwatchCost(int fireAP) => fireAP * 2;
     }
 }

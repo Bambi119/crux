@@ -84,10 +84,14 @@ namespace Crux.Combat
         {
             IsPlaying = true;
 
+            // 오버워치 대상은 반격 면역 — 이동 중인 적이 역습하지 않도록
+            target.SetCounterImmune(true);
+
             attacker.ConsumeOverwatchShot();
             if (!attacker.ConsumeMainGunRound())
             {
                 Debug.LogWarning("[CRUX] 오버워치 트리거 시점 주포 잔탄 0 — 사격 무시");
+                target.SetCounterImmune(false);
                 IsPlaying = false;
                 yield break;
             }
@@ -223,6 +227,9 @@ namespace Crux.Combat
 
             // ===== 카메라 즉시 복귀 =====
             battleCam?.RestoreState();
+
+            // 반격 면역 해제 — 오버워치 시퀀스 종료 후
+            target.SetCounterImmune(false);
 
             IsPlaying = false;
         }
