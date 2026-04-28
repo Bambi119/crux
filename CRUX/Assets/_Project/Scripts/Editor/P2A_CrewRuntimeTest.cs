@@ -99,7 +99,8 @@ public static class P2A_CrewRuntimeTest
             var iris = AssetDatabase.LoadAssetAtPath<CrewMemberSO>("Assets/_Project/Data/Crew/Members/Crew_iris.asset");
 
             tc.Initialize(astra, ririd, grin, pretena, iris, commanderHullClassAxis: null);
-            Assert(tc.Morale == 50, "init morale=50 (no commander bonus axis)");
+            // 50(base) + 0(commander mark) + 10(wordless_comrade+rocinante_owner 둘 다 axis=None, 각 +5)
+            Assert(tc.Morale == 60, $"init morale=60 (got {tc.Morale}, traits-always-active floor +10)");
             Assert(tc.Band == MoraleBand.Normal, "init band=Normal");
             Assert(!tc.PanicSafetyUsed, "init panicSafety=false");
             Assert(tc.commander != null && tc.commander.Class == CrewClass.Commander, "commander slot");
@@ -121,7 +122,7 @@ public static class P2A_CrewRuntimeTest
 
             // ===== 9. 공황 안전장치 — 정상에서 공황 진입 시 +15 =====
             tc.Initialize(astra, ririd, grin, pretena, iris);
-            Assert(tc.Morale == 50, "reset morale=50");
+            Assert(tc.Morale == 60, $"reset morale=60 (got {tc.Morale})");
             tc.SetMorale(15); // 정상 → 공황 진입
             // 안전장치 발동 → 15 + 15 = 30 (흔들림 구간)
             Assert(tc.Morale == 30, $"panic safety kick to 30 (got {tc.Morale})");

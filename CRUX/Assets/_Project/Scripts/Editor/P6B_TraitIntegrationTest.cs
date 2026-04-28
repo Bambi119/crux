@@ -5,10 +5,10 @@ using Crux.Unit;
 using Crux.Core;
 
 /// <summary>
-/// P6B Batch Smoke Test — Trait 통합 (moraleFloor + InitiativeSetup).
+/// P6B Batch Smoke Test — Trait 통합 (moraleFloor + InitiativeSetup, 누적 카운트 기반 모델).
 /// 목적: P6A의 TraitEffects 단위 테스트에서 놓친 통합 회로 검증.
-/// (1) TankCrew.Initialize 에서 5인 trait moraleFloor 합산 반영
-/// (2) InitiativeSetup.BuildForTest 가 trait 을 실제로 반영
+/// (1) TankCrew.Initialize 에서 5인 traits[] 배열 moraleFloor 합산 반영
+/// (2) InitiativeSetup.BuildForTest 가 traits[] 을 실제로 반영
 /// Editor 메뉴 Crux/Test/P6B Trait Integration 실행.
 /// </summary>
 public static class P6B_TraitIntegrationTest
@@ -28,7 +28,7 @@ public static class P6B_TraitIntegrationTest
             else      { failed++; Fail(name); }
         }
 
-        // ===== 1. TankCrew 시작 사기에 trait moraleFloor 반영 =====
+        // ===== 1. TankCrew 시작 사기에 traits[] 배열 moraleFloor 반영 =====
 
         // 시나리오 1-1: 모든 crew null → moraleFloor 0, morale=50
         var crewGO1 = new GameObject("P6B_TankCrew1");
@@ -46,8 +46,7 @@ public static class P6B_TraitIntegrationTest
         {
             var tc2 = crewGO2.AddComponent<TankCrew>();
             var cmdrWordless = MakeCrew("commander_wordless", CrewClass.Commander,
-                positive: MakeTrait("trait.wordless_comrade"),
-                negative: null);
+                traits: new[] { MakeTrait("wordless_comrade") });
             tc2.Initialize(cmdrWordless, null, null, null, null);
             // commanderMark=0 (no axis), traitFloor=+5 → 50+0+5=55
             Assert(tc2.Morale == 55, $"commander wordless_comrade morale=55 (got {tc2.Morale})");
@@ -55,49 +54,49 @@ public static class P6B_TraitIntegrationTest
         }
         finally { Object.DestroyImmediate(crewGO2); }
 
-        // 시나리오 1-3: 5인 모두 spoiled(-5) → -25 합산 → 50-25=25
+        // 시나리오 1-3: 5인 모두 traits[0]에 단일 trait 가짐. 현재 TraitModifier 테이블에 음수 지원 안 함.
+        // 대신 hermit_eye (aim +5) 사용 — morale 영향 없음 (예시용)
         var crewGO3 = new GameObject("P6B_TankCrew3");
         try
         {
             var tc3 = crewGO3.AddComponent<TankCrew>();
-            var spoiledTrait = MakeTrait("trait.spoiled");
+            var hermitTrait = MakeTrait("hermit_eye");
 
-            var c1 = MakeCrew("spoiled1", CrewClass.Commander, positive: null, negative: spoiledTrait);
-            var c2 = MakeCrew("spoiled2", CrewClass.Gunner, positive: null, negative: spoiledTrait);
-            var c3 = MakeCrew("spoiled3", CrewClass.Loader, positive: null, negative: spoiledTrait);
-            var c4 = MakeCrew("spoiled4", CrewClass.Driver, positive: null, negative: spoiledTrait);
-            var c5 = MakeCrew("spoiled5", CrewClass.GunnerMech, positive: null, negative: spoiledTrait);
+            var c1 = MakeCrew("hermit1", CrewClass.Commander, traits: new[] { hermitTrait });
+            var c2 = MakeCrew("hermit2", CrewClass.Gunner, traits: new[] { hermitTrait });
+            var c3 = MakeCrew("hermit3", CrewClass.Loader, traits: new[] { hermitTrait });
+            var c4 = MakeCrew("hermit4", CrewClass.Driver, traits: new[] { hermitTrait });
+            var c5 = MakeCrew("hermit5", CrewClass.GunnerMech, traits: new[] { hermitTrait });
 
             tc3.Initialize(c1, c2, c3, c4, c5);
-            // commanderMark=0, traitFloor=-25 → 50-25=25
-            Assert(tc3.Morale == 25, $"all spoiled morale=25 (got {tc3.Morale})");
+            // commanderMark=0, traitFloor=0 (hermit_eye 무 morale) → 50+0=50
+            Assert(tc3.Morale == 50, $"all hermit morale=50 (got {tc3.Morale})");
 
             CleanupCrew(c1); CleanupCrew(c2); CleanupCrew(c3); CleanupCrew(c4); CleanupCrew(c5);
-            CleanupTrait(spoiledTrait);
+            // hermitTrait는 재사용되므로 마지막만 cleanup
         }
         finally { Object.DestroyImmediate(crewGO3); }
 
-        // 시나리오 1-4: 혼합 — commander rocinante_owner(+5) + gunner silent_worker(0 morale) → +5
+        // 시나리오 1-4: 혼합 — commander rocinante_owner(+5 morale) + gunner silent_worker(0 morale) → +5
         var crewGO4 = new GameObject("P6B_TankCrew4");
         try
         {
             var tc4 = crewGO4.AddComponent<TankCrew>();
-            var rocinante = MakeTrait("trait.rocinante_owner");
-            var silent = MakeTrait("trait.silent_worker");
+            var rocinante = MakeTrait("rocinante_owner");
+            var silent = MakeTrait("silent_worker");
 
-            var cmdr = MakeCrew("roc_cmdr", CrewClass.Commander, positive: rocinante, negative: null);
-            var gun = MakeCrew("silent_gun", CrewClass.Gunner, positive: silent, negative: null);
+            var cmdr = MakeCrew("roc_cmdr", CrewClass.Commander, traits: new[] { rocinante });
+            var gun = MakeCrew("silent_gun", CrewClass.Gunner, traits: new[] { silent });
 
             tc4.Initialize(cmdr, gun, null, null, null);
             // commanderMark=0, traitFloor=+5+0=+5 → 50+5=55
             Assert(tc4.Morale == 55, $"rocinante+silent morale=55 (got {tc4.Morale})");
 
             CleanupCrew(cmdr); CleanupCrew(gun);
-            CleanupTrait(rocinante); CleanupTrait(silent);
         }
         finally { Object.DestroyImmediate(crewGO4); }
 
-        // ===== 2. InitiativeSetup.BuildForTest 가 trait 을 react/traitBonus 에 반영 =====
+        // ===== 2. InitiativeSetup.BuildForTest 가 traits[] 을 react/traitBonus 에 반영 =====
 
         // 시나리오 2-1: commander 없음 → traitBonus=0, react=0
         var unitGO1 = new GameObject("P6B_Unit1");
@@ -135,8 +134,7 @@ public static class P6B_TraitIntegrationTest
             tank2.side = PlayerSide.Player;
 
             var donqSO = MakeCrew("donq_cmdr", CrewClass.Commander,
-                positive: MakeTrait("trait.donquixote_dream"),
-                negative: null);
+                traits: new[] { MakeTrait("donquixote_dream") });
             donqSO.react = 50; // 베이스 react
 
             var crew2 = unitGO2.AddComponent<TankCrew>();
@@ -164,8 +162,7 @@ public static class P6B_TraitIntegrationTest
             tank3.side = PlayerSide.Player;
 
             var prodigySO = MakeCrew("prodigy_cmdr", CrewClass.Commander,
-                positive: MakeTrait("trait.little_hand_prodigy"),
-                negative: null);
+                traits: new[] { MakeTrait("little_hand_prodigy") });
             prodigySO.react = 60; // 베이스 react
 
             var crew3 = unitGO3.AddComponent<TankCrew>();
@@ -181,8 +178,8 @@ public static class P6B_TraitIntegrationTest
         }
         finally { Object.DestroyImmediate(unitGO3); }
 
-        // 시나리오 2-4: positive=donquixote_dream + negative=spoiled
-        // → traitBonus=+2 (spoiled은 initiativeBonus 0), moraleFloor=-5 (부탁: TankCrew에서 검증)
+        // 시나리오 2-4: traits[0]=donquixote_dream + traits[1]=wordless_comrade (다중 trait 누적)
+        // → traitBonus=+2, moraleFloor=+5 → morale=55
         var unitGO4 = new GameObject("P6B_Unit4");
         try
         {
@@ -193,21 +190,20 @@ public static class P6B_TraitIntegrationTest
             tank4.tankData = data4;
             tank4.side = PlayerSide.Player;
 
-            var mixedSO = MakeCrew("mixed_cmdr", CrewClass.Commander,
-                positive: MakeTrait("trait.donquixote_dream"),
-                negative: MakeTrait("trait.spoiled"));
-            mixedSO.react = 50;
+            var multiTraitSO = MakeCrew("multi_cmdr", CrewClass.Commander,
+                traits: new[] { MakeTrait("donquixote_dream"), MakeTrait("wordless_comrade") });
+            multiTraitSO.react = 50;
 
             var crew4 = unitGO4.AddComponent<TankCrew>();
-            crew4.Initialize(mixedSO, null, null, null, null);
+            crew4.Initialize(multiTraitSO, null, null, null, null);
             tank4.BindCrew(crew4);
 
             var input4 = InitiativeSetup.BuildForTest(tank4);
-            Assert(input4.traitBonus == 2, $"donquixote+spoiled traitBonus=+2 (got {input4.traitBonus})");
-            // TankCrew morale: 50 + commanderMark(0)*3 + moraleFloor(donq=0, spoiled=-5) = 45
-            Assert(crew4.Morale == 45, $"donquixote+spoiled TankCrew morale=45 (got {crew4.Morale})");
+            Assert(input4.traitBonus == 2, $"donquixote_dream traitBonus=+2 (got {input4.traitBonus})");
+            // TankCrew morale: 50 + commanderMark(0)*3 + moraleFloor(donq=0, wordless=+5) = 55
+            Assert(crew4.Morale == 55, $"donquixote+wordless TankCrew morale=55 (got {crew4.Morale})");
 
-            CleanupCrew(mixedSO);
+            CleanupCrew(multiTraitSO);
             ScriptableObject.DestroyImmediate(data4);
         }
         finally { Object.DestroyImmediate(unitGO4); }
@@ -219,21 +215,22 @@ public static class P6B_TraitIntegrationTest
             Fail($"=== FAILED {failed}/{passed + failed} ===");
     }
 
-    static TraitSO MakeTrait(string effectKey)
+    static TraitSO MakeTrait(string id)
     {
         var t = ScriptableObject.CreateInstance<TraitSO>();
-        t.effectKey = effectKey;
-        t.id = effectKey;
+        t.id = id;
+        t.displayName = id;
+        t.axisType = TraitAxis.None;
+        t.axisThreshold = 10;
         return t;
     }
 
-    static CrewMemberSO MakeCrew(string name, CrewClass kls, TraitSO positive, TraitSO negative)
+    static CrewMemberSO MakeCrew(string name, CrewClass kls, TraitSO[] traits)
     {
         var c = ScriptableObject.CreateInstance<CrewMemberSO>();
         c.displayName = name;
         c.klass = kls;
-        c.traitPositive = positive;
-        c.traitNegative = negative;
+        c.traits = traits ?? new TraitSO[0];
         c.react = 50; // 기본값
         return c;
     }
