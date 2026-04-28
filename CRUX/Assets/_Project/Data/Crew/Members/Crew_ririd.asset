@@ -21,8 +21,8 @@ MonoBehaviour:
   tech: 35
   preferredTagType: 1
   preferredTag: medium_caliber
-  traitPositive: {fileID: 11400000, guid: d5309ea6b9340df4293947733f15162b, type: 2}
-  traitNegative: {fileID: 11400000, guid: c8d3bda9b229dcc4f8407b3609c2c862, type: 2}
+  traits:
+  - {fileID: 11400000, guid: d5309ea6b9340df4293947733f15162b, type: 2}
   startingMarkKeys:
   - medium_caliber
   startingMarkValues: 01000000

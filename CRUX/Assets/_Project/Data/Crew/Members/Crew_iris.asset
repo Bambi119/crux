@@ -21,8 +21,8 @@ MonoBehaviour:
   tech: 75
   preferredTagType: 4
   preferredTag: engine
-  traitPositive: {fileID: 11400000, guid: 563412ce998e04844af0ebae17f418a4, type: 2}
-  traitNegative: {fileID: 11400000, guid: f5a78a0ad8a3fe746ab74d0adc4b8bb4, type: 2}
+  traits:
+  - {fileID: 11400000, guid: 563412ce998e04844af0ebae17f418a4, type: 2}
   startingMarkKeys:
   - caterpillar
   - engine

@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
   id: wordless_comrade
   displayName: "\uB9D0\uC5C6\uB294 \uB3D9\uB8CC"
-  description: "\uC9C0\uD718 \uC2A4\uD0AC \uC218\uD61C \uBD88\uAC00 \u2014 \uC74C\uC131
-    \uBA85\uB839 \uBD88\uD1B5"
-  isPositive: 0
-  classRestriction: 2
-  effectKey: trait.wordless_comrade
+  description: "\uD56D\uC0C1 \uD65C\uC131 (\uC81C\uD55C \uC5C6\uC74C)"
+  classRestriction: 5
+  axisType: 5
+  axisThreshold: 10
+  signatureSkillRef: {fileID: 0}

@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
   id: silent_worker
   displayName: "\uBB35\uBB35\uD55C \uC77C\uAFBC"
-  description: "\uD0C4\uC885 \uAD00\uACC4\uC5C6\uC774 \uC7A5\uC804 AP \uD56D\uC0C1
-    -1 (\uAE30\uBCF8 \uD0C4\uC57D\uC218 \uBCF4\uB108\uC2A4 \uC911\uCCA9)"
-  isPositive: 1
-  classRestriction: 2
-  effectKey: trait.silent_worker
+  description: "\uC7A5\uC804 \uD69F\uC218\uB85C unlock"
+  classRestriction: 5
+  axisType: 2
+  axisThreshold: 10
+  signatureSkillRef: {fileID: 0}

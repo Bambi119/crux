@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
   id: donquixote_dream
   displayName: "\uB3C8\uD0A4\uD638\uD14C\uC758 \uAFC8"
-  description: "\uC804\uD22C \uC2DC\uC791 \uC0AC\uAE30 +10 (\uB9C8\uD06C \uBCF4\uB108\uC2A4\uC640
-    \uBCC4\uAC1C)"
-  isPositive: 1
-  classRestriction: 0
-  effectKey: trait.donquixote_dream
+  description: "\uC804\uD22C \uC218 \uB204\uC801\uC73C\uB85C unlock"
+  classRestriction: 5
+  axisType: 0
+  axisThreshold: 10
+  signatureSkillRef: {fileID: 0}

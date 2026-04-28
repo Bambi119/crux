@@ -21,8 +21,8 @@ MonoBehaviour:
   tech: 70
   preferredTagType: 3
   preferredTag: medium
-  traitPositive: {fileID: 11400000, guid: be1052e17c525ec4f9362a5c082e92fc, type: 2}
-  traitNegative: {fileID: 11400000, guid: 3a8dfe639b1566947bc6c128b07d2918, type: 2}
+  traits:
+  - {fileID: 11400000, guid: be1052e17c525ec4f9362a5c082e92fc, type: 2}
   startingMarkKeys:
   - medium
   startingMarkValues: 02000000

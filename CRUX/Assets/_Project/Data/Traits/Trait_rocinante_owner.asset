@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.TraitSO
   id: rocinante_owner
   displayName: "\uB85C\uC2DC\uB09C\uD14C\uC758 \uC8FC\uC778"
-  description: "\uB85C\uC2DC\uB09C\uD14C \uD0D1\uC2B9 \uC2DC \uC774\uB3D9 AP -1 \uCD94\uAC00"
-  isPositive: 1
-  classRestriction: 3
-  effectKey: trait.rocinante_owner
+  description: "\uD56D\uC0C1 \uD65C\uC131 (\uC81C\uD55C \uC5C6\uC74C)"
+  classRestriction: 5
+  axisType: 5
+  axisThreshold: 10
+  signatureSkillRef: {fileID: 0}
