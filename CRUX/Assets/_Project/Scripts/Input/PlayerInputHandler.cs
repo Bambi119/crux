@@ -41,6 +41,13 @@ namespace Crux.PlayerInput
                 return;
             }
 
+            // 회전 모드
+            if (controller.CurrentInputMode == BattleController.InputModeEnum.RotateMode)
+            {
+                HandleRotateMode();
+                return;
+            }
+
             // Select 모드: Q/M 이동 진입, E/F 사격 진입
             HandleSelectModeKeys();
 
@@ -111,6 +118,34 @@ namespace Crux.PlayerInput
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
                 controller.CommitMoveDirectionFromMouse();
+            }
+        }
+
+        /// <summary>회전 모드 입력 처리 (Q/E 각도 조정 + Space/Enter/Click 확정)</summary>
+        private void HandleRotateMode()
+        {
+            // Q: −60°, E: +60°
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Q))
+                controller.AccumulateRotation(-60f);
+            else if (UnityEngine.Input.GetKeyDown(KeyCode.E))
+                controller.AccumulateRotation(60f);
+
+            // Space / Enter: 회전 확정
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetKeyDown(KeyCode.Return))
+            {
+                controller.CommitRotation();
+            }
+
+            // 좌클릭: 회전 확정
+            if (UnityEngine.Input.GetMouseButtonDown(0))
+            {
+                controller.CommitRotation();
+            }
+
+            // ESC/Tab: 회전 취소
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) || UnityEngine.Input.GetKeyDown(KeyCode.Tab))
+            {
+                controller.CancelRotateMode();
             }
         }
 

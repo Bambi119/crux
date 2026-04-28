@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 8067554959106701090}
   - component: {fileID: 6353342866419363340}
   - component: {fileID: 3689618016323182250}
+  - component: {fileID: 7749199812482910527}
   m_Layer: 0
   m_Name: BattleHUDCanvas
   m_TagString: Untagged
@@ -95,10 +96,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dc42784cf147c0c48a680349fa168899, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.GraphicRaycaster
   m_IgnoreReversedGraphics: 1
   m_BlockingObjects: 0
   m_BlockingMask:
     serializedVersion: 2
     m_Bits: 4294967295
+--- !u!114 &7749199812482910527
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3768684923444633422}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 993608a88d603c948b3e003ca7414b6a, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  contextMenuPrefab: {fileID: 1074554936220830373, guid: 2caa37435e3190d4388c1720c4dd2ddb, type: 3}
+  weaponSelectPanelPrefab: {fileID: 365435801535125504, guid: e1cb18b2dac769d4d9f05513a51f488b, type: 3}
+  ammoSelectPanelPrefab: {fileID: 648144525284813481, guid: 25fdb506c99e4614899e604f7a6b2383, type: 3}
