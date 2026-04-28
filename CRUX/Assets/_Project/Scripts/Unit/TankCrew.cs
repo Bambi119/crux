@@ -48,18 +48,18 @@ namespace Crux.Unit
                     : 0;
             }
 
-            // P6B: 5인 trait moraleFloor 합산
+            // P6B: 5인 trait moraleFloor 합산 — 초기엔 axisType=None(항상 활성)만 적용
             int traitFloor = 0;
             if (commander != null)
-                traitFloor += TraitEffects.SumForCrewMember(commander.data.traitPositive, commander.data.traitNegative).moraleFloor;
+                traitFloor += TraitEffects.SumActiveAtInit(commander.data.traits).moraleFloor;
             if (gunner != null)
-                traitFloor += TraitEffects.SumForCrewMember(gunner.data.traitPositive, gunner.data.traitNegative).moraleFloor;
+                traitFloor += TraitEffects.SumActiveAtInit(gunner.data.traits).moraleFloor;
             if (loader != null)
-                traitFloor += TraitEffects.SumForCrewMember(loader.data.traitPositive, loader.data.traitNegative).moraleFloor;
+                traitFloor += TraitEffects.SumActiveAtInit(loader.data.traits).moraleFloor;
             if (driver != null)
-                traitFloor += TraitEffects.SumForCrewMember(driver.data.traitPositive, driver.data.traitNegative).moraleFloor;
+                traitFloor += TraitEffects.SumActiveAtInit(driver.data.traits).moraleFloor;
             if (mgMechanic != null)
-                traitFloor += TraitEffects.SumForCrewMember(mgMechanic.data.traitPositive, mgMechanic.data.traitNegative).moraleFloor;
+                traitFloor += TraitEffects.SumActiveAtInit(mgMechanic.data.traits).moraleFloor;
 
             morale = Mathf.Clamp(50 + commanderMark * 3 + traitFloor, 0, 100);
             PanicSafetyUsed = false;

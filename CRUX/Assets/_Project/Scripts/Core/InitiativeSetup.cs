@@ -51,7 +51,7 @@ namespace Crux.Core
                     react = cmdr.react;
 
                     // 전차장 특성 보정 적용
-                    var traitMod = TraitEffects.SumForCrewMember(cmdr.traitPositive, cmdr.traitNegative);
+                    var traitMod = TraitEffects.SumForCrewMember(cmdr.traits);
                     react += traitMod.reactBonus;
                     traitInitBonus = traitMod.initiativeBonus;
                 }

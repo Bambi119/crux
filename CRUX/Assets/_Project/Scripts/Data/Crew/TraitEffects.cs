@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Linq;
 
 namespace Crux.Data
 {
@@ -16,52 +16,67 @@ namespace Crux.Data
     }
 
     /// <summary>
-    /// TraitSO.effectKey 를 TraitModifier 로 변환하는 dispatch 테이블.
-    /// 밸런스 확정 전 placeholder 값 — 실제 수치는 튜닝 패스에서 조정.
+    /// TraitSO.id 를 TraitModifier 로 변환하는 dispatch 테이블 (id 기반).
+    /// Phase 3.5.7: 더 이상 "장점/약점" 쌍 개념 없음. 특성은 누적 카운트 기반 활성화.
+    /// 발동 조건 검증은 외부(TankCrew/InitiativeSetup 등)에서 axisType/axisThreshold 참고.
+    /// 여기는 활성화된 특성의 수치 효과만 제공.
     /// </summary>
     public static class TraitEffects
     {
         // TODO(balance): 수치는 임시 — docs/04 승무원 특성 밸런스 섹션 확정 후 조정
-        static readonly Dictionary<string, TraitModifier> Table = new Dictionary<string, TraitModifier>
-        {
-            { "trait.donquixote_dream",      new TraitModifier { initiativeBonus = +2, aimBonus = -3 } },
-            { "trait.first_battle_fear",     new TraitModifier { initiativeBonus = -3, moraleFloor = -10 } },
-            { "trait.hermit_eye",            new TraitModifier { aimBonus = +5 } },
-            { "trait.dialogue_phobia",       new TraitModifier { initiativeBonus = -1 } },
-            { "trait.little_hand_prodigy",   new TraitModifier { reactBonus = +2 } },
-            { "trait.wordless_comrade",      new TraitModifier { moraleFloor = +5 } },
-            { "trait.rocinante_owner",       new TraitModifier { initiativeBonus = +3, moraleFloor = +5 } },
-            { "trait.brother_dependent",     new TraitModifier { moraleFloor = +5 } },
-            { "trait.silent_worker",         new TraitModifier { reactBonus = +1 } },
-            { "trait.spoiled",               new TraitModifier { moraleFloor = -5 } },
-        };
+        static readonly System.Collections.Generic.Dictionary<string, TraitModifier> Table =
+            new System.Collections.Generic.Dictionary<string, TraitModifier>
+            {
+                { "donquixote_dream",         new TraitModifier { initiativeBonus = +2, aimBonus = -3 } },
+                { "hermit_eye",               new TraitModifier { aimBonus = +5 } },
+                { "little_hand_prodigy",      new TraitModifier { reactBonus = +2 } },
+                { "wordless_comrade",         new TraitModifier { moraleFloor = +5 } },
+                { "rocinante_owner",          new TraitModifier { initiativeBonus = +3, moraleFloor = +5 } },
+                { "silent_worker",            new TraitModifier { reactBonus = +1 } },
+            };
 
-        /// <summary>effectKey 가 등록돼 있으면 해당 TraitModifier 반환, 아니면 빈 값.</summary>
-        public static TraitModifier Get(string effectKey)
+        /// <summary>특성 id 로 TraitModifier 조회. 미등록이면 빈 값.</summary>
+        public static TraitModifier Get(string traitId)
         {
-            if (string.IsNullOrEmpty(effectKey)) return default;
-            return Table.TryGetValue(effectKey, out var mod) ? mod : default;
+            if (string.IsNullOrEmpty(traitId)) return default;
+            return Table.TryGetValue(traitId, out var mod) ? mod : default;
         }
 
-        /// <summary>특성 SO가 null 이거나 effectKey 없으면 빈 값 반환.</summary>
+        /// <summary>특성 SO가 null 이면 빈 값, 아니면 id로 조회.</summary>
         public static TraitModifier Get(TraitSO trait)
         {
             if (trait == null) return default;
-            return Get(trait.effectKey);
+            return Get(trait.id);
         }
 
-        /// <summary>승무원 한 명의 trait 2개(장점+약점) 합산 delta. 필드별 합.</summary>
-        public static TraitModifier SumForCrewMember(TraitSO positive, TraitSO negative)
+        /// <summary>승무원 traits[] 배열 합산. 모든 특성의 효과 누적 (활성 조건 무시).</summary>
+        public static TraitModifier SumForCrewMember(TraitSO[] traits)
         {
-            var p = Get(positive);
-            var n = Get(negative);
-            return new TraitModifier
+            var result = default(TraitModifier);
+            if (traits == null || traits.Length == 0)
+                return result;
+
+            foreach (var t in traits.Where(t => t != null))
             {
-                initiativeBonus = p.initiativeBonus + n.initiativeBonus,
-                aimBonus        = p.aimBonus        + n.aimBonus,
-                reactBonus      = p.reactBonus      + n.reactBonus,
-                moraleFloor     = p.moraleFloor     + n.moraleFloor,
-            };
+                var mod = Get(t);
+                result.initiativeBonus += mod.initiativeBonus;
+                result.aimBonus        += mod.aimBonus;
+                result.reactBonus      += mod.reactBonus;
+                result.moraleFloor     += mod.moraleFloor;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 초기 상태(누적 카운트 0)에서 활성화된 특성만 합산. axisType == None 인 특성만 해당.
+        /// 누적 카운트 기반 특성은 threshold 도달 전까지 효과 없음.
+        /// </summary>
+        public static TraitModifier SumActiveAtInit(TraitSO[] traits)
+        {
+            if (traits == null || traits.Length == 0) return default;
+            var always = traits.Where(t => t != null && t.axisType == TraitAxis.None).ToArray();
+            return SumForCrewMember(always);
         }
     }
 }

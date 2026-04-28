@@ -43,12 +43,9 @@ namespace Crux.Data
         [Tooltip("선호 항목 값 (예: Light, Medium, HE, AP 등)")]
         public string preferredTag = "";
 
-        [Header("특성")]
-        [Tooltip("장점 특성")]
-        public TraitSO traitPositive;
-
-        [Tooltip("약점 특성")]
-        public TraitSO traitNegative;
+        [Header("특성 — 누적 카운트 기반 개방형")]
+        [Tooltip("보유 특성 배열 (0~2개, MVP는 1개)")]
+        public TraitSO[] traits = new TraitSO[0];
 
         [Header("시작 마크 (병렬 배열)")]
         [Tooltip("마크 축 ID 배열 (예: MainGunCaliberLarge, MainGunCaliberMedium)")]

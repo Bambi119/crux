@@ -73,4 +73,15 @@ namespace Crux.Data
         WeightClass,    // 중량대
         RepairModule    // 수리 모듈
     }
+
+    /// <summary>트레잇 축 — 잠금 해제 조건. 누적 카운트로 활성화된다.</summary>
+    public enum TraitAxis
+    {
+        BattleCount,                  // 누적 전투 횟수 (아스트라)
+        BlindFireHits,                // 시야 외 사격 명중 횟수 (리리드)
+        LoadCount,                    // 누적 장전 횟수 (그린)
+        RocinanteBattles,             // 로시난테 탑승 전투 횟수 (프리테나)
+        EngineCaterpillarRepairs,     // 엔진/캐터필러 수리 횟수 (이리스)
+        None                          // 기본값 (트레잇 없음)
+    }
 }
