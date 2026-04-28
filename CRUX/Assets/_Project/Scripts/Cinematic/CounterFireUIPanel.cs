@@ -133,5 +133,15 @@ namespace Crux.Cinematic
             Hide();
             onCancel?.Invoke();
         }
+
+#if UNITY_EDITOR
+        // ===== 에디터 전용 테스트 헬퍼 (런타임 동작 0 변경) =====
+
+        /// <summary>
+        /// 시나리오 테스트에서 Confirm(weapon) 직접 호출용.
+        /// 프로덕션 빌드에서는 제거됨.
+        /// </summary>
+        internal void EditorOnly_Confirm(WeaponType weapon) => Confirm(weapon);
+#endif
     }
 }
