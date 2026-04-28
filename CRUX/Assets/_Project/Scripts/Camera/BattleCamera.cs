@@ -111,6 +111,19 @@ namespace Crux.Camera
             }
         }
 
+        /// <summary>부드러운 이동 — targetPos만 갱신, Tick의 Lerp가 보간</summary>
+        public void PanTo(Vector3 worldPos)
+        {
+            targetPos = new Vector3(worldPos.x, worldPos.y, -10f);
+            if (boundsSet && cam != null)
+            {
+                float halfH = targetSize;
+                float halfW = targetSize * cam.aspect;
+                targetPos.x = Mathf.Clamp(targetPos.x, panMinX - halfW * 0.3f, panMaxX + halfW * 0.3f);
+                targetPos.y = Mathf.Clamp(targetPos.y, panMinY - halfH * 0.3f, panMaxY + halfH * 0.3f);
+            }
+        }
+
         /// <summary>즉시 이동 (Lerp 바이패스) — closeup/wide 시퀀스용</summary>
         public void SnapTo(Vector3 pos, float size)
         {

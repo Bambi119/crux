@@ -1,86 +1,99 @@
 using UnityEngine;
-using UnityEngine.UI;
-using UnityCamera = UnityEngine.Camera;
 
 namespace Crux.UI
 {
     /// <summary>
-    /// World→Screen 경계 플립 시스템. 월드 좌표의 팝업을 화면 경계를 넘지 않도록 위치 조정.
-    /// Canvas World Space 및 Screen Space Overlay 환경 지원.
+    /// 팝업 위치 조정 — 화면 경계 플립.
+    ///
+    /// 선택된 유닛이 화면 경계에 가까우면 팝업(CommandBox, WeaponSelect 등)을
+    /// 반대쪽으로 자동 배치하여 오프스크린 방지.
+    ///
+    /// 참고: docs/10c §2.1 — 화면 경계 플립 규칙
     /// </summary>
-    public static class PopupPositioner
+    public class PopupPositioner
     {
-        private const float SafetyMargin = 20f; // 화면 경계 안전 마진 (픽셀)
+        /// <summary>팝업 크기 (예상값)</summary>
+        public struct PopupSize
+        {
+            public float width;
+            public float height;
+        }
+
+        /// <summary>경계 판정 마진 (px)</summary>
+        private const float SafetyMargin = 20f;
 
         /// <summary>
-        /// 월드 좌표 기준 팝업 위치를 계산하며, 화면 경계 플립 적용.
+        /// 화면 좌표 기준 팝업 위치 계산 — 경계 플립 자동 적용.
+        ///
+        /// 아군 유닛이 화면 경계에 가까우면 팝업을 반대쪽으로 배치.
+        /// 예: 우측 근처 → 팝업을 좌측 배치
         /// </summary>
-        /// <param name="worldPos">기준 월드 좌표 (유닛/타일 중심)</param>
-        /// <param name="popupSize">팝업 크기 (픽셀)</param>
-        /// <param name="preferredOffset">기본 오프셋. 양수=우측/상단, 음수=좌측/하단</param>
-        /// <param name="canvas">RectTransform을 가져올 Canvas</param>
-        /// <returns>팝업 RectTransform에 설정할 anchoredPosition</returns>
-        public static Vector2 ComputeScreenPosition(Vector3 worldPos, Vector2 popupSize, Vector2 preferredOffset, Canvas canvas)
+        public static Vector2 GetFlippedPosition(Vector3 unitWorldPos, UnityEngine.Camera mainCam, PopupSize popupSize)
         {
-            if (canvas == null)
+            if (mainCam == null) return Vector2.zero;
+
+            // 유닛의 스크린 좌표 계산
+            Vector3 screenPos = mainCam.WorldToScreenPoint(unitWorldPos);
+            float screenX = screenPos.x;
+            float screenY = Screen.height - screenPos.y; // GUI 좌표계로 변환
+
+            float popupX = screenX;
+            float popupY = screenY;
+
+            // 수평 배치 판정 — 좌/우 경계
+            float rightMargin = popupSize.width + SafetyMargin;
+            float leftMargin = SafetyMargin;
+
+            if (screenX + rightMargin > Screen.width)
             {
-                Debug.LogError("[PopupPositioner] Canvas is null");
-                return preferredOffset;
+                // 우측 경계에 가까움 → 팝업을 좌측 배치
+                popupX = screenX - popupSize.width - 10f;
+            }
+            else if (screenX - leftMargin < 0)
+            {
+                // 좌측 경계에 가까움 → 팝업을 우측 배치
+                popupX = screenX + 10f;
+            }
+            else
+            {
+                // 여유 있음 — 기본값 (유닛 우측)
+                popupX = screenX + 10f;
             }
 
-            // 월드 → 스크린 변환
-            UnityCamera mainCam = UnityCamera.main;
-            if (mainCam == null)
+            // 수직 배치 판정 — 상/하 경계
+            float bottomMargin = popupSize.height + SafetyMargin;
+            float topMargin = SafetyMargin;
+
+            if (screenY + bottomMargin > Screen.height)
             {
-                Debug.LogError("[PopupPositioner] Camera.main is null");
-                return preferredOffset;
+                // 하단 경계에 가까움 → 팝업을 상단 배치
+                popupY = screenY - popupSize.height - 10f;
             }
-            Vector3 screenPos = mainCam.WorldToScreenPoint(worldPos);
-
-            // Canvas 스케일 팩터 고려 (Screen Space Canvas의 경우)
-            float scaleFactor = canvas.scaleFactor;
-            Vector2 screenPosNormalized = new Vector2(screenPos.x / scaleFactor, screenPos.y / scaleFactor);
-
-            // Canvas RectTransform 기준 뷰포트 크기
-            RectTransform canvasRT = canvas.GetComponent<RectTransform>();
-            float canvasWidth = canvasRT.rect.width;
-            float canvasHeight = canvasRT.rect.height;
-
-            // X 축 플립 판정
-            float xPos = screenPosNormalized.x + preferredOffset.x;
-            if (xPos + popupSize.x / 2 > canvasWidth - SafetyMargin)
+            else if (screenY - topMargin < 0)
             {
-                // 우측 초과 → 좌측으로 플립
-                xPos = screenPosNormalized.x - preferredOffset.x - popupSize.x;
+                // 상단 경계에 가까움 → 팝업을 하단 배치
+                popupY = screenY + 10f;
             }
-            else if (xPos - popupSize.x / 2 < SafetyMargin)
+            else
             {
-                // 좌측 초과 → 우측으로 플립
-                xPos = screenPosNormalized.x + popupSize.x;
+                // 여유 있음 — 기본값 (유닛 하측)
+                popupY = screenY + 10f;
             }
 
-            // Y 축 플립 판정 (Canvas가 bottom-left 원점이므로 음수 방향이 하단)
-            float yPos = screenPosNormalized.y + preferredOffset.y;
-            if (yPos + popupSize.y / 2 > canvasHeight - SafetyMargin)
-            {
-                // 상단 초과 → 하단으로 플립
-                yPos = screenPosNormalized.y - preferredOffset.y - popupSize.y;
-            }
-            else if (yPos - popupSize.y / 2 < SafetyMargin)
-            {
-                // 하단 초과 → 상단으로 플립
-                yPos = screenPosNormalized.y + popupSize.y;
-            }
+            // 최종 위치 — 화면 내 클램핑 (추가 안전장치)
+            popupX = Mathf.Clamp(popupX, 0, Screen.width - popupSize.width);
+            popupY = Mathf.Clamp(popupY, 0, Screen.height - popupSize.height);
 
-            return new Vector2(xPos, yPos);
+            return new Vector2(popupX, popupY);
         }
 
         /// <summary>
-        /// 간편 오버로드 — preferredOffset 기본값 (우측 10, 상단 -10).
+        /// 팝업이 화면 내에 완전히 포함되는지 판정.
         /// </summary>
-        public static Vector2 ComputeScreenPosition(Vector3 worldPos, Vector2 popupSize, Canvas canvas)
+        public static bool IsFullyOnScreen(Rect popupRect)
         {
-            return ComputeScreenPosition(worldPos, popupSize, new Vector2(10f, -10f), canvas);
+            return popupRect.xMin >= 0 && popupRect.xMax <= Screen.width &&
+                   popupRect.yMin >= 0 && popupRect.yMax <= Screen.height;
         }
     }
 }

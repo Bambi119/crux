@@ -61,6 +61,12 @@ namespace Crux.Core
         // 사기 라우터 (P3-b)
         private Crux.Combat.CombatMoraleRouter moraleRouter;
 
+        // HUD
+        private BattleHUD hud;
+
+        // Phase 3 UI 명령 라우터
+        private BattleCommandRouter commandRouter;
+
         // 입력 핸들러
         private PlayerInputHandler inputHandler;
 
@@ -92,6 +98,9 @@ namespace Crux.Core
         private float pendingFacingAngle;     // 선택 중인 방향
         private int pendingMoveCost;          // 이동 AP 비용
         private float pendingRotationDelta = 0f; // 회전 모드 누적 각도
+
+        // post-move 흐름 제어 (PostMoveController로 추출됨)
+        private PostMoveController postMoveController;
 
         // 카메라
         private BattleCamera battleCam;
@@ -133,6 +142,32 @@ namespace Crux.Core
         // UI 복구용 이벤트
         public event System.Action<GridTankUnit> OnSelectedUnitChanged;
 
+        // BattleCommandRouter용 internal setter
+        internal void SetInputModeInternal(InputModeEnum mode) => inputMode = (InputMode)(int)mode;
+        internal void SetTargetUnitInternal(GridTankUnit t) => targetUnit = t;
+        internal BattleCamera BattleCam => battleCam;
+
+        /// <summary>post-move CommandBox 표시 중인가 (이동 완료 후 행동 선택 대기)</summary>
+        public bool IsPostMoveContext => postMoveController.IsPostMoveContext;
+
+        /// <summary>이동 취소 — preMoveSnapshot으로 유닛 원위치 복귀. RotationWheel·CommandBox·InputMode 모두 정리.</summary>
+        public void UndoMoveSnapshot() => postMoveController.UndoMoveSnapshot();
+
+        /// <summary>사격 범위 판정용 모든 유닛 반환 (플레이어 + 적) — GridTankUnit.HasAnyEnemyInFireRange() 등에서 사용</summary>
+        public List<GridTankUnit> GetAllUnitsForRangeCheck()
+        {
+            var allUnits = new List<GridTankUnit>();
+            if (playerUnit != null)
+                allUnits.Add(playerUnit);
+            if (enemyUnits != null)
+                allUnits.AddRange(enemyUnits);
+            return allUnits;
+        }
+
+        // 반격 WeaponSelect 세션 헬퍼 (CounterFireController 위임)
+        private Crux.Combat.CounterFireSession counterFireSession;
+        private CounterFireController counterFireCtrl;
+
         // ===== 상태 저장/복원 관리자 (P-S6) =====
         private BattleStateManager stateManager;
 
@@ -146,10 +181,29 @@ namespace Crux.Core
         internal int CurrentEnemyIndexInternal { get => currentEnemyIndex; set => currentEnemyIndex = value; }
         internal void ReinitializeBattle() => InitializeBattle();
         internal void StartProcessEnemyTurnFrom(int startIdx) => StartCoroutine(ProcessEnemyTurn(startIdx));
+        internal BattleStateManager StateManagerRef => stateManager;
+        internal WeaponType SelectedWeaponInternal { get => selectedWeapon; set => selectedWeapon = value; }
+        internal void StartCoroutinePublic(System.Collections.IEnumerator routine) => StartCoroutine(routine);
+
+        // PostMoveController용 internal 접근자
+        internal GridTankUnit SelectedUnitInternal   { get => selectedUnit;      set => selectedUnit = value; }
+        internal GridTankUnit InspectedUnitInternal  { get => inspectedUnit;     set => inspectedUnit = value; }
+        internal GridTankUnit TargetUnitInternal     { get => targetUnit;        set => targetUnit = value; }
+        internal GridTankUnit PendingTargetInternal  { get => pendingTarget;     set => pendingTarget = value; }
+        internal Vector2Int   PendingMoveTargetInternal { get => pendingMoveTarget; set => pendingMoveTarget = value; }
+        internal int          PendingMoveCostInternal   { get => pendingMoveCost;   set => pendingMoveCost = value; }
+        internal float        PendingFacingAngleInternal { get => pendingFacingAngle; set => pendingFacingAngle = value; }
+        internal InputModeEnum InputModeInternal { get => (InputModeEnum)(int)inputMode; set => inputMode = (InputMode)(int)value; }
+        internal BattleCommandRouter CommandRouterRef => commandRouter;
+        internal void ShowCommandBoxInternal() => commandRouter.ShowCommandBox();
 
         private void Start()
         {
             stateManager = new BattleStateManager(this);
+            commandRouter = new BattleCommandRouter(this);
+            postMoveController = new PostMoveController(this);
+            counterFireSession = new Crux.Combat.CounterFireSession();
+            counterFireCtrl = new CounterFireController(this, counterFireSession);
 
             if (FireActionContext.HasPendingAction)
             {
@@ -169,6 +223,7 @@ namespace Crux.Core
 
         private void InitializeBattle()
         {
+            counterFireSession?.Reset();
             moraleRouter?.Detach();
             // 그리드 — 테스트 맵일 경우 차원 확장
             var gridObj = new GameObject("Grid");
@@ -205,6 +260,13 @@ namespace Crux.Core
 
             playerUnit = mapSetup.PlayerUnit;
             enemyUnits = mapSetup.EnemyUnits;
+
+            // Phase 2 API 초기화 — 사격 범위 판정용 컨트롤러 참조 바인딩
+            if (playerUnit != null)
+                playerUnit.BindBattleController(this);
+            foreach (var enemy in enemyUnits)
+                if (enemy != null)
+                    enemy.BindBattleController(this);
 
             // 화재 사망 처리 (P-S7: FireKillHandler 초기화) — Phase 4: ShowBanner 큐 이관 필요 (TD-08)
             fireKillHandler = new Crux.Combat.FireKillHandler(grid, (t, c, d) => ShowBanner(t, c, d));
@@ -248,6 +310,15 @@ namespace Crux.Core
             // 사격 실행 초기화
             fireExecutor = new Crux.Combat.FireExecutor(grid, enemyUnits, coaxialMGData, mountedMGData);
 
+            // HUD 초기화
+            var hudObj = new GameObject("BattleHUD");
+            hud = hudObj.AddComponent<BattleHUD>();
+            hud.Initialize(this);
+
+            // CommandBox · TargetCycler 초기화 (Phase 3) — Router에 위임
+            commandRouter.SetupCommandBox();
+            commandRouter.SetupTargetCycler();
+
             // 반응 사격 시퀀스 초기화 (P-S5 추출)
             var rfsObj = new GameObject("ReactionFireSequence");
             reactionFireSeq = rfsObj.AddComponent<Crux.Combat.ReactionFireSequence>();
@@ -280,6 +351,7 @@ namespace Crux.Core
             if (currentPhase == TurnPhase.PlayerTurn)
             {
                 inputHandler?.Tick();
+                postMoveController.Tick();
             }
             // 방호 arc는 턴 구분 없이 갱신 — 적 턴 중 씬 복귀 시에도 플레이어 엄폐 상태가 보여야 함
             UpdateCoverArcDisplay();
@@ -495,10 +567,27 @@ namespace Crux.Core
                         enemy.FaceToward(decision.fireTarget.GridPosition);
                         currentEnemyIndex = i + 1;
 
-                        // Task #17: 플레이어 반격 프롬프트 (방어자가 플레이어면)
-                        yield return StartCoroutine(PromptPlayerCounterIfNeeded(enemy, decision.fireTarget));
+                        // 플레이어 대상 사격 시 반격 가능 여부 사전 체크 — FireActionScene 내부 패널용
+                        bool playerCanCounter = false;
+                        if (decision.fireTarget == playerUnit && playerUnit != null && !playerUnit.IsDestroyed)
+                        {
+                            var counterCheck = Combat.CounterFireResolver.CheckWithReason(
+                                playerUnit, enemy, grid);
+                            playerCanCounter = counterCheck.canCounter;
+                        }
 
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
+
+                        // 반격 콜백 등록은 Execute() 이후 — Execute()가 진입 시 FireActionContext.Clear()를 호출하여 큐와 함께 콜백·플래그도 초기화하기 때문
+                        if (playerCanCounter)
+                        {
+                            var capturedEnemy = enemy;
+                            FireActionContext.OnCounterWeaponSelected = w =>
+                                fireExecutor.EnqueueCounterFire(playerUnit, capturedEnemy, w);
+                            FireActionContext.PendingCounterSelect = true;
+                            Debug.Log($"[CRUX] 플레이어 반격 대기 설정 — 공격자: {enemy.Data?.tankName}");
+                        }
+
                         stateManager.Save();
                         SceneManager.LoadScene("FireActionScene");
                         yield break; // 씬 전환됨
@@ -519,7 +608,8 @@ namespace Crux.Core
 
         // ===== PlayerInputHandler 공개 API =====
 
-        public bool CanHandleInput => selectedUnit != null && !selectedUnit.IsDestroyed && !selectedUnit.IsMoving;
+        public bool CanHandleInput => selectedUnit == null
+            || (!selectedUnit.IsDestroyed && !selectedUnit.IsMoving);
 
         public void CancelToSelect()
         {
@@ -564,6 +654,7 @@ namespace Crux.Core
             inputMode = multiWeapon ? InputMode.WeaponSelect : InputMode.Fire;
             selectedWeapon = WeaponType.MainGun;
             visualizer.ShowFireRange(selectedUnit.GridPosition, GameConstants.MaxFireRange);
+            commandRouter.InitializeTargetCycler(selectedUnit, enemyUnits);
         }
 
         public void TryEnterWeaponSelect()
@@ -577,7 +668,7 @@ namespace Crux.Core
             if (ammo == null || selectedUnit == null) return;
             selectedUnit.currentAmmo = ammo;
             selectedWeapon = WeaponType.MainGun;
-            UpdateWeaponPreview(WeaponType.MainGun, pendingTarget);
+            commandRouter.UpdateWeaponPreview(WeaponType.MainGun, pendingTarget, coaxialMGData, mountedMGData);
         }
 
         public void SelectMG(WeaponType weaponType, AmmoDataSO ammo)
@@ -586,7 +677,7 @@ namespace Crux.Core
             if (weaponType != WeaponType.CoaxialMG && weaponType != WeaponType.MountedMG) return;
             selectedUnit.currentAmmo = ammo;
             selectedWeapon = weaponType;
-            UpdateWeaponPreview(weaponType, pendingTarget);
+            commandRouter.UpdateWeaponPreview(weaponType, pendingTarget, coaxialMGData, mountedMGData);
         }
 
         public void CancelWeaponSelect()
@@ -602,15 +693,18 @@ namespace Crux.Core
                 || (weapon == WeaponType.MountedMG && mountedMGData != null))
             {
                 selectedWeapon = weapon;
-                UpdateWeaponPreview(weapon, pendingTarget);
             }
+
+            // 무기 프리뷰 시 부위 바 깜빡임 표시 (Phase 4)
+            if (pendingTarget != null && selectedUnit != null)
+                commandRouter.UpdateWeaponPreview(selectedWeapon, pendingTarget, coaxialMGData, mountedMGData);
         }
 
         public void CommitWeaponSelection()
         {
+            commandRouter.ClearWeaponPreview();
             if (selectedUnit != null && pendingTarget != null)
             {
-                ClearWeaponPreview();
                 CommitFire(selectedUnit, pendingTarget, selectedWeapon);
             }
         }
@@ -623,76 +717,31 @@ namespace Crux.Core
             pendingRotationDelta = 0f;
         }
 
-        /// <summary>회전 확정 — selectedUnit.RotateHullInPlace() 호출 후 턴 종료</summary>
-        public void CommitRotation()
-        {
-            if (selectedUnit == null || inputMode != InputMode.RotateMode) return;
-            if (Mathf.Abs(pendingRotationDelta) < 1f) { CancelToSelect(); return; }
-            bool success = selectedUnit.RotateHullInPlace(pendingRotationDelta);
-            if (success) EndPlayerTurn(); else CancelToSelect();
-        }
+        // ===== 반격 WeaponSelect 세션 API (CounterFireController 위임) =====
 
-        /// <summary>회전 모드 취소</summary>
-        public void CancelRotateMode() => CancelToSelect();
+        /// <summary>반격 WeaponSelect 세션 활성 여부</summary>
+        public bool IsCounterFireMode => counterFireCtrl.IsCounterFireMode;
 
-        /// <summary>회전 모드 누적 각도 (Q=-60, E=+60)</summary>
-        public void AccumulateRotation(float deltaDegrees)
-        {
-            pendingRotationDelta += deltaDegrees;
-        }
+        /// <summary>반격 타이머 잔여 초 (HUD 카운트다운용)</summary>
+        public int CounterFireSecondsLeft => counterFireCtrl.CounterFireSecondsLeft;
 
-        /// <summary>회전 모드 누적 각도 조회</summary>
-        public float GetPendingRotationDelta() => pendingRotationDelta;
+        /// <summary>피격 후 반격 WeaponSelect 세션 진입</summary>
+        public void EnterCounterFireWeaponSelect(GridTankUnit attackerEnemy) => counterFireCtrl.Enter(attackerEnemy);
 
-        /// <summary>무기 선택 시 미리보기 업데이트 (expectedDamage 계산)</summary>
-        public void UpdateWeaponPreview(WeaponType weapon, GridTankUnit target)
-        {
-            if (target == null) return;
+        /// <summary>사용자가 무기 선택 후 반격 확정 — 씬 전환으로 이어짐</summary>
+        public void CommitCounterFire(WeaponType weapon) => counterFireCtrl.Commit(weapon);
 
-            // 무기별 기본 피해량 (placeholder)
-            float expectedDamage = weapon switch
-            {
-                WeaponType.MainGun => 15f,    // 주포 기본 피해
-                WeaponType.CoaxialMG => 3f,   // 동축기총
-                WeaponType.MountedMG => 3f,   // 차체기총
-                _ => 0f
-            };
+        /// <summary>반격 취소 — 타이머 중단 + 적 턴 재개</summary>
+        public void CancelCounterFire() => counterFireCtrl.Cancel();
 
-            UpdateTargetWeaponPreview(target, HitZone.Front, expectedDamage);
-        }
-
-        /// <summary>대상 유닛의 부위별 피해 예상 표시 (PartBarFlashAnimator 연동)</summary>
-        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
-        {
-            if (target == null) return;
-            // TODO(J-3): PartBarFlashAnimator.StartFlash() 호출
-            // target의 대해당 부위(zone) Image 참조를 획득 후 StartFlash(barImage, maxHP, expectedDamage) 실행
-            Debug.Log($"[Preview] {target.name} {zone}: expectedDamage={expectedDamage}");
-        }
-
-        /// <summary>무기 미리보기 종료</summary>
-        public void ClearWeaponPreview()
-        {
-            // TODO(J-3): PartBarFlashAnimator.StopFlash() 호출 또는 비활성화
-            if (pendingTarget != null)
-                Debug.Log($"[Preview] Clear for {pendingTarget.name}");
-        }
+        // FireExecutor용 내부 접근자
+        internal Crux.Combat.FireExecutor FireExecutorRef => fireExecutor;
 
         public void SetPendingFacingAngle(float angle) => pendingFacingAngle = angle;
 
-        public void CommitMoveDirection()
-        {
-            if (selectedUnit == null) return;
-            selectedUnit.MoveToWithFacing(pendingMoveTarget, pendingFacingAngle);
-            visualizer.ClearHighlights();
-            inputMode = InputMode.Select;
-        }
+        public void CommitMoveDirection() => postMoveController.CommitMoveDirection();
 
-        public void CommitMoveDirectionFromMouse()
-        {
-            pendingFacingAngle = GetSnappedDirectionFromMouse(pendingMoveTarget);
-            CommitMoveDirection();
-        }
+        public void CommitMoveDirectionFromMouse(float snappedAngle) => postMoveController.CommitMoveDirectionFromMouse(snappedAngle);
 
         public void TryExtinguishAction()
         {
@@ -731,9 +780,9 @@ namespace Crux.Core
             if (!grid.IsInBounds(gridPos)) return;
             switch (inputMode)
             {
-                case InputMode.Move: TryMoveToCell(gridPos); break;
-                case InputMode.Fire: TrySelectTarget(gridPos); break;
-                case InputMode.Select: InspectCell(gridPos); break;
+                case InputMode.Move:   postMoveController.TryMoveToCell(gridPos); break;
+                case InputMode.Fire:   postMoveController.TrySelectTarget(gridPos); break;
+                case InputMode.Select: postMoveController.InspectCell(gridPos); break;
             }
         }
 
@@ -778,83 +827,14 @@ namespace Crux.Core
         private void CommitFire(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
             fireExecutor.Execute(attacker, target, weapon);
+
+            // AI 반격 체크 — 공격 대상 적이 플레이어를 반격할 수 있으면 자동 큐 추가
+            if (target != null && target.side == PlayerSide.Enemy)
+                fireExecutor.TryEnqueueAIRetaliation(target, attacker, grid);
+
             stateManager.Save();
             SceneManager.LoadScene("FireActionScene");
         }
-
-        /// <summary>Select 모드에서 셀 클릭 — 유닛이면 정보 조회</summary>
-        private void InspectCell(Vector2Int pos)
-        {
-            var cell = grid.GetCell(pos);
-            if (cell == null || cell.Occupant == null)
-            {
-                inspectedUnit = null;
-                return;
-            }
-            var unit = cell.Occupant.GetComponent<GridTankUnit>();
-            if (unit == null || unit.IsDestroyed)
-            {
-                inspectedUnit = null;
-                return;
-            }
-            if (unit.side == PlayerSide.Player)
-            {
-                inspectedUnit = null;
-                TrySelectUnit(unit);
-            }
-            else
-            {
-                inspectedUnit = unit;
-            }
-        }
-
-        /// <summary>마우스 클릭 위치에서 셀 기준 6방향 (60° 단위) 스냅 각도 계산</summary>
-        private float GetSnappedDirectionFromMouse(Vector2Int targetCell)
-        {
-            var clickWorld = battleCam?.Cam.ScreenToWorldPoint(Input.mousePosition) ?? Vector3.zero;
-            var cellWorld = grid.GridToWorld(targetCell);
-            var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
-
-            if (diff.sqrMagnitude < 0.01f)
-                return pendingFacingAngle;
-
-            float deg = AngleUtil.FromDir(diff);
-            if (deg < 0) deg += 360f;
-            return AngleUtil.SnapTo60(deg);
-        }
-
-        private void TryMoveToCell(Vector2Int pos)
-        {
-            // 경로 비용 계산
-            var path = grid.FindPath(selectedUnit.GridPosition, pos);
-            if (path == null || path.Count <= 1) return;
-
-            int cost = (path.Count - 1) * selectedUnit.GetMoveCostPerCell();
-            if (cost > selectedUnit.CurrentAP) return;
-
-            // 방향 선택 단계로 전환
-            pendingMoveTarget = pos;
-            pendingMoveCost = cost;
-            pendingFacingAngle = selectedUnit.HullAngle; // 기본: 현재 방향 유지
-            inputMode = InputMode.MoveDirectionSelect;
-            visualizer.ClearHighlights();
-            visualizer.HighlightCell(pos, Color.cyan);
-        }
-
-        private void TrySelectTarget(Vector2Int pos)
-        {
-            var cell = grid.GetCell(pos);
-            if (cell == null || cell.Occupant == null) return;
-
-            var target = cell.Occupant.GetComponent<GridTankUnit>();
-            if (target == null || target.IsDestroyed || target.side == PlayerSide.Player) return;
-
-            targetUnit = target;
-            pendingTarget = target;
-            inputMode = InputMode.WeaponSelect;
-            visualizer.ClearHighlights();
-        }
-
 
         /// <summary>거리 기반 명중률 — FireExecutor의 wrapper (호환성 유지)</summary>
         public float CalculateHitChance(int distance, GridTankUnit target)
@@ -864,55 +844,41 @@ namespace Crux.Core
         public string GetUnitCoverStatus(GridTankUnit unit)
             => fireExecutor.GetUnitCoverStatus(unit);
 
-        // ===== Task #17: 플레이어 반격 프롬프트 =====
+        // ===== Command Box · Target Cycler · Rotate Mode · 무기 프리뷰 (Phase 3/4) — Router 위임 =====
 
-        /// <summary>
-        /// 플레이어 유닛이 방어자일 때 1.5s 프롬프트로 반격 Y/N 확인.
-        /// 적이 방어자면 즉시 return (적은 항상 자동 반격).
-        /// 반격 불가능하면 즉시 return.
-        /// </summary>
-        private IEnumerator PromptPlayerCounterIfNeeded(GridTankUnit attacker, GridTankUnit defender)
+        /// <summary>커맨드 박스 표시</summary>
+        public void ShowCommandBox() => commandRouter.ShowCommandBox();
+
+        /// <summary>커맨드 박스 숨김</summary>
+        public void HideCommandBox() => commandRouter.HideCommandBox();
+
+        /// <summary>축적된 회전각도 적용 및 RotateMode 종료</summary>
+        public void CommitRotation() => commandRouter.CommitRotation();
+
+        /// <summary>RotateMode 취소</summary>
+        public void CancelRotateMode() => commandRouter.CancelRotateMode();
+
+        /// <summary>화면 내 회전각 누적 (양수=시계, 음수=반시계)</summary>
+        public void AccumulateRotation(float deltaDegrees) => commandRouter.AccumulateRotation(deltaDegrees);
+
+        /// <summary>회전 모드: 누적된 회전각 조회</summary>
+        public float GetPendingRotationDelta() => commandRouter.GetPendingRotationDelta();
+
+        /// <summary>Fire 모드: 다음 목표로 순환</summary>
+        public void CycleTargetNext() => commandRouter.CycleTargetNext();
+
+        /// <summary>Fire 모드: 이전 목표로 순환</summary>
+        public void CycleTargetPrevious() => commandRouter.CycleTargetPrevious();
+
+        /// <summary>목표 유닛의 부위 바 프리뷰 갱신 (외부 호출용 — 시그니처 유지)</summary>
+        public void UpdateTargetWeaponPreview(GridTankUnit target, HitZone zone, float expectedDamage)
+            => commandRouter.UpdateTargetWeaponPreview(target, zone, expectedDamage);
+
+        // ===== UI (OnGUI) =====
+
+        private void OnGUI()
         {
-            // 방어자가 플레이어 아니면 → 적은 항상 자동
-            if (defender.side != PlayerSide.Player)
-                yield break;
-
-            // 반격 가능성 체크 (8조건)
-            var checkResult = CounterFireResolver.CheckWithReason(defender, attacker, grid);
-            if (!checkResult.canCounter)
-                yield break;  // 반격 불가능 — 자동 스킵
-
-            // 프롬프트 표시
-            ShowBanner($"반격? [Y] 확정 / [N] 스킵 — 1.5s 자동확정", Color.yellow, 1.5f);
-
-            // 1.5s 타이머 루프
-            float endTime = Time.time + 1.5f;
-            bool confirmed = true;  // 기본: 자동확정 Y
-
-            while (Time.time < endTime)
-            {
-                if (Input.GetKeyDown(KeyCode.Y))
-                {
-                    confirmed = true;
-                    break;
-                }
-                if (Input.GetKeyDown(KeyCode.N))
-                {
-                    confirmed = false;
-                    break;
-                }
-                yield return null;
-            }
-
-            // 확정 결과 적용
-            defender.SetCounterConfirmed(confirmed);
-
-            // 피드백 배너 표시
-            string feedback = confirmed ? "반격 실행" : "반격 스킵";
-            ShowBanner(feedback, confirmed ? Color.green : Color.gray, 1f);
-
-            yield return new WaitForSeconds(0.5f);
+            if (hud != null) hud.Draw();
         }
-
     }
 }

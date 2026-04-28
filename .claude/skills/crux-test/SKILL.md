@@ -167,9 +167,47 @@ mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke Abort")
 3. **Performance 스모크** — `get_worst_cpu_frames` 활용 (MCP 복구 시)
 4. **Scene Roundtrip** — Save/Restore 라운드트립 테스트
 
+## Scenario Runner
+
+자동화 시나리오 러너 — PlayMode에서 BattleController API를 순서대로 호출하고 상태를 검증한다.
+
+### 메뉴
+
+| 메뉴 경로 | 설명 |
+|---|---|
+| `Crux/Test/Run Scenario (Pick)` | 파일 선택 다이얼로그로 .asset 선택 후 실행 |
+| `Crux/Test/Run Scenario (Last)` | 직전 Pick 경로로 재실행 |
+| `Crux/Test/Create PostMoveFlow Scenario` | PostMoveFlow 5-step PoC 자산 자동 생성 |
+
+### 자산 위치
+
+- SO (ScriptableObject) 저장: `Assets/_Project/ScriptableObjects/Scenarios/`
+- 생성: 우클릭 → Create → Crux → Test → Scenario
+
+### 출력 경로 (`CRUX/Temp/` 아래)
+
+| 파일 | 내용 |
+|---|---|
+| `crux-scenario-<name>.log` | 스텝별 `[PASS|FAIL] idx label - detail` + 타임스탬프 |
+| `crux-scenario-<name>-summary.json` | `{ total, passed, failed, durationSec, steps:[...] }` |
+| `crux-scenario-<name>/<idx>_<label>.png` | 1280×720 스크린샷 (CapturePolicy.Always 또는 실패 시) |
+| `crux-scenario-<name>/<idx>_<label>.diff.png` | 골든 이미지 비교 diff (골든 있을 때만) |
+
+### 골든 이미지 디렉토리
+
+`Assets/_Project/Tests/Golden/<scenarioName>/` 아래에 동명 PNG를 두면 자동 비교.
+없으면 비교 skip (항상 ok=true).
+
+### 신규 ScenarioAction enum 추가 절차
+
+1. `CruxScenarioStep.cs` — `ScenarioAction` enum에 값 추가
+2. `CruxScenarioInputHelper.cs` — `ApplyAction()` switch에 case 추가
+3. `check_compile_errors` 후 커밋
+
 ## 파일 경로 참조
 
 - 플레이 스모크 결과: `CRUX/Temp/crux-playsmoke.log`
 - 정적 테스트 결과: `CRUX/Temp/crux-tests.log`
+- 시나리오 러너 소스: `CRUX/Assets/_Project/Scripts/Editor/Automation/CruxScenario*.cs`
 - 하네스 소스: `CRUX/Assets/_Project/Scripts/Editor/CruxPlaySmoke.cs`, `CruxTestRunner.cs`
 - 기존 P2 테스트: `CRUX/Assets/_Project/Scripts/Editor/P2{A,B,C}_*.cs`

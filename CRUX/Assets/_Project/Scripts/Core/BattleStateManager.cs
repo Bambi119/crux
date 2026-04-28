@@ -122,8 +122,7 @@ namespace Crux.Core
                 ctrl.TurnCountInternal = state.turnCount;
                 ctrl.CurrentPhaseInternal = state.phase;
 
-                // 연출 결과 데미지 적용 — 모든 큐된 액션 순회 (메인 공격 + 반격 양쪽)
-                Debug.Log($"[CRUX] ApplyPendingResult — action queue count: {FireActionContext.Actions.Count}");
+                // 연출 결과 데미지 적용 — 큐 전체 순회 (주포 + 반격 포함)
                 for (int ai = 0; ai < FireActionContext.Actions.Count; ai++)
                 {
                     var actionData = FireActionContext.Actions[ai];
@@ -143,7 +142,6 @@ namespace Crux.Core
                         // 주포 데미지 — 사전 롤된 결과 적용
                         if (actionData.result.hit && actionData.result.damageDealt > 0)
                         {
-                            Debug.Log($"[CRUX] Apply action[{ai}] main → {target.Data?.tankName} dmg={actionData.result.damageDealt}");
                             target.ApplyPrerolledDamage(new DamageInfo
                             {
                                 damage = actionData.result.damageDealt,
@@ -169,7 +167,6 @@ namespace Crux.Core
                         }
                         if (total > 0)
                         {
-                            Debug.Log($"[CRUX] Apply action[{ai}] MG → {target.Data?.tankName} dmg={total}");
                             target.ApplyPrerolledDamage(new DamageInfo
                             {
                                 damage = total,
@@ -185,9 +182,11 @@ namespace Crux.Core
                 TurnPhase savedPhase = state.phase;
 
                 BattleStateStorage.Clear();
+                // FireActionContext는 반격 여부 판단 후 클리어 (PendingCounterSelect 보존 필요 없음)
                 FireActionContext.Clear();
 
-                // 적 턴 중이었으면 나머지 적 행동 이어서 진행
+                // 반격 세션 없음 — 적 턴 재개 또는 플레이어 사격 후 복귀
+                // 반격 WeaponSelect는 FireActionScene 내부에서 처리 완료됨.
                 if (savedPhase == TurnPhase.EnemyTurn)
                 {
                     ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
@@ -198,6 +197,16 @@ namespace Crux.Core
             }
 
             FireActionContext.Clear();
+        }
+
+        /// <summary>
+        /// 반격 취소 후 적 턴 재개 — CancelCounterFire()가 호출.
+        /// currentEnemyIndex는 이미 갱신됨 (공격한 적 i+1).
+        /// </summary>
+        public void ResumeEnemyTurn()
+        {
+            ctrl.CurrentPhaseInternal = TurnPhase.EnemyTurn;
+            ctrl.StartProcessEnemyTurnFrom(ctrl.CurrentEnemyIndexInternal);
         }
     }
 }

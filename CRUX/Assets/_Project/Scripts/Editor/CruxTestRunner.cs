@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using UnityEngine;
 using UnityEditor;
+using Crux.EditorTools.Tests;
 
 namespace Crux.EditorTools
 {
@@ -124,6 +125,12 @@ namespace Crux.EditorTools
             totalPassed += passedCount; totalFailed += failedCount;
 
             RunOne("P7", P7_CrewDeploymentTest.Execute);
+            totalPassed += passedCount; totalFailed += failedCount;
+
+            RunOne("LintCounterFireOrder", CruxStaticLint.LintCounterFireOrder);
+            totalPassed += passedCount; totalFailed += failedCount;
+
+            RunOne("LintFireExecutorClearSideEffect", CruxStaticLint.LintFireExecutorClearSideEffect);
             totalPassed += passedCount; totalFailed += failedCount;
 
             Append($"[RUNNER] ===== TOTAL passed={totalPassed} failed={totalFailed} =====");

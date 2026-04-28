@@ -24,13 +24,12 @@ namespace Crux.Combat
             this.mountedMGData = mountedMGData;
         }
 
-        /// <summary>무기 분기 — FireActionContext까지 설정. 반격 로직 포함.</summary>
+        /// <summary>무기 분기 — FireActionContext까지 설정. 씬 전환은 호출자가 수행.</summary>
         public void Execute(GridTankUnit attacker, GridTankUnit target, WeaponType weapon)
         {
             // 스테일 액션 제거 — 첫 Enqueue 전에 컨텍스트 초기화
             FireActionContext.Clear();
 
-            // ===== 원 사격 실행 =====
             if (weapon == WeaponType.MainGun)
             {
                 ExecuteMainGun(attacker, target);
@@ -48,24 +47,6 @@ namespace Crux.Combat
                 ExecuteMainGun(attacker, target);
             }
 
-            // ===== 후속 반격 판정 (§06 §3.4) =====
-            // 반격 조건: target 생존 + HasCounteredThisExchange == false + CanCounter == true
-            Debug.Log($"[FIRE] Post-main gate — queue={FireActionContext.Actions.Count}, target.IsDestroyed={target.IsDestroyed}, HasCountered={target.HasCounteredThisExchange}");
-            if (target.IsDestroyed || target.HasCounteredThisExchange)
-                return;
-
-            var checkResult = CounterFireResolver.CheckWithReason(target, attacker, grid);
-#if UNITY_EDITOR
-            CounterFireResolver.LogDetailedResult(target, attacker, checkResult, grid);
-#else
-            CounterFireResolver.LogResult(target, attacker, checkResult);
-#endif
-            if (checkResult.canCounter)
-            {
-                Debug.Log($"[COUNTER] Counter-attack triggered: {target.Data?.tankName} ← {attacker.Data?.tankName}");
-                ExecuteCounter(target, attacker);
-                Debug.Log($"[FIRE] Post-counter — queue={FireActionContext.Actions.Count}");
-            }
         }
 
         /// <summary>주포 사격 실행</summary>
@@ -74,37 +55,119 @@ namespace Crux.Combat
             attacker.ConsumeFireAP();
             attacker.ConsumeMainGunRound();
 
+            int distance = grid.GetDistance(attacker.GridPosition, target.GridPosition);
             float hitChance = CalculateHitChanceWithCover(attacker, target);
+
             bool hit = Random.value <= hitChance;
-
-            if (hit) attacker.ResetMisses();
-            else attacker.RecordMiss();
-
-            var (targetInCover, targetCoverNameForVisual, targetCellForCover) =
-                GetTargetCoverInfo(attacker.GridPosition, target.GridPosition);
 
             ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
             bool hitCover = false;
             float coverDmgDealt = 0f;
             string hitCoverName = "";
 
-            if (hit)
+            // 대상 엄폐 여부 — 6방향 슬롯 판정
+            var targetCellForCover = grid.GetCell(target.GridPosition);
+            var attackHexDir = HexCoord.AttackDir(attacker.GridPosition, target.GridPosition, GameConstants.CellSize);
+
+            bool targetInCover = false;
+            string targetCoverNameForVisual = "";
+
+            if (targetCellForCover != null && targetCellForCover.HasCover
+                && targetCellForCover.Cover != null
+                && !targetCellForCover.Cover.IsDestroyed)
             {
-                (hitCover, coverDmgDealt, hitCoverName, result) =
-                    EvaluateCoverProtection(attacker, target, hitChance, targetInCover);
+                targetInCover = targetCellForCover.Cover.IsCovered(attackHexDir);
+                if (targetInCover)
+                    targetCoverNameForVisual = targetCellForCover.Cover.coverName;
             }
 
-            if (!hitCover && hit)
+            if (!hit)
             {
-                result = CalculateDirectHitDamage(attacker, target, hitChance);
+                // 빗나감 — 기본값 유지
             }
+            else
+            {
+                // ===== 엄폐 판정 — 방향 기반: 커버 범위 내일 때만 엄폐물이 막을 수 있음 =====
+                var targetCell = grid.GetCell(target.GridPosition);
 
+                if (targetInCover && targetCell != null && targetCell.Cover != null)
+                {
+                    float coverRate = targetCell.Cover.CoverRate;
+                    if (Random.value < coverRate)
+                    {
+                        // 엄폐물이 피격됨!
+                        hitCover = true;
+                        float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                        coverDmgDealt = dmg;
+                        hitCoverName = targetCell.Cover.coverName;
+
+                        var coverRef = targetCell.Cover; // TakeDamage 전에 참조 보존
+                        coverRef.TakeDamage(dmg);
+
+                        result = new ShotResult
+                        {
+                            hit = true,
+                            outcome = ShotOutcome.Hit,
+                            hitZone = HitZone.Front,
+                            effectiveArmor = 0,
+                            damageDealt = 0, // 전차에 데미지 없음
+                            hitChance = hitChance
+                        };
+
+                        Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({coverRef.size}) HP: {coverRef.CurrentHP:F0}/{coverRef.maxHP:F0} 엄폐율: {coverRef.CoverRate:P0} 방호면: {coverRef.CurrentFacets}");
+                    }
+                }
+
+                if (!hitCover)
+                {
+                // ===== 전차 직접 피격 =====
+                var hitZone = PenetrationCalculator.DetermineHitZone(
+                    attacker.transform.position, target.transform.position, target.HullAngle);
+
+                float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
+                float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                    attacker.transform.position, target.transform.position, target.HullAngle, hitZone);
+                float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+
+                float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
+                var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+
+                float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
+                float finalDmg = outcome switch
+                {
+                    ShotOutcome.Ricochet => dmg * 0.03f,
+                    ShotOutcome.Hit => dmg,
+                    ShotOutcome.Penetration => dmg * 2.5f,
+                    _ => 0f
+                };
+
+                result = new ShotResult
+                {
+                    hit = true,
+                    outcome = outcome,
+                    hitZone = hitZone,
+                    effectiveArmor = effectiveArmor,
+                    damageDealt = finalDmg,
+                    hitChance = hitChance
+                };
+                } // if (!hitCover)
+            } // else (hit)
+
+            // 연출 씬으로 데이터 전달
             int targetIndex = enemyUnits.IndexOf(target);
+
+            // 스프라이트 가져오기
+            var attackerSr = attacker.GetComponentInChildren<SpriteRenderer>();
+            var attackerTurretSr = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
+            var targetSr = target.GetComponentInChildren<SpriteRenderer>();
+
+            // 공격자 엄폐 상태 확인
             var attackerCell = grid.GetCell(attacker.GridPosition);
             bool inCover = attackerCell != null && attackerCell.HasCover
                            && attackerCell.Cover != null && !attackerCell.Cover.IsDestroyed;
             string coverName = inCover ? attackerCell.Cover.coverName : "";
 
+            // 사전 롤: 전차 피해 시에만 (엄폐 피격이 아닌 경우)
             Unit.DamageOutcome mainOutcome = default;
             if (!hitCover && result.hit && result.damageDealt > 0)
             {
@@ -116,10 +179,6 @@ namespace Crux.Combat
                     attacker = attacker
                 });
             }
-
-            var attackerSr = attacker.GetComponentInChildren<SpriteRenderer>();
-            var attackerTurretSr = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
-            var targetSr = target.GetComponentInChildren<SpriteRenderer>();
 
             FireActionContext.Enqueue(new FireActionData
             {
@@ -165,28 +224,6 @@ namespace Crux.Combat
             float baseHitChance = CalculateHitChance(distance, target)
                 + mgData.accuracyModifier
                 - attacker.Modules.GetMGAccuracyPenalty();
-
-            // GunnerMech aim 명중 보정 (기본값 50 기준 ±0.5%/점)
-            var atkCrew = attacker.Crew;
-            if (atkCrew != null)
-            {
-                var gunnerMech = atkCrew.GetByClass(CrewClass.GunnerMech);
-                if (gunnerMech != null)
-                {
-                    float aimBonus = (gunnerMech.BaseAim - 50) * 0.005f;
-                    baseHitChance += aimBonus;
-                    Debug.Log($"[FIRE] GunnerMech aim={gunnerMech.BaseAim} → {(aimBonus > 0 ? "+" : "")}{aimBonus:P1}");
-
-                    // Trait aimBonus (% 단위)
-                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunnerMech.data.traits);
-                    if (traitMod.aimBonus != 0)
-                    {
-                        float traitDelta = traitMod.aimBonus * 0.01f;
-                        baseHitChance += traitDelta;
-                        Debug.Log($"[FIRE] GunnerMech trait aimBonus={traitMod.aimBonus:+0;-0} → {traitDelta:P1}");
-                    }
-                }
-            }
 
             // 기총 손상 시 버스트 감소
             int burstCount = Mathf.Max(1, mgData.burstCount - attacker.Modules.GetBurstPenalty());
@@ -293,10 +330,6 @@ namespace Crux.Combat
             // 포신 손상 패널티
             chance -= attacker.Modules.GetAccuracyPenalty();
 
-            // 화재 중 조준 불안정
-            if (attacker.IsOnFire)
-                chance -= Crux.Data.FireConstants.FireAimPenalty;
-
             var attackerCell = grid.GetCell(attacker.GridPosition);
             var targetCell = grid.GetCell(target.GridPosition);
 
@@ -340,43 +373,6 @@ namespace Crux.Combat
             if (atkCrew != null)
                 chance += MoraleSystem.AimModifier(atkCrew.Band) * 0.01f;
 
-            // Gunner aim 명중 보정 (기본값 50 기준 ±0.5%/점) + 부상 페널티
-            if (atkCrew != null)
-            {
-                var gunner = atkCrew.GetByClass(CrewClass.Gunner);
-                if (gunner != null)
-                {
-                    float aimBonus = (gunner.BaseAim - 50) * 0.005f;
-                    chance += aimBonus;
-                    Debug.Log($"[FIRE] Gunner aim={gunner.BaseAim} → {(aimBonus > 0 ? "+" : "")}{aimBonus:P1}");
-
-                    // 부상 상태 명중 페널티
-                    float injuryMod = gunner.GetAimModifier();
-                    if (injuryMod != 0f)
-                    {
-                        chance += injuryMod;
-                        Debug.Log($"[FIRE] Gunner injury={gunner.injuryState} → {(injuryMod > 0 ? "+" : "")}{injuryMod:P1}");
-                    }
-
-                    // Trait aimBonus (% 단위. hermit_eye +5 = +5%)
-                    var traitMod = Crux.Data.TraitEffects.SumForCrewMember(gunner.data.traits);
-                    if (traitMod.aimBonus != 0)
-                    {
-                        float traitDelta = traitMod.aimBonus * 0.01f;
-                        chance += traitDelta;
-                        Debug.Log($"[FIRE] Gunner trait aimBonus={traitMod.aimBonus:+0;-0} → {traitDelta:P1}");
-                    }
-                }
-            }
-
-            // Pseudo-RNG 보정 — 연속 miss 누적 시 다음 사격 명중률 상향
-            float pRngBonus = Mathf.Min(attacker.ConsecutiveMisses * 0.05f, 0.30f);
-            if (pRngBonus > 0f)
-            {
-                chance += pRngBonus;
-                Debug.Log($"[FIRE] Pseudo-RNG 보정: miss={attacker.ConsecutiveMisses} → +{pRngBonus:P0}");
-            }
-
             return Mathf.Clamp01(chance);
         }
 
@@ -404,150 +400,115 @@ namespace Crux.Combat
             return "개활지";
         }
 
-        /// <summary>대상의 엄폐 여부 및 셀 정보를 조회 (반복 코드 제거)</summary>
-        private (bool inCover, string coverName, GridCell cell)
-            GetTargetCoverInfo(Vector2Int attackerPos, Vector2Int targetPos)
+        /// <summary>
+        /// 반격 사격 큐 추가 — 피격 후 WeaponSelect 세션에서 사용자가 확정 시 호출.
+        /// Execute()에서 자동 Enqueue하던 방식을 대체.
+        /// weapon이 MainGun 외의 경우 현재 MainGun으로 강등 (Phase 2 TD).
+        /// </summary>
+        public void EnqueueCounterFire(GridTankUnit counterAttacker, GridTankUnit target, WeaponType weapon)
         {
-            var targetCell = grid.GetCell(targetPos);
-            bool targetInCover = false;
-            string targetCoverName = "";
-
-            if (targetCell != null && targetCell.HasCover
-                && targetCell.Cover != null
-                && !targetCell.Cover.IsDestroyed)
+            // Phase 2 TD: CoaxialMG/MountedMG 반격은 아직 미구현 — MainGun으로 강등
+            if (weapon != WeaponType.MainGun)
             {
-                var atkDir = HexCoord.AttackDir(attackerPos, targetPos, GameConstants.CellSize);
-                targetInCover = targetCell.Cover.IsCovered(atkDir);
-                if (targetInCover)
-                    targetCoverName = targetCell.Cover.coverName;
+                Debug.LogWarning($"[FIRE] 반격 무기 {weapon}은 미지원 — MainGun으로 강등 (Phase 2 TD)");
+                weapon = WeaponType.MainGun;
             }
 
-            return (targetInCover, targetCoverName, targetCell);
-        }
+            counterAttacker.ConsumeFireAP();
+            counterAttacker.ConsumeMainGunRound();
+            counterAttacker.SetCountered(true);
 
-        /// <summary>엄폐물 피격 판정 및 피해 계산 (ExecuteMainGun·ExecuteCounter 공용)</summary>
-        private (bool hitCover, float coverDmg, string coverName, ShotResult result)
-            EvaluateCoverProtection(GridTankUnit attacker, GridTankUnit target, float hitChance, bool targetInCover)
-        {
-            var targetCell = grid.GetCell(target.GridPosition);
-            bool hitCover = false;
-            float coverDmgDealt = 0f;
-            string hitCoverName = "";
+            float hitChance = Mathf.Clamp01(CalculateHitChanceWithCover(counterAttacker, target) - 0.15f);
+            bool hit = Random.value <= hitChance;
+
             ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
+            Unit.DamageOutcome mainOutcome = default;
 
-            if (targetInCover && targetCell != null && targetCell.Cover != null)
+            if (hit)
             {
-                float coverRate = targetCell.Cover.CoverRate;
-                if (Random.value < coverRate)
+                var hitZone = PenetrationCalculator.DetermineHitZone(
+                    counterAttacker.transform.position, target.transform.position, target.HullAngle);
+                float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
+                float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
+                    counterAttacker.transform.position, target.transform.position, target.HullAngle, hitZone);
+                float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
+                float pen = counterAttacker.currentAmmo != null ? counterAttacker.currentAmmo.penetration : 100f;
+                var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
+                float dmg = counterAttacker.currentAmmo != null ? counterAttacker.currentAmmo.damage : 10f;
+                float finalDmg = outcome switch
                 {
-                    hitCover = true;
-                    float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
-                    coverDmgDealt = dmg;
-                    hitCoverName = targetCell.Cover.coverName;
-
-                    var coverRef = targetCell.Cover;
-                    coverRef.TakeDamage(dmg);
-
-                    result = new ShotResult
+                    ShotOutcome.Ricochet    => dmg * 0.03f,
+                    ShotOutcome.Hit         => dmg,
+                    ShotOutcome.Penetration => dmg * 2.5f,
+                    _                       => 0f
+                };
+                result = new ShotResult
+                {
+                    hit = true, outcome = outcome, hitZone = hitZone,
+                    effectiveArmor = effectiveArmor, damageDealt = finalDmg, hitChance = hitChance
+                };
+                if (finalDmg > 0)
+                    mainOutcome = target.PreRollDamage(new DamageInfo
                     {
-                        hit = true,
-                        outcome = ShotOutcome.Hit,
-                        hitZone = HitZone.Front,
-                        effectiveArmor = 0,
-                        damageDealt = 0,
-                        hitChance = hitChance
-                    };
-
-                    Debug.Log($"[CRUX] 엄폐물 피격! {hitCoverName} ({coverRef.size}) HP: {coverRef.CurrentHP:F0}/{coverRef.maxHP:F0}");
-                }
+                        damage = finalDmg, outcome = outcome, hitZone = hitZone, attacker = counterAttacker
+                    });
             }
 
-            return (hitCover, coverDmgDealt, hitCoverName, result);
+            FireActionContext.Enqueue(BuildCounterFireActionData(counterAttacker, target, result, mainOutcome));
+            Debug.Log($"[FIRE] 반격 Enqueue — {counterAttacker.Data?.tankName} → {target.Data?.tankName} hit={hit} outcome={result.outcome}");
         }
 
-        /// <summary>전차 직접 피격 관통/피해 계산 (ExecuteMainGun·ExecuteCounter 공용)</summary>
-        private ShotResult CalculateDirectHitDamage(GridTankUnit attacker, GridTankUnit target, float hitChance)
+        /// <summary>반격 FireActionData 빌드 (엄폐 없음 — 반격은 개활지 판정)</summary>
+        private FireActionData BuildCounterFireActionData(GridTankUnit attacker, GridTankUnit target,
+                                                          ShotResult result, Unit.DamageOutcome mainOutcome)
         {
-            var hitZone = PenetrationCalculator.DetermineHitZone(
-                attacker.transform.position, target.transform.position, target.HullAngle);
-
-            float baseArmor = PenetrationCalculator.GetBaseArmor(target.Data.armor, hitZone);
-            float impactAngle = PenetrationCalculator.CalculateImpactAngleFromPositions(
-                attacker.transform.position, target.transform.position, target.HullAngle, hitZone);
-            float effectiveArmor = PenetrationCalculator.CalculateEffectiveArmor(baseArmor, impactAngle);
-
-            float pen = attacker.currentAmmo != null ? attacker.currentAmmo.penetration : 100f;
-            var outcome = PenetrationCalculator.JudgePenetration(pen, effectiveArmor);
-
-            float dmg = attacker.currentAmmo != null ? attacker.currentAmmo.damage : 10f;
-            float finalDmg = outcome switch
-            {
-                ShotOutcome.Ricochet => dmg * 0.03f,
-                ShotOutcome.Hit => dmg,
-                ShotOutcome.Penetration => dmg * 2.5f,
-                _ => 0f
-            };
-
-            return new ShotResult
-            {
-                hit = true,
-                outcome = outcome,
-                hitZone = hitZone,
-                effectiveArmor = effectiveArmor,
-                damageDealt = finalDmg,
-                hitChance = hitChance
-            };
-        }
-
-        /// <summary>반격용 FireActionContext 구성</summary>
-        private void BuildFireActionContextForCounter(GridTankUnit defender, GridTankUnit attacker,
-                                                     float hitChance, bool targetInCover, bool hitCover,
-                                                     float coverDmgDealt, string hitCoverName,
-                                                     string targetCoverNameForVisual, GridCell targetCellForCover,
-                                                     ShotResult result, Unit.DamageOutcome counterOutcome, int attackerIndex)
-        {
-            var defenderSr = defender.GetComponentInChildren<SpriteRenderer>();
-            var defenderTurretSr = defender.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
+            int targetIndex = target.side == PlayerSide.Enemy ? enemyUnits.IndexOf(target) : -1;
             var attackerSr = attacker.GetComponentInChildren<SpriteRenderer>();
-
-            var defenderCell = grid.GetCell(defender.GridPosition);
-            bool defenderInCover = defenderCell != null && defenderCell.HasCover
-                                   && defenderCell.Cover != null && !defenderCell.Cover.IsDestroyed;
-            string defenderCoverName = defenderInCover ? defenderCell.Cover.coverName : "";
-
-            FireActionContext.Enqueue(new FireActionData
+            var attackerTurretSr = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>();
+            var targetSr = target.GetComponentInChildren<SpriteRenderer>();
+            return new FireActionData
             {
-                attackerWorldPos = defender.transform.position,
-                attackerHullAngle = defender.HullAngle,
-                attackerName = defender.Data.tankName,
-                attackerSide = defender.side,
-                attackerInCover = defenderInCover,
-                attackerCoverName = defenderCoverName,
-                attackerCoverSize = defenderInCover ? defenderCell.Cover.size : CoverSize.Medium,
-                attackerCoverFacets = defenderInCover ? defenderCell.Cover.CurrentFacets : HexFacet.None,
-                targetInCover = targetInCover,
-                targetCoverHit = hitCover,
-                coverDamageDealt = coverDmgDealt,
-                targetCoverName = hitCover ? hitCoverName : targetCoverNameForVisual,
-                targetCoverSize = targetInCover ? targetCellForCover.Cover.size : CoverSize.Medium,
-                targetCoverFacets = targetInCover ? targetCellForCover.Cover.CurrentFacets : HexFacet.None,
-                targetWorldPos = attacker.transform.position,
-                targetHullAngle = attacker.HullAngle,
-                targetName = attacker.Data.tankName,
+                attackerWorldPos = attacker.transform.position,
+                attackerHullAngle = attacker.HullAngle,
+                attackerName = attacker.Data.tankName,
+                attackerSide = attacker.side,
+                targetWorldPos = target.transform.position,
+                targetHullAngle = target.HullAngle,
+                targetName = target.Data.tankName,
                 weaponType = WeaponType.MainGun,
-                ammoData = defender.currentAmmo,
+                ammoData = attacker.currentAmmo,
                 result = result,
-                mainOutcome = counterOutcome,
-                targetUnitIndex = attackerIndex,
-                targetSide = attacker.side,
-                attackerHullSprite = defenderSr != null ? defenderSr.sprite : null,
-                attackerTurretSprite = defenderTurretSr != null ? defenderTurretSr.sprite : null,
-                attackerSpriteRotOffset = GetSpriteRotOffset(defender.transform),
-                attackerMuzzleOffset = defender.Data.muzzleOffset,
-                targetHullSprite = attackerSr != null ? attackerSr.sprite : null,
-                targetTurretSprite = attacker.transform.Find("Turret")?.GetComponent<SpriteRenderer>()?.sprite,
-                targetSpriteRotOffset = GetSpriteRotOffset(attacker.transform)
-            });
+                mainOutcome = mainOutcome,
+                targetUnitIndex = targetIndex,
+                targetSide = target.side,
+                attackerHullSprite = attackerSr != null ? attackerSr.sprite : null,
+                attackerTurretSprite = attackerTurretSr != null ? attackerTurretSr.sprite : null,
+                attackerSpriteRotOffset = GetSpriteRotOffset(attacker.transform),
+                attackerMuzzleOffset = attacker.Data.muzzleOffset,
+                targetHullSprite = targetSr != null ? targetSr.sprite : null,
+                targetTurretSprite = target.transform.Find("Turret")?.GetComponent<SpriteRenderer>()?.sprite,
+                targetSpriteRotOffset = GetSpriteRotOffset(target.transform)
+            };
+        }
+
+        /// <summary>
+        /// AI 반격 자동 처리 — 플레이어 사격 후 대상 적이 반격 가능하면 자동 Enqueue.
+        /// UI 없음. 조건 미충족 시 조용히 무시.
+        /// </summary>
+        public void TryEnqueueAIRetaliation(GridTankUnit aiUnit, GridTankUnit playerUnit, GridManager gridMgr)
+        {
+            if (aiUnit == null || aiUnit.IsDestroyed) return;
+            if (playerUnit == null || playerUnit.IsDestroyed) return;
+
+            var check = CounterFireResolver.CheckWithReason(aiUnit, playerUnit, gridMgr);
+            if (!check.canCounter)
+            {
+                Debug.Log($"[CRUX] AI 반격 불가 — {aiUnit.Data?.tankName}: {check.reason}");
+                return;
+            }
+
+            EnqueueCounterFire(aiUnit, playerUnit, WeaponType.MainGun);
+            Debug.Log($"[CRUX] AI counter enqueued — {aiUnit.Data?.tankName} → {playerUnit.Data?.tankName}");
         }
 
         /// <summary>SpriteContainer가 있으면 그 회전 오프셋을 반환</summary>
@@ -557,70 +518,6 @@ namespace Crux.Combat
             if (container != null)
                 return container.localEulerAngles.z > 180 ? container.localEulerAngles.z - 360 : container.localEulerAngles.z;
             return 0f;
-        }
-
-        /// <summary>반격 사격 실행 — 명중률 −15% 페널티 적용, AP/탄약 소모 (Task #16)</summary>
-        private void ExecuteCounter(GridTankUnit defender, GridTankUnit attacker)
-        {
-            if (defender.IsDestroyed || attacker.IsDestroyed)
-            {
-                Debug.LogWarning($"[COUNTER] Counter aborted: defender/attacker destroyed");
-                return;
-            }
-
-            int fireAPCost = defender.GetFireCost();
-            defender.ConsumeFireAP();
-            defender.ConsumeMainGunRound();
-            defender.SetCountered(true);
-
-            float hitChance = CalculateHitChanceWithCover(defender, attacker);
-            hitChance -= 0.15f;
-            hitChance = Mathf.Clamp01(hitChance);
-
-            bool hit = Random.value <= hitChance;
-            if (hit) defender.ResetMisses();
-            else defender.RecordMiss();
-
-            var (targetInCover, targetCoverNameForVisual, targetCellForCover) =
-                GetTargetCoverInfo(defender.GridPosition, attacker.GridPosition);
-
-            ShotResult result = new ShotResult { hit = false, outcome = ShotOutcome.Miss, hitChance = hitChance };
-            bool hitCover = false;
-            float coverDmgDealt = 0f;
-            string hitCoverName = "";
-
-            if (hit)
-            {
-                (hitCover, coverDmgDealt, hitCoverName, result) =
-                    EvaluateCoverProtection(defender, attacker, hitChance, targetInCover);
-            }
-
-            if (!hitCover && hit)
-            {
-                result = CalculateDirectHitDamage(defender, attacker, hitChance);
-            }
-
-            string outcomeStr = result.hit
-                ? (result.outcome == ShotOutcome.Penetration ? "관통" : result.outcome == ShotOutcome.Hit ? "명중" : "도탄")
-                : "빗나감";
-            Debug.Log($"[COUNTER] {defender.Data?.tankName} → {attacker.Data?.tankName}: {outcomeStr} (AP −{fireAPCost}, 명중률 {hitChance:P0})");
-
-            int attackerIndex = enemyUnits.IndexOf(attacker);
-            Unit.DamageOutcome counterOutcome = default;
-            if (!hitCover && result.hit && result.damageDealt > 0)
-            {
-                counterOutcome = attacker.PreRollDamage(new DamageInfo
-                {
-                    damage = result.damageDealt,
-                    outcome = result.outcome,
-                    hitZone = result.hitZone,
-                    attacker = defender
-                });
-            }
-
-            BuildFireActionContextForCounter(defender, attacker, hitChance, targetInCover, hitCover,
-                                            coverDmgDealt, hitCoverName, targetCoverNameForVisual,
-                                            targetCellForCover, result, counterOutcome, attackerIndex);
         }
     }
 }

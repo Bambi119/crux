@@ -19,11 +19,28 @@ namespace Crux.PlayerInput
         {
             if (controller == null || !controller.CanHandleInput) return;
 
-            // ESC/Tab 취소 — 최우선
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) || UnityEngine.Input.GetKeyDown(KeyCode.Tab))
+            // ESC 취소 — 최우선
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
             {
                 controller.CancelToSelect();
                 return;
+            }
+
+            // 우클릭 — 한 단계 뒤로 (이전 명령 단계 복귀)
+            if (UnityEngine.Input.GetMouseButtonDown(1))
+            {
+                HandleRightClickStepBack();
+                return;
+            }
+
+            // Select 모드: M 또는 Q로 커맨드 박스 표시
+            if (controller.CurrentInputMode == BattleController.InputModeEnum.Select)
+            {
+                if (UnityEngine.Input.GetKeyDown(KeyCode.M) || UnityEngine.Input.GetKeyDown(KeyCode.Q))
+                {
+                    controller.ShowCommandBox();
+                    return;
+                }
             }
 
             // 무기 선택 모드
@@ -41,21 +58,19 @@ namespace Crux.PlayerInput
                 return;
             }
 
-            // 회전 모드
+            // 회전 모드 (Phase 4)
             if (controller.CurrentInputMode == BattleController.InputModeEnum.RotateMode)
             {
                 HandleRotateMode();
                 return;
             }
 
-            // Select 모드: Q/M 이동 진입, E/F 사격 진입
-            HandleSelectModeKeys();
-
-            // Fire 모드: 호버 갱신 + 무기 전환
+            // Fire 모드: 호버 갱신 + 무기 전환 + 목표 순환
             if (controller.CurrentInputMode == BattleController.InputModeEnum.Fire)
             {
                 controller.UpdateHoveredTarget();
                 HandleWeaponSwitch();
+                HandleTargetCycling();
             }
 
             // C/V/O/Space 액션 키
@@ -68,10 +83,56 @@ namespace Crux.PlayerInput
             }
         }
 
+        /// <summary>우클릭 — 현재 입력 모드에서 한 단계 뒤로</summary>
+        private void HandleRightClickStepBack()
+        {
+            switch (controller.CurrentInputMode)
+            {
+                case BattleController.InputModeEnum.Select:
+                    // post-move CommandBox 표시 중 우클릭 → 이동 취소(원위치 복귀)
+                    if (controller.IsPostMoveContext)
+                        controller.UndoMoveSnapshot();
+                    else
+                        controller.HideCommandBox();
+                    break;
+                case BattleController.InputModeEnum.Move:
+                    controller.CancelToSelect();
+                    controller.ShowCommandBox();
+                    break;
+                case BattleController.InputModeEnum.MoveDirectionSelect:
+                    controller.UndoMoveSnapshot();
+                    break;
+                case BattleController.InputModeEnum.Fire:
+                    controller.CancelToSelect();
+                    controller.ShowCommandBox();
+                    break;
+                case BattleController.InputModeEnum.WeaponSelect:
+                    // 반격 세션 중 우클릭 → 반격 취소
+                    if (controller.IsCounterFireMode)
+                        controller.CancelCounterFire();
+                    else
+                        controller.TryEnterFireMode();
+                    break;
+                case BattleController.InputModeEnum.RotateMode:
+                    if (controller.IsPostMoveContext)
+                    {
+                        // post-move 컨텍스트: 우클릭 → 이동 취소(원위치 복귀). 휠·CommandBox 모두 정리.
+                        controller.UndoMoveSnapshot();
+                    }
+                    else
+                    {
+                        controller.CancelRotateMode();
+                        controller.ShowCommandBox();
+                    }
+                    break;
+            }
+        }
+
         /// <summary>무기 선택 모드 입력 처리 (1/2/3 + Space/Enter/Click)</summary>
         private void HandleWeaponSelectMode()
         {
             // 1/2/3: 무기 선택만 (확정 아님)
+            // TODO(J-4): 무기 가용성 체크 후 회색 처리 (현재 placeholder)
             if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha1))
                 controller.SelectWeapon(WeaponType.MainGun);
             else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha2))
@@ -79,14 +140,35 @@ namespace Crux.PlayerInput
             else if (UnityEngine.Input.GetKeyDown(KeyCode.Alpha3))
                 controller.SelectWeapon(WeaponType.MountedMG);
 
-            // Space / Enter / 좌클릭: 선택된 무기로 사격 확정
+            // 반격 세션 활성 시: N 또는 Alpha0 → 반격 취소
+            if (controller.IsCounterFireMode)
+            {
+                if (UnityEngine.Input.GetKeyDown(KeyCode.N)
+                    || UnityEngine.Input.GetKeyDown(KeyCode.Alpha0))
+                {
+                    controller.CancelCounterFire();
+                    return;
+                }
+            }
+
+            // Space / Enter / 좌클릭: 확정
             bool commit = UnityEngine.Input.GetKeyDown(KeyCode.Space)
                           || UnityEngine.Input.GetKeyDown(KeyCode.Return)
                           || UnityEngine.Input.GetMouseButtonDown(0);
             if (commit)
             {
-                controller.CommitWeaponSelection();
+                // 반격 세션이면 반격 확정, 아니면 일반 무기 선택 확정
+                if (controller.IsCounterFireMode)
+                    controller.CommitCounterFire(controller.SelectedWeapon);
+                else
+                    controller.CommitWeaponSelection();
             }
+        }
+
+        /// <summary>회전 모드 입력 처리 — RotationWheelController가 키보드 전담. 우클릭만 PlayerInputHandler가 처리(HandleRightClickStepBack).</summary>
+        private void HandleRotateMode()
+        {
+            // 의도적으로 비움. 휠 UI가 Q/E/W/A/S/D/Space/Esc 전부 처리.
         }
 
         /// <summary>방향 선택 모드 입력 처리 (QWEASD + Space/Enter/Click)</summary>
@@ -117,51 +199,26 @@ namespace Crux.PlayerInput
             // 좌클릭: 클릭 방향 스냅 + 이동 확정
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
-                controller.CommitMoveDirectionFromMouse();
+                float snapped = ComputeSnappedAngleFromMouse(controller.PendingMoveTarget);
+                controller.CommitMoveDirectionFromMouse(snapped);
             }
         }
 
-        /// <summary>회전 모드 입력 처리 (Q/E 각도 조정 + Space/Enter/Click 확정)</summary>
-        private void HandleRotateMode()
+        /// <summary>Fire 모드: Tab/Shift+Tab으로 목표 순환</summary>
+        private void HandleTargetCycling()
         {
-            // Q: −60°, E: +60°
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Q))
-                controller.AccumulateRotation(-60f);
-            else if (UnityEngine.Input.GetKeyDown(KeyCode.E))
-                controller.AccumulateRotation(60f);
-
-            // Space / Enter: 회전 확정
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetKeyDown(KeyCode.Return))
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
             {
-                controller.CommitRotation();
-            }
-
-            // 좌클릭: 회전 확정
-            if (UnityEngine.Input.GetMouseButtonDown(0))
-            {
-                controller.CommitRotation();
-            }
-
-            // ESC/Tab: 회전 취소
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) || UnityEngine.Input.GetKeyDown(KeyCode.Tab))
-            {
-                controller.CancelRotateMode();
-            }
-        }
-
-        /// <summary>Select 모드: Q/M 이동 진입, E/F 사격 진입</summary>
-        private void HandleSelectModeKeys()
-        {
-            if (controller.CurrentInputMode != BattleController.InputModeEnum.Select) return;
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Q) || UnityEngine.Input.GetKeyDown(KeyCode.M))
-            {
-                controller.TryEnterMoveMode();
-            }
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.E) || UnityEngine.Input.GetKeyDown(KeyCode.F))
-            {
-                controller.TryEnterFireMode();
+                if (UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift))
+                {
+                    // Shift+Tab: 이전 목표
+                    controller.CycleTargetPrevious();
+                }
+                else
+                {
+                    // Tab: 다음 목표
+                    controller.CycleTargetNext();
+                }
             }
         }
 
@@ -212,6 +269,24 @@ namespace Crux.PlayerInput
             var gridPos = controller.Grid.WorldToGrid(worldPos);
 
             controller.HandleClickAt(gridPos);
+        }
+
+        /// <summary>마우스 클릭 위치 → 대상 셀 기준 6방향(60°) 스냅 각도 계산 — Input 레이어 전용</summary>
+        private float ComputeSnappedAngleFromMouse(Vector2Int targetCell)
+        {
+            var cam = controller.MainCam;
+            var clickWorld = cam != null
+                ? cam.ScreenToWorldPoint(UnityEngine.Input.mousePosition)
+                : Vector3.zero;
+            var cellWorld = controller.Grid.GridToWorld(targetCell);
+            var diff = new Vector2(clickWorld.x - cellWorld.x, clickWorld.y - cellWorld.y);
+
+            if (diff.sqrMagnitude < 0.01f)
+                return controller.PendingFacingAngle;
+
+            float deg = Crux.Core.AngleUtil.FromDir(diff);
+            if (deg < 0) deg += 360f;
+            return Crux.Core.AngleUtil.SnapTo60(deg);
         }
     }
 }

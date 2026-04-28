@@ -119,6 +119,9 @@ Data ──┐
 - `GameConstants.GridWidth/Height` 하드코드 금지 — `grid.Width/Height` 사용
 - `EditorBuildSettings.asset` 편집 시 scene guid 일치 필수
 - `.meta` 수동 삭제 금지, 이동 시 동행
+- **씬 파일 저장 경로 = `Assets/_Project/Scenes/<name>.unity` 전용**. `Assets/` 루트 저장 금지 (GUID 분리·BuildSettings 참조 깨짐)
+- **다중 워크트리** (`C:/01_Project/03_Crux` 메인 · `Crux-dev` · `Crux-planning`): 각 워크트리에 독립 `CRUX/` 프로젝트. 에이전트 작업 시작 시 `list_unity_project_roots`로 Unity가 연 프로젝트가 현재 워크트리인지 1회 확인 후 진행
+- 에셋 경로 규칙: 프리팹 런타임 로드 `Assets/_Project/Resources/Prefabs/<domain>/` · 일반 프리팹 `Assets/_Project/Prefabs/<domain>/` · SO `Assets/_Project/ScriptableObjects/<category>/`
 
 ### 7.3 기능 검증 경로
 - **새 기능 → TerrainTestScene에서 먼저** (12×12 + 지형 + F1 디버그 오버레이)
@@ -215,7 +218,6 @@ Data ──┐
 
 | ID | 부채 | 심각도 | 해결 경로 |
 |---|---|---|---|
-| TD-01 | `BattleController.cs` 671 LOC — 500 LOC 목표 미달 | 🟢 P3 | §4 트리거 재발동 시 |
 | TD-03 | `FireActionContext.cs` 4개 타입 혼재 | 🟢 P3 | 부가 정리 |
 | TD-04 | 빈 의도 폴더 Enemy/Loot/Vision | 🟢 P3 | Phase 2 콘텐츠 확장 시 |
 | TD-05 | `HitEffects`/`MuzzleFlash`/VFX 렌더 상수 하드코드 | 🟢 P4 | 밸런스 패스 때 Data SO로 |
@@ -232,6 +234,11 @@ Data ──┐
 | 2026-04-16 | §1 Camera/Input/UI 폴더 상태 갱신 · §9 P-S1~S7 완료 표시 · §10 TD-01/TD-04 현재 상태 반영 |
 | 2026-04-20 | Phase 3: BattleHUD OnGUI 제거 — ShowBanner/ShowAlert 큐 BattleController 이관 · TD-08 신규 |
 | 2026-04-24 | §8 자율 루프 확장 — 4-역할 MCP 도구 경계 표·보고 규율 신설 / §9 P-S 로드맵 git 이력으로 이관 / 전반 압축 |
+| 2026-04-25 | §7.2 씬 파일 경로 규칙 신설 — `Assets/_Project/Scenes/` 전용, 다중 워크트리 `list_unity_project_roots` 시작 확인 의무화 (픽셀 UI 배선 루트 저장 사고 재발 방지) |
+| 2026-04-27 | §9 TD-01 해소 — `PostMoveController` 추출, `BattleController.cs` 863 → 780 LOC (`8f673dc`) |
 | 2026-04-27 | §9 TD-02 해소 — `FireCinematicFX`/`FirePostImpactHandler` 추출, `FireSequenceController.cs` 1153 → 727 LOC (`23b0e11`) |
 | 2026-04-27 | 공격+반격 단일 큐 시스템 복원 — `CounterFireResolver` 신규(8조건) + `FireActionContext` 큐화 + Y/N 프롬프트(1.5s 타임아웃). `feature/next-dev` 분기 중 손실분 재이식 (`171d7dc`+`fd7b199`) |
 | 2026-04-27 | 반격 UX 재설계 — Y/N 프롬프트 폐기, 피격 후 무기 선택 패널 자동 진입 + `[0] 반격 취소` 행 + 3s 카운트다운(미입력 시 주포 자동 발사). `CounterFireSession` (Crux.Combat) + `CounterFireController` (Crux.Core) 분리, `CounterFireResolver` 8→7조건 (CounterConfirmed 게이트 제거). §1.1 위반 동시 해소 — 마우스 스냅 계산을 `PostMoveController`(Crux.Core)에서 `PlayerInputHandler`(Crux.Input)로 이관 (`62c42de`) |
+| 2026-04-27 | 단일 FireActionScene 내 공격+반격 통합 — `CounterFireUIPanel` (Crux.Cinematic) 신규 + `FireSequenceController` 시퀀스 종료 분기에 `PendingCounterSelect` 처리 + `FireExecutor.TryEnqueueAIRetaliation` (AI 반격 자동 큐잉) + `BattleStateManager.StartCounterFireWeaponSelectInternal` 제거 (BattleScene 진입점 단일화). FireActionScene Canvas WeaponSelectPanel 배선 (`952cf56`) |
+| 2026-04-28 | fix(combat): 반격 콜백 등록 순서 회귀 수정 — `BattleController` AI 사격 분기에서 `OnCounterWeaponSelected` setter를 `fireExecutor.Execute()` **앞**에 두면 `FireExecutor.Execute()` 진입 시 `FireActionContext.Clear()`가 콜백·`PendingCounterSelect` 플래그까지 초기화. setter를 Execute 뒤로 이동 (`0a589d6`). 영구 방어선으로 `CruxStaticLint` (Editor/Tests/) 신설: `LintCounterFireOrder` + `LintFireExecutorClearSideEffect` 두 lint를 `Crux/Test/Run All Static`에 통합. PlayMode 시나리오 `CruxCounterFireScenario`도 추가 (AI 결정 비결정성으로 플레이키 — 정적 lint가 결정적 1차 방어선) (`d71ce3e`) |
+| 2026-04-28 | merge: `feature/next-dev` → `main` 통합 (merge-base `57e1ecb`). **W7 폐기 결정**: (1) `BattleHUD.cs` = main 채택 (Phase 3 OnGUI 폐기·TD-07 해소 보존, dev 511 LOC OnGUI 버전 폐기 — `CounterFireUIPanel` uGUI 별도 분리 완료로 기능 손실 없음) (2) `PartBarFlashAnimator.cs` = main의 `BattleHUDuGUI/` 위치 채택, dev `UI/` 루트 위치 폐기. **가산 머지**: `BattleController` (`PostMoveController` 추출 + `BattleCommandRouter` 신규 + Crew/Deployment 통합 보존) · `PlayerInputHandler` (마우스 스냅 이관) · `GridTankUnit` (화재 상태 저장 필드) · `CruxTestRunner` (정적 lint·시나리오 통합) · `FireActionContext` (`UnitSaveData.fireTurnsLeft`/`consecutiveMisses` 추가) · `FireSequenceController` (`HitEffects.SpawnCoverHit` API drift 수정). 정적 테스트 `passed=272 failed=0` 확인 |
