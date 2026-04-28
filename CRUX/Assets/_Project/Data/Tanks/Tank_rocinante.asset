@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6583bc9026ac49641a20a8938e474408, type: 3}
+  m_Name: Tank_rocinante
+  m_EditorClassIdentifier:
+  tankName: Rocinante
+  hullClass: 1
+  isRocinante: 1
+  weightCapacity: 100
+  powerRequirement: 100
+  slotTable:
+    engine: 1
+    turret: 1
+    mainGun: 1
+    armor: 4
+    ammoRack: 1
+    track: 1
+    auxiliary: 2
+  maxAP: 6
+  moveSpeed: 3
+  armor:
+    front: 80
+    side: 40
+    rear: 30
+    turret: 60
+    frontLeft: 0
+    frontRight: 0
+    rearLeft: 0
+    rearRight: 0
+  turretRotationSpeed: 60
+  muzzleOffset: {x: 0.8, y: 0}
+  mainGunCaliber: 75
+  fireCost: 3
+  maxHP: 100
+  smokeCharges: 2
+  maxMainGunAmmo: 42
+  maxMGAmmo: 1200
+  mgLoadedAmmo: 120
+  moduleHP:
+    engine: 40
+    barrel: 35
+    machineGun: 25
+    ammoRack: 20
+    loader: 30
+    caterpillarLeft: 30
+    caterpillarRight: 30
+    turretRing: 35
+  fireResistancePercent: 10
+  partsEnginePowerOutput: 0
+  partsTrackMobilityBonus: 0
+  partsIsOverweight: 0
