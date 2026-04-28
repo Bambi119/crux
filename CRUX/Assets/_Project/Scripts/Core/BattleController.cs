@@ -555,18 +555,20 @@ namespace Crux.Core
                             var counterCheck = Combat.CounterFireResolver.CheckWithReason(
                                 playerUnit, enemy, grid);
                             playerCanCounter = counterCheck.canCounter;
-                            if (playerCanCounter)
-                            {
-                                // 반격 콜백 등록 — CounterFireUIPanel이 선택 확정 시 호출
-                                var capturedEnemy = enemy;
-                                FireActionContext.OnCounterWeaponSelected = w =>
-                                    fireExecutor.EnqueueCounterFire(playerUnit, capturedEnemy, w);
-                                FireActionContext.PendingCounterSelect = true;
-                                Debug.Log($"[CRUX] 플레이어 반격 대기 설정 — 공격자: {enemy.Data?.tankName}");
-                            }
                         }
 
                         fireExecutor.Execute(enemy, decision.fireTarget, WeaponType.MainGun);
+
+                        // 반격 콜백 등록은 Execute() 이후 — Execute()가 진입 시 FireActionContext.Clear()를 호출하여 큐와 함께 콜백·플래그도 초기화하기 때문
+                        if (playerCanCounter)
+                        {
+                            var capturedEnemy = enemy;
+                            FireActionContext.OnCounterWeaponSelected = w =>
+                                fireExecutor.EnqueueCounterFire(playerUnit, capturedEnemy, w);
+                            FireActionContext.PendingCounterSelect = true;
+                            Debug.Log($"[CRUX] 플레이어 반격 대기 설정 — 공격자: {enemy.Data?.tankName}");
+                        }
+
                         stateManager.Save();
                         SceneManager.LoadScene("FireActionScene");
                         yield break; // 씬 전환됨
