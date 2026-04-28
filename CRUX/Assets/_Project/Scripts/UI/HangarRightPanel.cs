@@ -137,10 +137,12 @@ namespace Crux.UI
             foreach (var (klass, crew) in currentUnit.crew.All())
             {
                 if (crew == null || crew.data == null) continue;
-                if (crew.data.traitPositive != null)
-                    CreateTraitEntry(klass, crew.data.traitPositive);
-                if (crew.data.traitNegative != null)
-                    CreateTraitEntry(klass, crew.data.traitNegative);
+                if (crew.data.traits == null || crew.data.traits.Length == 0) continue;
+                foreach (var trait in crew.data.traits)
+                {
+                    if (trait != null)
+                        CreateTraitEntry(klass, trait);
+                }
             }
         }
 
@@ -154,11 +156,8 @@ namespace Crux.UI
             text.font = HangarButtonHelpers.GetKoreanFont();
             text.fontSize = 12;
             text.alignment = TextAnchor.MiddleLeft;
-            text.color = trait.isPositive
-                ? new Color(0.7f, 0.95f, 0.7f)
-                : new Color(0.95f, 0.7f, 0.7f);
-            string mark = trait.isPositive ? "▲" : "▼";
-            text.text = $"{mark} {trait.displayName} ({klass})";
+            text.color = new Color(0.7f, 0.95f, 0.85f);  // neutral trait color (no longer +/-)
+            text.text = $"• {trait.displayName} ({klass})";
 
             var le = entry.AddComponent<LayoutElement>();
             le.preferredHeight = 18;

@@ -20,6 +20,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Project/Scenes/Hangar.unity
     guid: e372be603577469fb71f09b4cee7a120
+  - enabled: 1
+    path: Assets/_Project/Scenes/CrewDeploymentScene.unity
+    guid: 26c285c2129bf3f46a1f4ea20bac64c6
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
