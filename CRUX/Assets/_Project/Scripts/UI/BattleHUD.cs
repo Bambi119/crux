@@ -27,6 +27,10 @@ namespace Crux.UI
         private BattleHUDFirePreview firePreview;
         private BattleHUDTerrainOverlay terrainOverlay;
 
+        // TD-08: uGUI 배너/경고 패널 위임 대상
+        [SerializeField] private BattleBannerPanel _bannerPanel;
+        [SerializeField] private BattleAlertPanel _alertPanel;
+
         public void Initialize(Crux.Core.BattleController controller)
         {
             this.controller = controller;
@@ -41,12 +45,14 @@ namespace Crux.UI
 
         public void ShowBanner(string text, Color color, float duration)
         {
-            // Phase 3: 구현 이관 (TD-08)
+            // TD-08: BattleBannerPanel uGUI 위임
+            _bannerPanel?.Show(text, color, duration);
         }
 
         public void ShowAlert(Vector3 worldPos, float duration)
         {
-            // Phase 3: 구현 이관 (TD-08)
+            // TD-08: BattleAlertPanel uGUI 위임
+            _alertPanel?.Show(worldPos, duration);
         }
 
         // ===== 유틸 — FirePreview/TerrainOverlay 용 헬퍼 =====

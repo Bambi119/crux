@@ -1,4 +1,5 @@
 using UnityEngine;
+using Crux.Data;
 
 namespace Crux.Combat
 {
@@ -6,23 +7,39 @@ namespace Crux.Combat
     public static class MuzzleFlash
     {
         private static Sprite _cachedCircle;
+        private static VfxRenderDataSO _data;
+
+        static VfxRenderDataSO Data
+        {
+            get
+            {
+                if (_data == null)
+                {
+                    _data = Resources.Load<VfxRenderDataSO>("Vfx/VfxRenderData");
+                    if (_data == null) _data = ScriptableObject.CreateInstance<VfxRenderDataSO>();
+                }
+                return _data;
+            }
+        }
 
         /// <summary>주포 포연</summary>
         public static void Spawn(Vector3 position, Vector2 direction)
         {
+            var d = Data;
+
             // 섬광 (1개)
-            var flash = CreateP(position + (Vector3)(direction * 0.1f),
-                                new Color(1f, 0.9f, 0.3f, 1f), 0.5f, 70);
-            Object.Destroy(flash, 0.06f);
+            var flash = CreateP(position + (Vector3)(direction * d.muzzleFlashOffset),
+                                d.muzzleFlashColor, d.muzzleFlashScale, d.muzzleFlashSort);
+            Object.Destroy(flash, d.muzzleFlashLife);
 
             // 화구 (1개)
-            var fireball = CreateP(position + (Vector3)(direction * 0.2f),
-                                    new Color(1f, 0.6f, 0.15f, 0.9f), 0.35f, 68);
+            var fireball = CreateP(position + (Vector3)(direction * d.muzzleFireballOffset),
+                                    d.muzzleFireballColor, d.muzzleFireballScale, d.muzzleFireballSort);
             fireball.AddComponent<FadeAndShrink>();
-            Object.Destroy(fireball, 0.15f);
+            Object.Destroy(fireball, d.muzzleFireballLife);
 
             // 불꽃 (4개)
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < d.muzzleFlameCount; i++)
             {
                 float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
                 angle += Random.Range(-45f, 45f);
@@ -31,32 +48,32 @@ namespace Crux.Combat
                     Mathf.Sin(angle * Mathf.Deg2Rad)
                 );
 
-                var flame = CreateP(position, new Color(1f, 0.5f, 0.1f, 0.8f),
-                                    Random.Range(0.06f, 0.12f), 65);
+                var flame = CreateP(position, d.muzzleFlameColor,
+                                    Random.Range(d.muzzleFlameSizeMin, d.muzzleFlameSizeMax), d.muzzleFlameSort);
                 var rb = flame.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
-                rb.linearDamping = 5f;
-                rb.linearVelocity = dir * Random.Range(2f, 5f);
+                rb.linearDamping = d.muzzleFlameDamping;
+                rb.linearVelocity = dir * Random.Range(d.muzzleFlameSpeedMin, d.muzzleFlameSpeedMax);
                 flame.AddComponent<FadeAndShrink>();
-                Object.Destroy(flame, 0.2f);
+                Object.Destroy(flame, d.muzzleFlameLife);
             }
 
             // 연기 (3개)
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < d.muzzleSmokeCount; i++)
             {
-                float gray = Random.Range(0.3f, 0.5f);
+                float gray = Random.Range(d.muzzleSmokeGrayMin, d.muzzleSmokeGrayMax);
                 var smoke = CreateP(
-                    position + (Vector3)(Random.insideUnitCircle * 0.08f),
-                    new Color(gray, gray, gray, 0.35f),
-                    Random.Range(0.15f, 0.3f), 53);
+                    position + (Vector3)(Random.insideUnitCircle * d.muzzleSmokeRadius),
+                    new Color(gray, gray, gray, d.muzzleSmokeAlpha),
+                    Random.Range(d.muzzleSmokeSizeMin, d.muzzleSmokeSizeMax), d.muzzleSmokeSort);
 
                 var rb = smoke.AddComponent<Rigidbody2D>();
                 rb.gravityScale = 0f;
-                rb.linearDamping = 1.5f;
-                rb.linearVelocity = direction * Random.Range(0.3f, 1.5f)
-                                   + Random.insideUnitCircle * 0.4f;
+                rb.linearDamping = d.muzzleSmokeDamping;
+                rb.linearVelocity = direction * Random.Range(d.muzzleSmokeSpeedMainMin, d.muzzleSmokeSpeedMainMax)
+                                   + Random.insideUnitCircle * d.muzzleSmokeSpeedSideMax;
                 smoke.AddComponent<FadeAndShrink>();
-                Object.Destroy(smoke, Random.Range(0.5f, 1f));
+                Object.Destroy(smoke, Random.Range(d.muzzleSmokeLifeMin, d.muzzleSmokeLifeMax));
             }
         }
 
