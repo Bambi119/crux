@@ -112,10 +112,17 @@ namespace Crux.Core
             _ => TerrainType.Open
         };
 
-        /// <summary>플로어 타일 생성 + 지형별 셀 틴트 적용 (D8)</summary>
+        /// <summary>플로어 타일 생성 + 지형별 셀 틴트 + 다크 변형 적용 (TD-06)</summary>
+        /// <remarks>
+        /// multiply 틴트만으로는 어두운 지형(Crater·Water·Building 등) 명도 표현이 약함.
+        /// TankSpriteGenerator.FloorDarkenForTerrain 으로 dark1~dark3 단계를 선택해
+        /// 스프라이트 픽셀 자체를 감쇠한 뒤 TintColor 를 곱한다.
+        /// </remarks>
         protected override void SpawnFloorTiles()
         {
-            var floorSprite = TankSpriteGenerator.CreateFloorTile();
+            // 지형 타입별 다크 스프라이트 캐시 (같은 darken 값은 재사용)
+            var spriteCache = new System.Collections.Generic.Dictionary<float, Sprite>();
+
             for (int x = 0; x < grid.Width; x++)
             {
                 for (int y = 0; y < grid.Height; y++)
@@ -124,12 +131,19 @@ namespace Crux.Core
                     var cell = grid.GetCell(cellPos);
                     var terrain = cell != null ? cell.Terrain : TerrainType.Open;
 
+                    float darken = TankSpriteGenerator.FloorDarkenForTerrain(terrain);
+                    if (!spriteCache.TryGetValue(darken, out var sprite))
+                    {
+                        sprite = TankSpriteGenerator.CreateFloorTile(darken);
+                        spriteCache[darken] = sprite;
+                    }
+
                     var obj = new GameObject($"Floor_{x}_{y}_{TerrainData.Label(terrain)}");
                     obj.transform.position = grid.GridToWorld(cellPos);
                     obj.transform.SetParent(transform);
 
                     var sr = obj.AddComponent<SpriteRenderer>();
-                    sr.sprite = floorSprite;
+                    sr.sprite = sprite;
                     sr.sortingOrder = -2;
                     sr.color = TerrainData.TintColor(terrain);
                     obj.transform.localScale = Vector3.one * GameConstants.CellSize * 2f;

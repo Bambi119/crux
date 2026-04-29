@@ -434,7 +434,8 @@ namespace Crux.Core
         // ===== 전술맵 타일 (육각) =====
 
         /// <summary>육각 바닥 타일 (flat-top, 32x32) — 내부 채움 + 테두리</summary>
-        public static Sprite CreateFloorTile()
+        /// <param name="darken">명도 감쇠 0~1. 0=원본, 0.15=dark1, 0.25=dark2, 0.35=dark3</param>
+        public static Sprite CreateFloorTile(float darken = 0f)
         {
             int s = 32;
             var tex = new Texture2D(s, s);
@@ -442,9 +443,11 @@ namespace Crux.Core
             var px = new Color[s * s];
             for (int i = 0; i < px.Length; i++) px[i] = Color.clear;
 
-            Color floor = new Color(0.18f, 0.2f, 0.16f);
-            Color floorAlt = new Color(0.16f, 0.18f, 0.14f);
-            Color edge = new Color(0.35f, 0.36f, 0.32f);
+            // darken 적용: RGB 각 채널을 (1 - darken) 배율로 감쇠
+            float b = 1f - Mathf.Clamp01(darken);
+            Color floor    = new Color(0.18f * b, 0.2f  * b, 0.16f * b);
+            Color floorAlt = new Color(0.16f * b, 0.18f * b, 0.14f * b);
+            Color edge     = new Color(0.35f * b, 0.36f * b, 0.32f * b);
 
             float cx = (s - 1) * 0.5f;
             float cy = (s - 1) * 0.5f;
@@ -473,6 +476,22 @@ namespace Crux.Core
             tex.SetPixels(px); tex.Apply();
             return Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
         }
+
+        /// <summary>지형 타입에 맞는 다크 단계 반환 (0=원본 / 0.15=dark1 / 0.25=dark2 / 0.35=dark3)</summary>
+        public static float FloorDarkenForTerrain(TerrainType t) => t switch
+        {
+            TerrainType.Road             => 0f,    // 원본 (틴트로 충분)
+            TerrainType.Open             => 0f,
+            TerrainType.Hill             => 0f,
+            TerrainType.Woods            => 0.15f, // dark1 — 수풀, 약간 어둡게
+            TerrainType.Mud              => 0.15f, // dark1
+            TerrainType.Rubble           => 0.15f, // dark1
+            TerrainType.Crater           => 0.25f, // dark2 — 탄흔 구덩이
+            TerrainType.Water            => 0.25f, // dark2 — 수면 반사 억제
+            TerrainType.Building         => 0.35f, // dark3 — 건물 내부/그늘
+            TerrainType.ElevatedBuilding => 0.35f, // dark3
+            _ => 0f
+        };
 
         /// <summary>육각 엄폐물 타일 — 방호 방향 변(들)에 두꺼운 테두리</summary>
         /// <remarks>HexFacet 플래그로 지정된 변에만 벽이 그려짐. 플랫탑 hex 6변:

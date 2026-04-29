@@ -1,0 +1,368 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fbe8ecc292ff6a54abc44c766e3223ec, type: 3}
+  m_Name: VfxRenderData
+  m_EditorClassIdentifier: Assembly-CSharp::Crux.Data.VfxRenderDataSO
+  sortSmoke: 55
+  sortAfterGlow: 56
+  sortDebrisLow: 62
+  sortDebrisMid: 64
+  sortSpark: 67
+  sortHitAnim: 68
+  sortStreakHit: 73
+  sortFlash2: 70
+  sortFlash1: 71
+  sortFireball3: 69
+  sortFireball2: 70
+  sortFireball1: 71
+  sortFireballCore: 72
+  sortStreakExplosion: 74
+  sortExpFlash1: 75
+  sortExpFlash2: 76
+  missDustColor1: {r: 0.62, g: 0.52, b: 0.32, a: 0.7}
+  missDustScale1: 0.22
+  missDustLife1: 0.55
+  missDustColor2: {r: 0.55, g: 0.47, b: 0.28, a: 0.5}
+  missDustScale2: 0.14
+  missDustLife2: 0.4
+  missChipColor: {r: 0.6, g: 0.5, b: 0.3, a: 0.85}
+  missChipScaleMin: 0.04
+  missChipScaleMax: 0.07
+  missChipSpeedMin: 3
+  missChipSpeedMax: 7
+  missChipLifeMin: 0.3
+  missChipLifeMax: 0.5
+  missChipDamping: 4
+  ricoFlash1Color: {r: 1, g: 1, b: 0.9, a: 1}
+  ricoFlash1Scale: 0.4
+  ricoFlash1Life: 0.04
+  ricoFlash2Color: {r: 1, g: 0.8, b: 0.3, a: 0.8}
+  ricoFlash2Scale: 0.3
+  ricoFlash2Life: 0.12
+  ricoStreakBaseCount: 12
+  ricoStreakScaleY: 0.05
+  ricoStreakSpeedMin: 10
+  ricoStreakSpeedMax: 22
+  ricoStreakLenMin: 0.18
+  ricoStreakLenMax: 0.45
+  ricoStreakLifeMin: 0.1
+  ricoStreakLifeMax: 0.25
+  ricoStreakDamping: 3
+  ricoStreakColorA: {r: 1, g: 0.95, b: 0.6, a: 0.95}
+  ricoStreakColorB: {r: 1, g: 0.7, b: 0.2, a: 0.85}
+  ricoSparkBaseCount: 14
+  ricoSparkSizeMin: 0.025
+  ricoSparkSizeMax: 0.07
+  ricoSparkSpeedMin: 6
+  ricoSparkSpeedMax: 16
+  ricoSparkLifeMin: 0.12
+  ricoSparkLifeMax: 0.35
+  ricoSparkDamping: 2.5
+  ricoSparkColorWhite: {r: 1, g: 1, b: 0.7, a: 1}
+  ricoSparkColorYellow: {r: 1, g: 0.85, b: 0.3, a: 1}
+  ricoSparkColorOrange: {r: 1, g: 0.55, b: 0.1, a: 1}
+  ricoEmberCount: 8
+  ricoEmberSizeMin: 0.02
+  ricoEmberSizeMax: 0.05
+  ricoEmberSpeedMin: 2
+  ricoEmberSpeedMax: 6
+  ricoEmberLifeMin: 0.25
+  ricoEmberLifeMax: 0.55
+  ricoEmberDamping: 4
+  ricoEmberColorA: {r: 1, g: 0.7, b: 0.2, a: 0.9}
+  ricoEmberColorB: {r: 0.9, g: 0.4, b: 0.1, a: 0.7}
+  ricoDebrisCount: 4
+  ricoDebrisColor: {r: 0.45, g: 0.4, b: 0.35, a: 1}
+  ricoDebrisSizeMin: 0.04
+  ricoDebrisSizeMax: 0.07
+  ricoDebrisSpeedMin: 3
+  ricoDebrisSpeedMax: 8
+  ricoDebrisLifeMin: 0.4
+  ricoDebrisLifeMax: 0.8
+  ricoDebrisDamping: 5
+  ricoSmokeCount: 3
+  ricoSmokeColor: {r: 0.25, g: 0.23, b: 0.2, a: 0.35}
+  ricoSmokeSizeMin: 0.1
+  ricoSmokeSizeMax: 0.2
+  ricoSmokeLifeMin: 0.4
+  ricoSmokeLifeMax: 0.8
+  ricoSmokeDamping: 1.5
+  impactCoreColor: {r: 1, g: 1, b: 1, a: 1}
+  impactCoreScale: 0.4
+  impactCoreLife: 0.05
+  impactGlow1Color: {r: 1, g: 1, b: 0.85, a: 1}
+  impactGlow1Scale: 0.55
+  impactGlow1Life: 0.12
+  impactGlow2Color: {r: 1, g: 0.85, b: 0.3, a: 0.9}
+  impactGlow2Scale: 0.7
+  impactGlow2Life: 0.25
+  impactOuterColor: {r: 1, g: 0.5, b: 0.1, a: 0.6}
+  impactOuterScale: 0.9
+  impactOuterLife: 0.4
+  impactStreakBase: 28
+  impactStreakScaleY: 0.06
+  impactStreakLenMin: 0.25
+  impactStreakLenMax: 0.9
+  impactStreakSpeedMin: 10
+  impactStreakSpeedMax: 24
+  impactStreakLifeMin: 0.12
+  impactStreakLifeMax: 0.35
+  impactStreakDamping: 2
+  impactStreakColorA: {r: 1, g: 0.97, b: 0.75, a: 0.95}
+  impactStreakColorB: {r: 1, g: 0.85, b: 0.35, a: 0.85}
+  impactStreakColorC: {r: 1, g: 0.6, b: 0.15, a: 0.75}
+  impactDebrisBase: 30
+  impactDebrisSizeMin: 0.015
+  impactDebrisSizeMax: 0.05
+  impactDebrisSpeedMin: 3
+  impactDebrisSpeedMax: 18
+  impactDebrisLifeMin: 0.3
+  impactDebrisLifeMax: 0.9
+  impactDebrisDamping: 1.5
+  impactDebrisBlack: {r: 0.1, g: 0.08, b: 0.06, a: 1}
+  impactDebrisBrown: {r: 0.35, g: 0.25, b: 0.15, a: 1}
+  impactDebrisLight: {r: 0.6, g: 0.5, b: 0.3, a: 1}
+  impactDebrisFire: {r: 1, g: 0.7, b: 0.2, a: 0.8}
+  impactDustBase: 6
+  impactDustSizeMin: 0.2
+  impactDustSizeMax: 0.5
+  impactDustSpeedMin: 0.5
+  impactDustSpeedMax: 2.5
+  impactDustLifeMin: 0.6
+  impactDustLifeMax: 1.5
+  impactDustDamping: 0.8
+  impactDustBlack: {r: 0.12, g: 0.1, b: 0.08, a: 0.5}
+  impactDustBrown: {r: 0.3, g: 0.25, b: 0.2, a: 0.4}
+  impactDustLight: {r: 0.45, g: 0.4, b: 0.35, a: 0.3}
+  impactAfterglowColor: {r: 1, g: 0.4, b: 0.1, a: 0.4}
+  impactAfterglowScale: 0.5
+  impactAfterglowLife: 0.8
+  expFlashCoreColor: {r: 1, g: 1, b: 0.95, a: 1}
+  expFlashCoreScale: 0.5
+  expFlashCoreLife: 0.05
+  expFire1Color: {r: 1, g: 0.92, b: 0.5, a: 1}
+  expFire1Scale: 0.8
+  expFire1Life: 0.18
+  expFire2Color: {r: 1, g: 0.5, b: 0.12, a: 0.9}
+  expFire2Scale: 1.1
+  expFire2Life: 0.38
+  expFire3Color: {r: 0.7, g: 0.18, b: 0.04, a: 0.7}
+  expFire3Scale: 1.3
+  expFire3Life: 0.65
+  expStreakCount: 20
+  expStreakLenMin: 0.3
+  expStreakLenMax: 0.85
+  expStreakScaleY: 0.06
+  expStreakSpeedMin: 9
+  expStreakSpeedMax: 22
+  expStreakLifeMin: 0.14
+  expStreakLifeMax: 0.38
+  expStreakDamping: 2
+  expStreakColorA: {r: 1, g: 0.88, b: 0.4, a: 0.9}
+  expStreakColorB: {r: 1, g: 0.5, b: 0.1, a: 0.85}
+  expDebrisCount: 20
+  expDebrisBlack: {r: 0.1, g: 0.08, b: 0.06, a: 1}
+  expDebrisMid: {r: 0.32, g: 0.25, b: 0.17, a: 1}
+  expDebrisLight: {r: 0.55, g: 0.45, b: 0.3, a: 1}
+  expDebrisSizeMin: 0.03
+  expDebrisSizeMax: 0.09
+  expDebrisSpeedMin: 4
+  expDebrisSpeedMax: 16
+  expDebrisLifeMin: 0.3
+  expDebrisLifeMax: 0.9
+  expDebrisDamping: 1.6
+  expSmokeCount: 5
+  expSmokeColor: {r: 0.08, g: 0.07, b: 0.05, a: 0.72}
+  expSmokeSizeMin: 0.35
+  expSmokeSizeMax: 0.65
+  expSmokeSmokeRadius: 0.22
+  expSmokeSpeedXMin: -0.5
+  expSmokeSpeedXMax: 0.5
+  expSmokeSpeedYMin: 1
+  expSmokeSpeedYMax: 2.5
+  expSmokeLifeMin: 1
+  expSmokeLifeMax: 2
+  expSmokeDamping: 0.9
+  expGlowColor: {r: 1, g: 0.35, b: 0.05, a: 0.4}
+  expGlowScale: 0.7
+  expGlowLife: 1
+  ammoCore1Color: {r: 1, g: 1, b: 0.98, a: 1}
+  ammoCore1Scale: 1
+  ammoCore1Life: 0.04
+  ammoCore2Color: {r: 1, g: 0.97, b: 0.8, a: 1}
+  ammoCore2Scale: 1.6
+  ammoCore2Life: 0.07
+  ammoRingCount: 4
+  ammoRingRadBase: 0.3
+  ammoRingRadStep: 0.45
+  ammoRingColorBase: {r: 1, g: 0.92, b: 0.65, a: 0.7}
+  ammoRingLifeBase: 0.1
+  ammoRingLifeStep: 0.04
+  ammoBall1Color: {r: 1, g: 0.9, b: 0.45, a: 1}
+  ammoBall1Scale: 1.6
+  ammoBall1Life: 0.28
+  ammoBall2Color: {r: 1, g: 0.5, b: 0.1, a: 0.92}
+  ammoBall2Scale: 2.2
+  ammoBall2Life: 0.55
+  ammoBall3Color: {r: 0.65, g: 0.15, b: 0.04, a: 0.75}
+  ammoBall3Scale: 2.5
+  ammoBall3Life: 0.9
+  ammoStreakCount: 36
+  ammoStreakLenMin: 0.5
+  ammoStreakLenMax: 1.8
+  ammoStreakScaleY: 0.07
+  ammoStreakSpeedMin: 16
+  ammoStreakSpeedMax: 36
+  ammoStreakLifeMin: 0.18
+  ammoStreakLifeMax: 0.5
+  ammoStreakDamping: 1.5
+  ammoStreakColorA: {r: 1, g: 0.95, b: 0.7, a: 0.95}
+  ammoStreakColorB: {r: 1, g: 0.65, b: 0.18, a: 0.9}
+  ammoStreakColorC: {r: 1, g: 0.35, b: 0.04, a: 0.85}
+  ammoDebrisCount: 30
+  ammoDebrisSizeMin: 0.05
+  ammoDebrisSizeMax: 0.14
+  ammoDebrisSpeedMin: 7
+  ammoDebrisSpeedMax: 24
+  ammoDebrisLifeMin: 0.5
+  ammoDebrisLifeMax: 1.3
+  ammoDebrisDamping: 1.2
+  ammoDebrisBlack: {r: 0.08, g: 0.06, b: 0.04, a: 1}
+  ammoDebrisMid: {r: 0.28, g: 0.2, b: 0.13, a: 1}
+  ammoDebrisLight: {r: 0.5, g: 0.4, b: 0.28, a: 1}
+  ammoTurretColor: {r: 0.22, g: 0.2, b: 0.17, a: 1}
+  ammoTurretScale: 0.22
+  ammoTurretAngleMin: 20
+  ammoTurretAngleMax: 160
+  ammoTurretSpeedMin: 8
+  ammoTurretSpeedMax: 16
+  ammoTurretLifeMin: 0.9
+  ammoTurretLifeMax: 1.6
+  ammoTurretDamping: 0.7
+  ammoTurretAngVelMin: -280
+  ammoTurretAngVelMax: 280
+  ammoSmokeCount: 8
+  ammoSmokeColor: {r: 0.06, g: 0.05, b: 0.04, a: 0.82}
+  ammoSmokeSizeMin: 0.5
+  ammoSmokeSizeMax: 1.1
+  ammoSmokeRadius: 0.32
+  ammoSmokeSpeedXMin: -0.8
+  ammoSmokeSpeedXMax: 0.8
+  ammoSmokeSpeedYMin: 1.8
+  ammoSmokeSpeedYMax: 4.2
+  ammoSmokeLifeMin: 1.5
+  ammoSmokeLifeMax: 3.2
+  ammoSmokeDamping: 0.5
+  ammoEmberCount: 15
+  ammoEmberColorA: {r: 1, g: 0.6, b: 0.1, a: 0.8}
+  ammoEmberColorB: {r: 0.8, g: 0.25, b: 0.05, a: 0.6}
+  ammoEmberSizeMin: 0.03
+  ammoEmberSizeMax: 0.07
+  ammoEmberSpeedMin: 3
+  ammoEmberSpeedMax: 11
+  ammoEmberLifeMin: 0.5
+  ammoEmberLifeMax: 1.3
+  ammoEmberDamping: 2
+  ammoEmberRadius: 0.5
+  ammoAfterglowColor: {r: 1, g: 0.28, b: 0.04, a: 0.5}
+  ammoAfterglowScale: 1.4
+  ammoAfterglowLife: 1.6
+  coverFlash1Color: {r: 0.95, g: 0.92, b: 0.85, a: 1}
+  coverFlash1Scale: 0.4
+  coverFlash1Life: 0.04
+  coverFlash2Color: {r: 0.75, g: 0.7, b: 0.6, a: 0.7}
+  coverFlash2Scale: 0.55
+  coverFlash2Life: 0.15
+  coverStreakCount: 12
+  coverStreakScaleY: 0.09
+  coverStreakLenMin: 0.12
+  coverStreakLenMax: 0.38
+  coverStreakSpeedMin: 5
+  coverStreakSpeedMax: 13
+  coverStreakLifeMin: 0.15
+  coverStreakLifeMax: 0.32
+  coverStreakDamping: 4.5
+  coverStreakColorA: {r: 0.88, g: 0.85, b: 0.78, a: 0.9}
+  coverStreakColorB: {r: 0.62, g: 0.58, b: 0.5, a: 0.85}
+  coverStreakColorC: {r: 0.42, g: 0.38, b: 0.32, a: 0.8}
+  coverChipCount1: 18
+  coverChipSizeMin: 0.03
+  coverChipSizeMax: 0.08
+  coverChipSpeedMin: 5
+  coverChipSpeedMax: 14
+  coverChipLifeMin: 0.15
+  coverChipLifeMax: 0.4
+  coverChipDamping: 2.8
+  coverChipColorA: {r: 0.82, g: 0.78, b: 0.7, a: 1}
+  coverChipColorB: {r: 0.58, g: 0.54, b: 0.46, a: 1}
+  coverChipColorC: {r: 0.36, g: 0.32, b: 0.27, a: 1}
+  coverEmberCount: 8
+  coverEmberSizeMin: 0.02
+  coverEmberSizeMax: 0.06
+  coverEmberSpeedMin: 1.5
+  coverEmberSpeedMax: 5
+  coverEmberLifeMin: 0.3
+  coverEmberLifeMax: 0.65
+  coverEmberDamping: 5
+  coverEmberColorA: {r: 0.7, g: 0.66, b: 0.58, a: 0.9}
+  coverEmberColorB: {r: 0.48, g: 0.44, b: 0.38, a: 0.75}
+  coverChunkCount: 4
+  coverChunkColor: {r: 0.65, g: 0.62, b: 0.55, a: 1}
+  coverChunkSizeMin: 0.08
+  coverChunkSizeMax: 0.14
+  coverChunkSpeedMin: 2
+  coverChunkSpeedMax: 6
+  coverChunkLifeMin: 0.45
+  coverChunkLifeMax: 0.9
+  coverChunkDamping: 6
+  coverDustCount: 3
+  coverDustColor: {r: 0.72, g: 0.68, b: 0.6, a: 0.45}
+  coverDustSizeMin: 0.18
+  coverDustSizeMax: 0.35
+  coverDustLifeMin: 0.55
+  coverDustLifeMax: 1.1
+  coverDustDamping: 1.3
+  coverDustSpeedMin: 0.5
+  coverDustSpeedMax: 1.5
+  muzzleFlashColor: {r: 1, g: 0.9, b: 0.3, a: 1}
+  muzzleFlashScale: 0.5
+  muzzleFlashOffset: 0.1
+  muzzleFlashLife: 0.06
+  muzzleFlashSort: 70
+  muzzleFireballColor: {r: 1, g: 0.6, b: 0.15, a: 0.9}
+  muzzleFireballScale: 0.35
+  muzzleFireballOffset: 0.2
+  muzzleFireballLife: 0.15
+  muzzleFireballSort: 68
+  muzzleFlameCount: 4
+  muzzleFlameColor: {r: 1, g: 0.5, b: 0.1, a: 0.8}
+  muzzleFlameSizeMin: 0.06
+  muzzleFlameSizeMax: 0.12
+  muzzleFlameSpeedMin: 2
+  muzzleFlameSpeedMax: 5
+  muzzleFlameLife: 0.2
+  muzzleFlameDamping: 5
+  muzzleFlameSort: 65
+  muzzleSmokeCount: 3
+  muzzleSmokeGrayMin: 0.3
+  muzzleSmokeGrayMax: 0.5
+  muzzleSmokeAlpha: 0.35
+  muzzleSmokeSizeMin: 0.15
+  muzzleSmokeSizeMax: 0.3
+  muzzleSmokeLifeMin: 0.5
+  muzzleSmokeLifeMax: 1
+  muzzleSmokeDamping: 1.5
+  muzzleSmokeSort: 53
+  muzzleSmokeRadius: 0.08
+  muzzleSmokeSpeedMainMin: 0.3
+  muzzleSmokeSpeedMainMax: 1.5
+  muzzleSmokeSpeedSideMax: 0.4
