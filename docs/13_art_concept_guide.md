@@ -273,6 +273,57 @@ Output: 1024x888 px (will be downsampled to 256x222 in post).
 - **타일이 아닌 오브젝트 스프라이트** — 헥스 위에 별도 z-order로 얹음
 - 본 1차 스프라이트 생성 트랙에 **포함하지 않음** (별도 트랙)
 
+### 6.4 샘플 지역 1차 — 케마르 격리구 마을 (1막 무대)
+
+> 출처: `docs/02:20` (Khemar Enclave 가자 모델) · `docs/02:147-149` (1막 시작 환경) · `docs/06 §5+§8` (지형·엄폐) · `docs/05:23-26` (차체 5종)
+> **목표**: 단일 지역 1세트로 GPT 시안 → 톤 검증 → 합격 시 동일 지역의 본 에셋·배틀씬 외곽 보더로 승격.
+
+#### 6.4.1 지역 컨셉 압축
+
+- **지정학**: 티벨란 공화국 동부, 봉쇄된 케마르 격리구. 가자 지구형 봉쇄·검문소·고립
+- **건축**: 폐허 군수 창고(콘크리트 외벽 일부 잔존), 폐허 의료 시설(타일 바닥 잔해), 마을 가옥(흙벽돌·녹슨 양철)
+- **표면**: 마른 흙 도로 위주, 단편적 균열 아스팔트, 우물·드럼통 주변 진흙·물웅덩이
+- **식생**: 거의 없음 (1막), 죽은 나무·관목 잔해만
+- **색채 적용**: FM1 안 D §3.1 직접. 카키 탄·콘크리트 그레이 비중 ↑, 강철 청회는 물웅덩이/금속 음영에만
+
+#### 6.4.2 산출 SKU 카탈로그 (39종)
+
+| 카테고리 | SKU 접두 | 변형 | 합계 | 비고 |
+|---|---|---|---|---|
+| 지면 — 마른 흙 | `soil_dry_` | a · b · c · d (균열 0~3) | 4 | 베이스 지면 |
+| 지면 — 균열 아스팔트 | `road_asphalt_` | a · b · c (약·중·심) | 3 | 마을 도로 |
+| 지면 — 잔해 | `rubble_` | a · b · c (콘크리트·금속·혼합) | 3 | 무너진 건물 자리 |
+| 지면 — 진흙 | `mud_` | shallow · deep | 2 | 우기 흔적 |
+| 지면 — 물웅덩이 | `water_puddle_` | a (작은 우물) | 1 | 강철 청회 활용 |
+| 지면 — 건물 내부 바닥 | `floor_interior_` | tile · concrete · plank | 3 | 폐허 의료 시설 |
+| **엄폐물 — Small (1면)** | `cover_sandbag_` | n · ne · se · s · sw · nw | 6 | 모래주머니 (카키 탄+녹슨 적색) |
+| **엄폐물 — Medium (3면)** | `cover_wall_` | n · ne · se · s · sw · nw | 6 | 콘크리트 외벽 절단 (콘크리트 그레이) |
+| **엄폐물 — Medium (3면)** | `cover_container_` | n · ne · se · s · sw · nw | 6 | 녹슨 화물 컨테이너 (녹슨 적색) |
+| 풍경 오브젝트 | `prop_` | dead_tree · well · fuel_drum · debris_pile | 4 | hex 위 z-order |
+| 차체 스케일 검증 | `tank_assault_top` | rocinante (Assault 중형) | 1 | 배치 비례 검증용 |
+|  |  | **합계** | **39** |  |
+
+#### 6.4.3 스케일·픽셀 비례 (256×222 헥스 기준)
+
+| 대상 | 권장 px | 근거 |
+|---|---|---|
+| 헥스 내경 | 256(가로 점-점) × 222(세로 변-변) | §5.1 |
+| 차체 — Assault 중형 (베이스) | 길이 **160** × 폭 **96** | hex 회전 시 잘림 마진 ±30 px |
+| 차체 — 5종 비례 | Scout ×0.80 / Assault ×1.00 / Support ×1.05 / Heavy ×1.15 / Siege ×1.30 | `docs/05:23-26` 하중 60→220 비율 압축 |
+| 엄폐물 — Small (1면) | 변 길이 **128** × 두께 **24** | hex 한 변(=128) 따라 띠 |
+| 엄폐물 — Medium (3면) | 변 길이 **128** × 두께 **40** × 면당 1장 (3면 일체형 또는 분할) | 3면 결합 시 ~코너 형태 |
+| 풍경 오브젝트 | 64×64 ~ 96×96 | hex 중앙에 z-order 배치 |
+
+> 픽셀 수치는 권장값. dev 측 `GameConstants`/실제 PPU와 정합 시 ±10% 보정 가능. §11 #7 결정 항목.
+
+#### 6.4.4 엄폐물 방향 규약 (6변)
+
+- flat-top hex 기준 6변 = **N(상)·NE(우상)·SE(우하)·S(하)·SW(좌하)·NW(좌상)**
+- `docs/06:241-253` 변(edge) 속성 모델과 1:1 일치. 한 셀 최대 6면 플래그
+- **생성 효율**: 베이스 1방향(예: N) 디자인을 60°·120°·180°·240°·300° 회전으로 5변 파생 → SKU당 6장
+- HP 단계별 손상 변형(`docs/06:244-245` 3면→2면→1면)은 1차 트랙 **제외**. 만전 상태만 생성, 후속 트랙에서 손상 변형 추가
+- Large(3면 초과 요새급)는 별도 구조물 카테고리(`docs/06:258-263`) — 1차 미포함
+
 ---
 
 ## 7. 전투 씬 보조 비주얼
@@ -337,6 +388,165 @@ NO text, NO UI elements, NO characters, NO vehicles
 1. 첫 1장 생성 → 후처리 통과 → Unity 임포트 → TerrainTestScene 1셀에 임시 배치
 2. 시각 검수 후 OK → 동일 헤더로 변형 4장 일괄 생성
 3. NG 시 헤더의 어떤 키워드가 원인인지 1개씩 토글하며 격리
+
+### 8.3 샘플 1지역 일괄 생성 프롬프트 (Khemar Enclave · 3 시트)
+
+> §6.4 카탈로그 39 SKU를 **3장 시트**로 분할 생성. 1장당 다중 타일을 격자로 배치해 톤 일관성을 확보.
+> 시안 OK → §6.4.4 회전 파생 + §9 후처리 파이프라인 → 본 에셋 / 배틀씬 외곽 보더로 승격.
+
+#### 8.3.1 시트 A · 지면 타일 16종 (4×4 격자)
+
+```
+Create a 4x4 grid sheet of top-down pixel art HEX TILES for a turn-based
+tactical game set in Khemar Enclave (a fictional besieged district in
+post-war East Africa, modeled on Gaza Strip-style blockade zones).
+
+Each tile is a flat-top hexagon, 256x222 pixels, transparent background
+outside the hex shape. Sheet total 1024x888 px.
+
+Style: Front Mission 1 (SNES, 1995) tactical map tone — matte, low-saturation,
+military aesthetic, 16-bit SNES dithering allowed for face gradients.
+
+Strict 8-color palette ONLY:
+#1A1814 deep shadow, #3D4825 dark olive, #6E7335 olive green,
+#A88E5A khaki tan, #8A8A86 concrete gray, #3E5A78 steel blue-gray,
+#A0502E rust red, #D4BC8E highlight beige.
+
+Tile contents in reading order (left-to-right, top-to-bottom):
+Row 1 (Dry Soil — base ground, 4 crack stages):
+  1. Smooth dry earth, faint dust patterns
+  2. Light cracks, scattered pebbles
+  3. Medium cracks, sparse dry weeds
+  4. Heavy cracks, exposed dry roots
+Row 2 (Asphalt road — 3 stages + Mud shallow):
+  5. Cracked asphalt, faded white lane marks
+  6. Heavy cracked asphalt, potholes
+  7. Shattered asphalt, exposed gravel
+  8. Shallow muddy patch with tire tracks
+Row 3 (Mud deep + Water puddle + Rubble x2):
+  9. Deep wet mud, dark brown, slight sheen
+  10. Shallow muddy water (steel blue-gray) reflecting dusk, slight ripples
+  11. Concrete rubble pile, rebar exposed, dust
+  12. Mixed concrete-and-metal rubble, twisted beams
+Row 4 (Rubble metal + Building floor x3):
+  13. Rusted metal debris, sheet panels, exposed rivets
+  14. Tile floor remnants, broken ceramic, dust
+  15. Concrete floor, cracked, dark stains
+  16. Wooden plank floor, splintered, partial collapse
+
+Style rules (apply to ALL tiles):
+- Top-down orthographic, no tilt
+- Single light source from upper-left, short shadow toward lower-right
+- 3-tone shading per element: base + shadow + highlight
+- No anti-aliasing, sharp 1-pixel edges, NO smoothing
+- Seamless edges that tile naturally with neighbors of the same kind
+- NO text, NO UI, NO characters, NO vehicles, NO objects on tiles
+- Dithering allowed only on face interiors, never on hex outline (1 px clean)
+```
+
+#### 8.3.2 시트 B · 엄폐물 3종 × 6방향 (3×6 격자)
+
+```
+Create a 3x6 grid sheet of top-down pixel art COVER OBJECTS placed along
+hexagon edges, for a turn-based tactical game (Khemar Enclave setting,
+Front Mission 1 SNES tone).
+
+Each cell shows ONE cover object positioned on ONE specific edge of an
+imaginary flat-top hexagon (256x222 px hex footprint, but render only
+the cover strip, ~128 px long, transparent elsewhere). Sheet 1024x1332 px
+or 768x1332 px (3 cols x 6 rows). Each cell ~256 wide x ~222 tall.
+
+Strict 8-color palette ONLY:
+#1A1814, #3D4825, #6E7335, #A88E5A, #8A8A86, #3E5A78, #A0502E, #D4BC8E.
+
+Columns (3 cover types):
+- Col 1: SANDBAG ROW (small cover, 1-face, ~128 long x 24 tall)
+  Stacked sandbags, khaki tan with rust red faded paint marks.
+- Col 2: BROKEN CONCRETE WALL (medium cover, 3-face, ~128 long x 40 tall)
+  Crumbling reinforced concrete wall segment, rebar exposed, concrete gray
+  with deep shadow cracks and dust at base.
+- Col 3: RUSTED CARGO CONTAINER (medium cover, 3-face, ~128 long x 40 tall)
+  Half-rusted shipping container side, rust red dominant with concrete gray
+  dents, faded stenciled markings (no readable text).
+
+Rows (6 hexagon edges, flat-top orientation):
+- Row 1: N edge — cover lies horizontally along the TOP of the hex
+- Row 2: NE edge — cover rotated 60° clockwise, upper-right of hex
+- Row 3: SE edge — cover rotated 120° clockwise, lower-right of hex
+- Row 4: S edge — cover horizontal along the BOTTOM of the hex
+- Row 5: SW edge — cover rotated 240° clockwise, lower-left of hex
+- Row 6: NW edge — cover rotated 300° clockwise, upper-left of hex
+
+Style rules:
+- Top-down orthographic
+- Light source from upper-left CONSISTENT across all cells (do not rotate
+  the lighting with the cover — only the cover geometry rotates)
+- Short shadow toward lower-right of the cover
+- 3-tone shading: base + shadow + highlight
+- No anti-aliasing, sharp pixel edges
+- Transparent background outside the cover strip
+- All cover objects shown at FULL HP (intact 3-face state for medium covers)
+- NO text, NO UI, NO characters, NO ground tile beneath
+```
+
+#### 8.3.3 시트 C · 차체 스케일 + 풍경 오브젝트 5종 (1+4 배치)
+
+```
+Create a reference sheet showing 1 vehicle and 4 prop objects for a top-down
+turn-based tactical game (Khemar Enclave setting, Front Mission 1 SNES tone).
+Layout: large vehicle on the LEFT (occupying ~half the sheet), 2x2 grid of
+props on the RIGHT. Sheet 1024x768 px, transparent background.
+
+Strict 8-color palette ONLY:
+#1A1814, #3D4825, #6E7335, #A88E5A, #8A8A86, #3E5A78, #A0502E, #D4BC8E.
+
+LEFT — Vehicle "Rocinante" (Assault medium tank, top-down):
+- Approx 160 px long x 96 px wide, fits inside a 256x222 hex with ~30 px
+  rotation margin
+- Boxy, hand-built improvised tank silhouette (post-apocalyptic salvage
+  aesthetic, NOT military regulation). Welded plate armor, asymmetric panels,
+  exposed bolts, mismatched rust patches
+- Main body: olive green base with dark olive shadow side
+- Turret centered, slightly off-rear, with one main cannon pointing UP (north)
+- Hatches, antennas, equipment box on rear deck
+- Faded numbering or hand-painted mark in highlight beige (no readable text)
+- Wear: rust red streaks, concrete gray dust at lower edges
+- Render at FULL HP (no damage)
+
+RIGHT — 2x2 grid of props (each ~128x128 px, top-down):
+- Top-left: Dead leafless tree, twisted trunk, deep shadow base
+- Top-right: Stone-rim well with wooden bucket beside, slight water glint
+  (steel blue-gray) inside
+- Bottom-left: Rusted fuel drum (rust red with concrete gray bands), tipped
+  slightly, small spill stain
+- Bottom-right: Debris pile (mixed broken wooden planks, rebar, brick
+  fragments)
+
+Style rules:
+- Top-down orthographic, no tilt
+- Single light source from upper-left, short shadow toward lower-right
+- 3-tone shading: base + shadow + highlight per surface
+- No anti-aliasing, sharp pixel edges
+- Transparent background, no ground tile
+- NO text on any object, NO UI, NO characters, NO weapons firing
+- All objects at full intact state
+```
+
+#### 8.3.4 검증 체크리스트 (시안 OK/NG 판정)
+
+| # | 점검 항목 | OK 기준 |
+|---|---|---|
+| 1 | 팔레트 준수 | §3.1 8색 외 색이 면적 0.5% 이상 차지 X |
+| 2 | 채도 | 모든 색 채도 50% 이하 (액센트 제외) |
+| 3 | 안티에일리어싱 | 가장자리에 0.5 px 회색 보간 X |
+| 4 | 라이팅 일관 | 모든 셀에서 좌상단→우하단 광원 동일 |
+| 5 | 디더링 | 면 내부에만 적용. 헥스 외곽 1 px 깔끔 |
+| 6 | 차체 스케일 | Assault 본체 길이가 헥스 가로의 60~65% (160 / 256) |
+| 7 | 엄폐물 방향 | 6 방향 모두 60° 단위로 정렬, 광원 회전 X |
+| 8 | 시임리스 | 동일 카테고리 4장 격자 인접 시 변 색·텍스처 자연스러움 |
+
+> 1~3 위반 시 후처리(팔레트 양자화·점 필터 다운샘플)로 회복 가능.
+> 4~7 위반 시 프롬프트 재생성. 광원 일관·방향 정렬은 사후 회복 매우 어려움.
 
 ---
 
@@ -405,11 +615,12 @@ Assets/_Project/Sprites/
 | 1 | §2 시각 스타일 — A 픽셀 아트 / B 페인터리 / C 하이브리드 | A 권장, 확정 필요 |
 | 2 | §3 컬러 팔레트 | ✅ 확정 — 안 D · Front Mission 1 (2026-04-29) |
 | 3 | §5 타일 크기 — 256×222 vs 128×111 vs 다른 값 | dev 측 현재 그리드 셀 크기와 정합 확인 필요 |
-| 4 | §6 1차 타일 변형 수 (현 17종) | 늘릴지/줄일지 |
-| 5 | §7 베틀씬 배경 1차 트랙 — 외곽 보더 + 진입 정지 화면 |  순서·우선도 |
+| 4 | §6.4 샘플 1지역 SKU (현 39종 — 지면 16 + 엄폐 18 + 풍경 4 + 차체 1) | 합격 시 본 에셋 승격, 지역 추가 결정 |
+| 5 | §7 베틀씬 배경 1차 트랙 — 외곽 보더 + 진입 정지 화면 | 순서·우선도. §6.4 시안 합격 시 동일 톤 재활용 |
 | 6 | §8 생성 경로 — 외부 ChatGPT vs Coplay MCP `generate_or_edit_images` | 두 경로 병행 가능. 1차 시도 경로 선택 |
-| 7 | §10 Unity 임포트 PPU — 128 가정 / dev 측 실측 값 | dev 워크트리에서 GameConstants 확인 후 확정 |
-| 8 | 후처리 자동화 스크립트 작성 여부 | Aseprite 스크립팅 기여 가능 |
+| 7 | §6.4.3 차체·엄폐물 픽셀 비례 (Assault 160×96, 엄폐 128×24/40) | dev `GameConstants` PPU·hex size와 ±10% 정합 확인 후 확정 |
+| 8 | §10 Unity 임포트 PPU — 128 가정 / dev 측 실측 값 | dev 워크트리에서 확인 후 확정 |
+| 9 | 후처리 자동화 스크립트 작성 여부 | Aseprite 스크립팅 기여 가능 |
 
 ---
 
@@ -432,3 +643,4 @@ Assets/_Project/Sprites/
 | 2026-04-29 | 초판 v0.1 — 톤·스타일 결정안·팔레트 3안·헥스 기하·타일 카탈로그 1차·AI 프롬프트 공통 헤더·후처리 파이프라인·Unity 임포트 사양·결정 필요 항목 8건 작성. §2·§3·§7 사용자 확정 대기. |
 | 2026-04-29 | v0.2 — Front Mission 1 (SNES 1995, Squaresoft) 레퍼런스 채택. 안 A/B/C 폐기 후 안 D 8색 베이스(#1A1814~#D4BC8E) 확정 (§3.1). §2.1 디더링 정책 SNES 16비트 톤 허용으로 완화. §3.4 후반부 회복 톤 시프트 추가. §8 AI 프롬프트 공통 헤더 hex 코드 안 D로 교체. §11 #2 결정 필요 항목 ✅ 확정 마킹. |
 | 2026-04-29 | v0.2.1 — §3.5 GPT 생성 프롬프트 초안 추가 (팔레트 시안 1장 + 단일 타일 1장 + 3단계 사용 절차). 외부 이미지 모델로 참고 시안 빠르게 뽑기 위한 복붙용. |
+| 2026-04-29 | v0.3 — §6.4 샘플 1지역(케마르 격리구·1막 무대) SKU 카탈로그 39종 + 스케일 비례(Assault 160×96, 엄폐 128×24/40) + 6변 방향 규약(N/NE/SE/S/SW/NW × 60° 회전 파생). §8.3 일괄 생성 프롬프트 3시트(지면 16 + 엄폐물 18 + 차체+풍경 5) + 시안 OK/NG 8 체크. §11 결정 필요 항목 8→9건(차체 스케일 정합 신설). 시안 합격 시 배틀씬 외곽 보더로 승격 가능. |
