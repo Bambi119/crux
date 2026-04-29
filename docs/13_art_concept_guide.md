@@ -167,45 +167,29 @@ Output: 1024x1024 px reference sheet, sharp pixel edges, no smoothing.
 
 #### 3.5.2 단일 타일 1장 (지형별 변형 시도용)
 
-```
-STRICT TOP-DOWN 90° ORTHOGRAPHIC viewpoint — bird's-eye, looking straight
-down at the ground from directly above. ZERO tilt, ZERO perspective, ZERO
-3D rendering. Reference for VIEWPOINT ONLY: Civilization 6 hex map tile,
-Into the Breach map view, or a satellite/aerial photo of the ground surface.
-NOT isometric, NOT 3/4 view, NOT side view, NOT angled.
+§8 공통 헤더를 그대로 사용하고 `CONTENT.` 단락만 SKU별로 교체한다.
 
-Create a single pixel art HEX TILE of [TERRAIN_NAME] for a turn-based
-tactical game. Use Front Mission 1 (SNES, 1995) palette and matte shading
-ONLY — DO NOT copy Front Mission's actual isometric viewpoint.
+**작성 규약**:
+- 각 객체를 `"each X seen from above as a TOP SILHOUETTE"` 형식으로 명시
+- 크기는 px 단위, 색은 8색 팔레트 코드(`#XXXXXX`)로 직접 지정
+- `FLAT on the ground` / `no standing object` 톤 유지
+- 첫 SKU 외에는 §8.4.5 절차에 따라 직전 합격 시안을 STYLE REFERENCE로 첨부
 
-Tile shape: flat-top regular hexagon (all 6 vertices and 6 edges at exactly
-correct 60° angles, NO parallelogram distortion). 256x222 px. Transparent
-background outside the hex shape.
+**예시 — `cracked asphalt road` (`tile_ro.png` 합격 CONTENT, 2026-04-29)**:
 
-Strict 8-color palette ONLY:
-#1A1814, #3D4825, #6E7335, #A88E5A, #8A8A86, #3E5A78, #A0502E, #D4BC8E.
-
-Terrain content: [TERRAIN_DESCRIPTION — see §8.1 for per-terrain text]
-
-Style:
-- Matte, low-saturation, military post-apocalyptic
-- 16-bit SNES dithering allowed for face gradients (water, dust, metal)
-- Single light source from upper-left, SHORT shadow toward lower-right
-  (shadow length less than 10% of object diameter — long shadows imply
-  3D rendering and are FORBIDDEN)
-- 3-tone shading: base + shadow + highlight per element
-- No anti-aliasing, sharp pixel edges
-- Surface details only (cracks, debris, marks). NO objects with visible
-  vertical sides, NO buildings shown from the side
-- Seamless edges that tile naturally with neighbors
-- NO text, NO UI elements, NO characters, NO vehicles
-- NO isometric perspective, NO 3/4 view, NO 3D rendering, NO oblique angles
-
-Output: 1024x888 px (will be downsampled to 256x222 in post).
+```text
+CONTENT.
+Cracked asphalt road surface seen from straight above as a TOP SILHOUETTE.
+Surface base concrete gray #8A8A86. Crack pattern: STRAIGHT GRID of dark
+shadow #1A1814 hairline cracks running across the tile (NOT trapezoid —
+trapezoid = perspective leak). Faded centerline khaki tan #A88E5A,
+broken in 2-3 places by the cracks. Two oval potholes dark olive #3D4825,
+drawn as TRUE CIRCLES (top-down) NOT ellipses. Edge erosion to dirt
+strips olive green #6E7335 at the hex border. One small rust red #A0502E
+stain near a pothole. FLAT on ground.
 ```
 
-> `[TERRAIN_NAME]` / `[TERRAIN_DESCRIPTION]` 슬롯은 §8.1 표의 "추가 프롬프트" 한 줄로 채운다.
-> 예: `TERRAIN_NAME = cracked asphalt road`, `TERRAIN_DESCRIPTION = cracked asphalt road surface, faded white lane marks, scattered debris`.
+§8.1 타일별 변수 표를 동일 패턴(객체 = TOP SILHOUETTE + 색 코드 + FLAT)으로 풀어 쓴다.
 
 #### 3.5.3 사용 절차
 
@@ -379,47 +363,73 @@ Output: 1024x888 px (will be downsampled to 256x222 in post).
 
 ## 8. AI 이미지 생성 프롬프트 — 공통 헤더
 
-모든 타일·배경 생성에 공통으로 들어갈 스타일 헤더 (영문 / 한국어 정의 병기는 운용 메모용).
-**시점 강제 블록은 항상 프롬프트 첫 줄에 둔다.** FM1 레퍼런스가 isometric을 끌어당기므로 팔레트·셰이딩 한정 사용을 명시한다.
+> **2026-04-29 v0.3.2 검증 베이스라인**. `tile_con2.png`(콘크리트 잔해)·`tile_ro.png`(아스팔트 도로) 두 시안에서 정육각·탑다운·8색 팔레트·픽셀 디더 모두 통과. 본 헤더가 모든 GPT 프롬프트(§3.5·§8.3 시트)의 단일 출처.
+>
+> **운용 원칙**: FM1 텍스트 레퍼런스를 본 헤더에서 제거 — `Front Mission 1` 단어가 isometric 학습 데이터를 끌어당김. 톤 일관성은 (a) 본 텍스트 헤더 고정 + (b) §8.4.5 STYLE REFERENCE 이미지 첨부 + (c) §9 후처리 양자화 3중으로 확보.
+>
+> 프롬프트 본문은 영문 고정. SKU별로는 `CONTENT` 단락(과 시트일 경우 `SHEET LAYOUT` 단락)만 교체.
 
+```text
+SATELLITE PHOTO STYLE — read first.
+This is a top-down satellite or aerial photograph of the GROUND SURFACE
+only. NOT a video game tile. NOT a tactical map asset. NOT a diorama.
+Imagine you are looking straight down from a drone hovering directly
+above. Reference for VIEWPOINT: Google Maps satellite view,
+Civilization 6 hex tile (top-down only), Into the Breach map view
+(top-down only).
+
+PIXEL ART HARD CONSTRAINT.
+Drawn pixel-by-pixel like a 1995 Super Nintendo cartridge sprite.
+Native pixel resolution 256x222 px, upscaled to 1024x888 with NEAREST
+NEIGHBOR ONLY. Every pixel is a hard square edge. NO anti-aliasing.
+NO smooth gradients. NO photo textures. NO painted illustration. NO 3D
+render. Shading by 16-bit dithering only. Match the dither density of
+the STYLE REFERENCE image when one is attached.
+
+PALETTE HARD CONSTRAINT — exactly these 8 RGB colors, nothing else:
+#1A1814  #3D4825  #6E7335  #A88E5A  #8A8A86  #3E5A78  #A0502E  #D4BC8E
+Every pixel must quantize exactly to one of these 8.
+
+VIEWPOINT HARD CONSTRAINT — read carefully.
+- Camera is perfect 90° orthographic top-down. ZERO tilt, ZERO perspective.
+- NO object has visible side faces or thickness. Everything is its TOP
+  SILHOUETTE only.
+- If ANY chunk, prop, or vehicle shows a side face, vertical wall, 3D
+  corner, or parallelogram top — THE IMAGE IS WRONG and must be redone.
+- Shadows are SHORT, length less than 10% of feature size.
+
+TILE SHAPE.
+Single flat-top regular hexagon, 256x222 px. All 6 vertices visible, all
+6 edges at correct 60° angles, NO parallelogram (rhombus) distortion.
+Sharp 1-pixel hex outline. Transparent background outside the hex.
+(Sheet prompts override this with their own SHEET LAYOUT block.)
+
+CONTENT.
+[per-SKU description — replaced per prompt. Always describe each object
+as "seen from above as a TOP SILHOUETTE", FLAT on the ground, with size
+in px and color per the 8-palette code.]
+
+LIGHTING.
+Single light source from upper-left. When a STYLE REFERENCE image is
+attached, MATCH that image's light direction exactly. NO long cast
+shadows.
+
+NEGATIVES — must NOT appear.
+- NO isometric, NO 3/4 view, NO oblique, NO angled view, NO perspective
+- NO 3D rendering, NO depth, NO chunks shown from the side
+- NO standing objects, NO walls, NO buildings, NO tents, NO crates,
+  NO fences, NO watchtowers, NO ramps, NO trees seen from the side
+- NO smooth gradients, NO photo texture, NO painted illustration
+- NO parallelogram or rhombus shapes for chunk tops or hex outline
+- NO colors outside the 8-color palette
+- NO text, NO UI, NO logos, NO frame, NO grid lines outside the hex
+
+OUTPUT.
+1024x888 px PNG. Transparent background outside the hex.
 ```
-STRICT TOP-DOWN 90° ORTHOGRAPHIC viewpoint — bird's-eye, looking straight
-down at the ground from directly above. ZERO tilt, ZERO perspective, ZERO
-3D rendering. Reference for VIEWPOINT ONLY: Civilization 6 hex map tile,
-Into the Breach map view, or a satellite/aerial photo of the ground surface.
-NOT isometric, NOT 3/4 view, NOT side view, NOT angled.
 
-Pixel art tile for a turn-based tactical game.
-Tile shape: flat-top regular hexagon (all 6 vertices and 6 edges at exactly
-correct 60° angles, NO parallelogram distortion).
-Setting: post-apocalyptic East African quarantine zone (Khemar Enclave).
-Color and shading reference ONLY: Front Mission 1 (SNES, 1995, Squaresoft)
-tactical map palette and matte aesthetic — DO NOT copy Front Mission's
-actual isometric viewpoint.
-
-Strict 8-color palette ONLY:
-deep shadow #1A1814, dark olive #3D4825, olive green #6E7335,
-khaki tan #A88E5A, concrete gray #8A8A86, steel blue-gray #3E5A78,
-rust red #A0502E, highlight beige #D4BC8E.
-
-SNES-era dithering allowed for face gradients (water, dust, metal sheen),
-single light source from upper-left, SHORT shadow toward lower-right
-(shadow length less than 10% of object diameter — long shadows imply
-3D rendering and are FORBIDDEN).
-No anti-aliasing, sharp pixel edges, transparent background outside hex shape,
-seamless edges that tile naturally with neighbors.
-
-Surface details only (cracks, debris, marks). Vehicles and props may show
-their TOP face plus a thin rim of their side, but NO buildings shown from
-the side, NO vertical walls drawn as long rectangles.
-
-NO text, NO UI elements, NO characters in this header
-(per-sheet prompts will state when vehicles/props are allowed).
-NO isometric perspective, NO 3/4 view, NO 3D rendering, NO oblique angles.
-```
-
-(*안 D · Front Mission 1 팔레트 확정 (§3.1). 향후 톤 시프트 시 §3.4 후반부 변형색 추가 사용*)
-(*시점 강제 운용 가이드는 §8.4 참조 — 이탈 신호와 회복 절차*)
+(*팔레트 §3.1 안 D 확정. 후반부 톤 시프트 시 §3.4 변형색 추가*)
+(*시점 운용 가이드는 §8.4 — 이탈 신호·OK 신호·회복 절차·§8.4.5 STYLE REFERENCE 첨부 메커니즘*)
 
 ### 8.1 타일별 변수
 
@@ -447,190 +457,182 @@ NO isometric perspective, NO 3/4 view, NO 3D rendering, NO oblique angles.
 
 #### 8.3.1 시트 A · 지면 타일 16종 (4×4 격자)
 
+§8 공통 헤더를 그대로 사용. **`TILE SHAPE` 단락**과 **`CONTENT` 단락**만 다음으로 교체. STYLE REFERENCE는 `tile_con2.png` + `tile_ro.png`(2026-04-29 합격 시안) 두 장 동시 첨부 (§8.4.5 절차).
+
+```text
+SHEET LAYOUT — overrides TILE SHAPE for this prompt.
+4x4 grid of pixel art HEX GROUND TILES, set in Khemar Enclave (a fictional
+besieged district in post-war East Africa, modeled on Gaza Strip-style
+blockade zones). Each cell is a flat-top REGULAR hexagon 256x222 px, all
+6 vertices visible at 60° angles, NO parallelogram distortion. Sheet total
+1024x888 px. Transparent background outside each hex. Each hex has a sharp
+1-pixel outline. Tiles tile seamlessly with neighbors of the same kind.
+
+CONTENT — tile contents in reading order (left-to-right, top-to-bottom).
+Each tile is the GROUND SURFACE seen from straight above as a TOP
+SILHOUETTE, FLAT on the ground.
+
+Row 1 — Dry Soil progression on khaki tan #A88E5A base:
+  1. Smooth dry earth, faint #6E7335 dust dither, no cracks
+  2. Light cracks (thin straight #1A1814 hairlines), scattered #8A8A86 pebbles
+  3. Medium cracks (wider straight grid), sparse dry weeds #3D4825 specks
+  4. Heavy cracks (deep straight grid), exposed dry roots #3D4825 lines
+
+Row 2 — Asphalt road (3 stages) + Mud shallow:
+  5. Cracked asphalt #8A8A86, faded centerline #A88E5A broken by straight
+     #1A1814 hairline cracks
+  6. Heavy cracked asphalt #8A8A86 with oval potholes (TRUE CIRCLES, NOT
+     ellipses) dark olive #3D4825, edge erosion to #6E7335
+  7. Shattered asphalt — scattered SQUARE chunk top faces #8A8A86 lying
+     FLAT on exposed gravel #A88E5A and #1A1814 specks
+  8. Shallow muddy patch #3D4825 with #1A1814 tire track lines as parallel
+     hairlines, FLAT
+
+Row 3 — Mud deep + Water puddle + Rubble x2:
+  9. Deep wet mud #1A1814 base with #3D4825 dither sheen, FLAT
+  10. Shallow muddy water #3E5A78 with #1A1814 ripple hairlines and
+      #6E7335 partly-dry edges
+  11. Concrete rubble pile — scattered SQUARE/RECTANGULAR top faces of
+      concrete chunks #8A8A86 lying FLAT on dirt #A88E5A. Rebar drawn as
+      straight #1A1814 hairlines on the ground (NOT vertical sticks).
+      NO chunk shows a side face.
+  12. Mixed concrete-metal rubble — concrete chunks #8A8A86 + twisted beam
+      silhouettes #1A1814 lying FLAT, dust #A88E5A
+
+Row 4 — Rubble metal + Building floor x3:
+  13. Rusted metal sheet panels #A0502E lying FLAT, exposed rivets as
+      #1A1814 dots, dust #A88E5A
+  14. Tile floor remnants — broken ceramic squares #D4BC8E and #8A8A86 in
+      a grid pattern, dust #A88E5A
+  15. Concrete floor #8A8A86 cracked (straight grid #1A1814), dark stains
+      #1A1814
+  16. Wooden plank floor — TOP faces only of planks #A88E5A, splintered,
+      #1A1814 gaps. NO side wood grain, NO plank edges shown as 3D.
 ```
-STRICT TOP-DOWN 90° ORTHOGRAPHIC viewpoint — bird's-eye, looking straight
-down at the ground from directly above. ZERO tilt, ZERO perspective, ZERO
-3D rendering. Reference for VIEWPOINT ONLY: Civilization 6 hex map tile,
-Into the Breach map view, or a satellite/aerial photo of the ground surface.
-NOT isometric, NOT 3/4 view, NOT side view, NOT angled. The hex must be a
-regular hexagon with all 6 vertices visible and 6 edges at correct 60°
-angles — NO parallelogram (rhombus) distortion.
 
-Create a 4x4 grid sheet of pixel art HEX GROUND TILES for a turn-based
-tactical game set in Khemar Enclave (a fictional besieged district in
-post-war East Africa, modeled on Gaza Strip-style blockade zones).
-
-Each tile is a flat-top REGULAR hexagon, 256x222 pixels, transparent
-background outside the hex shape. Sheet total 1024x888 px.
-
-Style — palette and shading reference ONLY: Front Mission 1 (SNES, 1995,
-Squaresoft) tactical map tone — matte, low-saturation, military aesthetic,
-16-bit SNES dithering allowed for face gradients. DO NOT copy Front
-Mission's actual isometric viewpoint — these are flat top-down tiles.
-
-Strict 8-color palette ONLY:
-#1A1814 deep shadow, #3D4825 dark olive, #6E7335 olive green,
-#A88E5A khaki tan, #8A8A86 concrete gray, #3E5A78 steel blue-gray,
-#A0502E rust red, #D4BC8E highlight beige.
-
-Tile contents in reading order (left-to-right, top-to-bottom):
-Row 1 (Dry Soil — base ground, 4 crack stages):
-  1. Smooth dry earth, faint dust patterns
-  2. Light cracks, scattered pebbles
-  3. Medium cracks, sparse dry weeds
-  4. Heavy cracks, exposed dry roots
-Row 2 (Asphalt road — 3 stages + Mud shallow):
-  5. Cracked asphalt, faded white lane marks
-  6. Heavy cracked asphalt, potholes
-  7. Shattered asphalt, exposed gravel
-  8. Shallow muddy patch with tire tracks
-Row 3 (Mud deep + Water puddle + Rubble x2):
-  9. Deep wet mud, dark brown, slight sheen
-  10. Shallow muddy water (steel blue-gray) reflecting dusk, slight ripples
-  11. Concrete rubble pile, rebar exposed, dust
-  12. Mixed concrete-and-metal rubble, twisted beams
-Row 4 (Rubble metal + Building floor x3):
-  13. Rusted metal debris, sheet panels, exposed rivets
-  14. Tile floor remnants, broken ceramic, dust
-  15. Concrete floor, cracked, dark stains
-  16. Wooden plank floor, splintered, partial collapse
-
-Style rules (apply to ALL tiles):
-- STRICT TOP-DOWN — every tile is a flat surface viewed from straight above
-- All hexagons are REGULAR (6 equal edges, 60° vertex angles) — NOT rhombus
-- Single light source from upper-left, SHORT shadow toward lower-right
-  (shadow under 10% of tile width — long shadows imply 3D and are FORBIDDEN)
-- 3-tone shading per element: base + shadow + highlight
-- Surface details only: cracks, debris, stains, faint patterns. NO objects
-  with visible vertical sides on these ground tiles
-- No anti-aliasing, sharp 1-pixel edges, NO smoothing
-- Seamless edges that tile naturally with neighbors of the same kind
-- Dithering allowed only on face interiors, never on hex outline (1 px clean)
-- NO text, NO UI, NO characters, NO vehicles, NO buildings shown from side
-- NO isometric perspective, NO 3/4 view, NO 3D rendering, NO oblique angles
-```
+`NEGATIVES` 단락 끝에 다음 한 줄 추가:
+- `NO chunk, brick, or rubble piece shown as a 3D cube. All debris is its TOP face only.`
 
 #### 8.3.2 시트 B · 엄폐물 3종 × 6방향 (3×6 격자)
 
-```
-STRICT TOP-DOWN 90° ORTHOGRAPHIC viewpoint — bird's-eye, looking straight
-down. The cover objects are seen from above, showing their TOP face and
-only a thin rim of their sides. ZERO tilt, ZERO perspective, ZERO 3D
-rendering. Reference for VIEWPOINT ONLY: Civilization 6 unit token, Into
-the Breach map sprite, or a satellite photo of an object on the ground.
-NOT isometric, NOT 3/4 view, NOT side elevation, NOT angled.
+§8 공통 헤더를 그대로 사용. **`TILE SHAPE` 단락**과 **`CONTENT` 단락**만 다음으로 교체. STYLE REFERENCE는 시트 A 합격 시안 한 장 첨부.
 
-Create a 3x6 grid sheet of pixel art COVER OBJECTS placed along
-hexagon edges, for a turn-based tactical game (Khemar Enclave setting).
-Color and shading reference ONLY: Front Mission 1 (SNES, 1995) palette
-and matte aesthetic — DO NOT copy Front Mission's isometric viewpoint.
+```text
+SHEET LAYOUT — overrides TILE SHAPE for this prompt.
+3x6 grid of pixel art COVER OBJECTS placed along hexagon edges, for a
+turn-based tactical game (Khemar Enclave setting). Each cell shows ONE
+cover object positioned on ONE specific edge of an imaginary flat-top
+regular hexagon (256x222 px hex footprint), but render only the cover
+strip (~128 px long), transparent elsewhere in the cell. Sheet 768x1332 px
+(3 cols × 6 rows, each cell ~256 wide × ~222 tall). Transparent background.
 
-Each cell shows ONE cover object positioned on ONE specific edge of an
-imaginary flat-top regular hexagon (256x222 px hex footprint, but render
-only the cover strip, ~128 px long, transparent elsewhere). Sheet 1024x1332
-or 768x1332 px (3 cols x 6 rows). Each cell ~256 wide x ~222 tall.
-
-Strict 8-color palette ONLY:
-#1A1814, #3D4825, #6E7335, #A88E5A, #8A8A86, #3E5A78, #A0502E, #D4BC8E.
+CONTENT — each cover seen from straight above as a TOP SILHOUETTE.
+Show its TOP face plus a thin rim (≤4 px) of its side. ALL covers are
+FLAT on the ground from the camera's view — NO long side faces, NO
+elevation drawings, NO standing walls.
 
 Columns (3 cover types):
-- Col 1: SANDBAG ROW (small cover, 1-face, ~128 long x 24 tall)
-  Stacked sandbags, khaki tan with rust red faded paint marks.
-- Col 2: BROKEN CONCRETE WALL (medium cover, 3-face, ~128 long x 40 tall)
-  Crumbling reinforced concrete wall segment, rebar exposed, concrete gray
-  with deep shadow cracks and dust at base.
-- Col 3: RUSTED CARGO CONTAINER (medium cover, 3-face, ~128 long x 40 tall)
-  Half-rusted shipping container side, rust red dominant with concrete gray
-  dents, faded stenciled markings (no readable text).
+- Col 1: SANDBAG ROW (small cover, ~128 long × ~24 tall footprint)
+  Stacked sandbags seen from above as oval pillows khaki tan #A88E5A
+  with faded #A0502E paint marks. Top faces only.
+- Col 2: BROKEN CONCRETE WALL (medium cover, ~128 long × ~40 tall footprint)
+  Crumbling reinforced concrete strip seen from above. Top face concrete
+  gray #8A8A86 with #1A1814 hairline cracks and rebar drawn as straight
+  #1A1814 hairlines lying flat. Dust #A88E5A around base.
+- Col 3: RUSTED CARGO CONTAINER (medium cover, ~128 long × ~40 tall footprint)
+  Container TOP face only — rust red #A0502E base with concrete gray
+  #8A8A86 dent patches, faded stencil marks #1A1814 (no readable text).
+  NO container side wall.
 
-Rows (6 hexagon edges, flat-top orientation):
-- Row 1: N edge — cover lies horizontally along the TOP of the hex
+Rows (6 hexagon edges, flat-top orientation, cover ROTATES but lighting
+does NOT):
+- Row 1: N edge — cover horizontal along the TOP of the hex
 - Row 2: NE edge — cover rotated 60° clockwise, upper-right of hex
 - Row 3: SE edge — cover rotated 120° clockwise, lower-right of hex
 - Row 4: S edge — cover horizontal along the BOTTOM of the hex
 - Row 5: SW edge — cover rotated 240° clockwise, lower-left of hex
 - Row 6: NW edge — cover rotated 300° clockwise, upper-left of hex
 
-Style rules:
-- STRICT TOP-DOWN — each cover seen from directly above. Show its TOP
-  surface plus a thin rim (≤4 px) of its side. NO long side faces,
-  NO oblique elevation drawings of walls/containers
-- All hexagon references are REGULAR (60° vertex angles)
-- Light source from upper-left CONSISTENT across all cells (do not rotate
-  the lighting with the cover — only the cover geometry rotates)
-- SHORT shadow toward lower-right of the cover (shadow under 10% of cover
-  length — long shadows imply 3D rendering and are FORBIDDEN)
-- 3-tone shading: base + shadow + highlight
-- No anti-aliasing, sharp pixel edges
-- Transparent background outside the cover strip
-- All cover objects shown at FULL HP (intact 3-face state for medium covers)
-- NO text, NO UI, NO characters, NO ground tile beneath
-- NO isometric perspective, NO 3/4 view, NO 3D rendering, NO side elevation
+All cover objects at FULL HP (intact state). All 18 cells share the same
+upper-left light direction — only the cover geometry rotates.
 ```
+
+`NEGATIVES` 단락 끝에 다음 두 줄 추가:
+- `NO ground tile beneath the cover (transparent background only).`
+- `NO long side face on walls or containers — top face + ≤4 px rim only.`
 
 #### 8.3.3 시트 C · 차체 스케일 + 풍경 오브젝트 5종 (1+4 배치)
 
+> **§8 공통 헤더(SATELLITE PHOTO / PIXEL ART / PALETTE / VIEWPOINT)를 그대로 사용.**
+> 단, `TILE SHAPE` 단락은 본 시트 전용 `SHEET LAYOUT`으로 대체하고 `CONTENT` 단락만 아래 내용으로 교체.
+> **STYLE REFERENCE**: §8.3.1 시트 A 또는 §8.3.2 시트 B의 합격 시안을 첨부 + §8.4.5 매칭 줄 추가.
+
 ```
-STRICT TOP-DOWN 90° ORTHOGRAPHIC viewpoint — bird's-eye, looking straight
-down. The vehicle and props are seen from directly above, showing their
-TOP face and only a thin rim of their sides. ZERO tilt, ZERO perspective,
-ZERO 3D rendering. Reference for VIEWPOINT ONLY: Civilization 6 unit token,
-Into the Breach mech sprite, or a satellite photo of a tank from above.
-NOT isometric, NOT 3/4 view, NOT side view, NOT angled.
+SHEET LAYOUT.
+Reference sheet, 1024×768 px, transparent background. NO ground tile beneath
+any object. Layout: ONE large vehicle occupying the LEFT half (~512×768 px
+area, vehicle centered inside it), and a 2×2 grid of 4 props on the RIGHT
+half (each prop cell ~256×384 px, prop centered).
 
-Create a reference sheet showing 1 vehicle and 4 prop objects for a
-turn-based tactical game (Khemar Enclave setting). Color and shading
-reference ONLY: Front Mission 1 (SNES, 1995) palette and matte aesthetic
-— DO NOT copy Front Mission's isometric viewpoint.
+CONTENT.
+LEFT — Vehicle "Rocinante" (Assault medium tank), seen from STRAIGHT ABOVE
+as a TOP SILHOUETTE:
+- Approx 160 px long × 96 px wide. The viewer sees ONLY the roof of the
+  tank — rectangular body footprint, circular turret centered on top,
+  long rectangular cannon barrel pointing straight UP (north). NO side
+  faces, NO 3/4 render, NO depth.
+- Improvised post-apocalyptic salvage build, NOT military regulation:
+  welded asymmetric plates, exposed bolt heads as #1A1814 dots, mismatched
+  patch panels.
+- Body base #6E7335 olive, with #3D4825 darker olive used ONLY as flat
+  top-face shadow under the turret overhang and along the upper-left edge
+  rim (≤4 px wide). NO long side strip.
+- Turret #6E7335 with #3D4825 shadow ring on the upper-left side; cannon
+  barrel #1A1814 outline + #3D4825 fill, length ~70 px.
+- Roof details (top-face only): hatches as small #1A1814 outlined squares,
+  antenna as a single #1A1814 hairline, equipment box on rear deck as a
+  #8A8A86 rectangle with #1A1814 outline.
+- Faded hand-painted mark in #D4BC8E (a single shape, no readable text).
+- Wear: #A0502E rust streaks running along plate seams (drawn flat on the
+  top face), #A88E5A dust accumulation along the body edges.
+- Render at FULL HP (intact, no damage holes).
 
-Layout: large vehicle on the LEFT (occupying ~half the sheet), 2x2 grid of
-props on the RIGHT. Sheet 1024x768 px, transparent background.
+RIGHT 2×2 — 4 props, each seen from STRAIGHT ABOVE as a TOP SILHOUETTE,
+FLAT on the ground (no vertical extrusion visible):
+- Top-left: Dead leafless tree — canopy footprint as a radial fan of
+  #1A1814 hairline branches spreading from a small #3D4825 trunk dot in
+  the center. Branches roughly fill a 100 px diameter disc. Tiny #1A1814
+  shadow ring at base. NO trunk-up-elevation, NO side-view tree.
+- Top-right: Stone-rim well — concentric circles seen from directly above:
+  outer #8A8A86 stone ring (~96 px outer diameter, ~16 px ring width) with
+  #1A1814 stone joints, dark #1A1814 interior, single #3E5A78 water glint
+  inside the dark interior, small #A88E5A wooden bucket disc placed
+  beside the well rim. NO side-view well, NO cylindrical wall.
+- Bottom-left: Rusted fuel drum — perfect CIRCLE top face #A0502E rust red
+  (~80 px diameter), #8A8A86 ring band ¾ around the rim, #1A1814 cap dot
+  at center. Small #3D4825 spill stain crescent on the ground to one side.
+  NO side-view cylinder, NO long rectangle.
+- Bottom-right: Debris pile — oval footprint (~140×90 px) of scattered
+  #A88E5A broken wooden planks (short rectangles, lying flat), #1A1814
+  rebar hairlines, #A0502E brick fragments. ALL pieces shown as their top
+  face only, lying flat on the ground.
 
-Strict 8-color palette ONLY:
-#1A1814, #3D4825, #6E7335, #A88E5A, #8A8A86, #3E5A78, #A0502E, #D4BC8E.
+LIGHTING.
+Single light source from upper-left, all shadows are flat top-face shading
+or short rim shadows (length < 10% of feature size). NO long cast shadows.
+Light direction identical across all 5 objects.
 
-LEFT — Vehicle "Rocinante" (Assault medium tank, viewed from STRAIGHT ABOVE):
-- Approx 160 px long x 96 px wide, fits inside a 256x222 hex with ~30 px
-  rotation margin
-- Boxy, hand-built improvised tank silhouette (post-apocalyptic salvage
-  aesthetic, NOT military regulation). Welded plate armor, asymmetric panels,
-  exposed bolts, mismatched rust patches
-- Main body: olive green base with dark olive shadow side
-- Turret centered, slightly off-rear, with one main cannon pointing UP (north)
-- Hatches, antennas, equipment box on rear deck
-- Faded numbering or hand-painted mark in highlight beige (no readable text)
-- Wear: rust red streaks, concrete gray dust at lower edges
-- Render at FULL HP (no damage)
+NEGATIVES.
+NO isometric, NO 3/4 view, NO side elevation, NO 3D rendering, NO oblique
+angles, NO perspective. NO ground tile beneath any object (transparent
+background only). NO side-view tree, NO side-view well, NO side-view
+cylinder, NO 3/4 tank render. NO standing objects — every prop is
+described by its TOP face plus a thin rim. NO long cast shadows. NO
+colors outside the 8-palette. NO text, NO UI, NO logos, NO frame, NO
+characters, NO firing effects.
 
-RIGHT — 2x2 grid of props (each ~128x128 px, viewed from STRAIGHT ABOVE):
-- Top-left: Dead leafless tree — show the canopy SILHOUETTE from above
-  (radial branches like a hand fan), small dark shadow ring at base.
-  NOT a side-view tree.
-- Top-right: Stone-rim well — circular ring of stones seen from directly
-  above, dark interior with steel blue-gray water glint, wooden bucket
-  shown as a small disc beside the well. NOT a side-view well.
-- Bottom-left: Rusted fuel drum — circular drum top (rust red with
-  concrete gray ring band), small spill stain crescent on the ground
-  to one side. NOT a side-view cylinder.
-- Bottom-right: Debris pile — top-down view of mixed broken wooden planks,
-  rebar, brick fragments scattered in a roughly oval footprint.
-
-Style rules:
-- STRICT TOP-DOWN — every object seen from straight above. Show TOP surface
-  + thin rim only. Cylindrical props (drum, well) appear as CIRCLES, not
-  rectangles. Tall props (tree) appear as their canopy footprint, not a
-  trunk-up-elevation
-- Vehicle: rectangular body footprint with circular turret on top, cannon
-  visible as a long rectangle pointing one direction. NOT a 3/4 tank render
-- Single light source from upper-left, SHORT shadow toward lower-right
-  (shadow under 10% of object diameter — long shadows imply 3D and are
-  FORBIDDEN)
-- 3-tone shading: base + shadow + highlight per surface
-- No anti-aliasing, sharp pixel edges
-- Transparent background, no ground tile
-- NO text on any object, NO UI, NO characters, NO weapons firing
-- All objects at full intact state
-- NO isometric perspective, NO 3/4 view, NO 3D rendering, NO side elevation
+OUTPUT.
+PNG, 1024×768 px, transparent background, hard pixel edges, no AA.
 ```
 
 #### 8.3.4 검증 체크리스트 (시안 OK/NG 판정)
@@ -689,6 +691,37 @@ Style rules:
 2. **두 번째 재시도**: FM1 레퍼런스 줄을 통째로 삭제하고 *"Civilization 6 hex map style"* 로 대체
 3. **세 번째 재시도**: 부정형 키워드 별도 단락으로 분리 (`The image MUST NOT contain: isometric ... 3/4 view ... side elevation ...`)
 4. **3회 실패 시** 외부 ChatGPT 모델 변경 또는 Coplay MCP `generate_or_edit_images`로 경로 전환 (§11 #6)
+
+#### 8.4.5 STYLE REFERENCE 첨부 메커니즘 (톤 일관성 3중 방어선 — Layer 2)
+
+> 첫 SKU 한 장이 합격하면(예: `tile_con2.png`·`tile_ro.png`) 그 시안을 **시드 레퍼런스**로 삼아
+> 이후 모든 SKU 생성 시 입력 이미지로 첨부한다. 텍스트 헤더(Layer 1) + 이미지 첨부(Layer 2) +
+> §9 후처리 양자화(Layer 3)의 3중 방어선으로 톤 드리프트를 차단.
+
+**시드 레퍼런스 (2026-04-29 합격본)**
+
+| 시드 | 위치 | 검증 항목 |
+|---|---|---|
+| `tile_con2.png` | `CRUX/Assets/_Project/Sprites/` | 콘크리트 잔해 청크 — 정사각 top face, 측면 무, 8색 준수 |
+| `tile_ro.png` | `CRUX/Assets/_Project/Sprites/` | 아스팔트 도로 — 정원 포트홀, 직선 그리드 균열, #1A1814 outline |
+
+**절차**
+
+1. **레퍼런스 선택** — 새 SKU와 같은 카테고리(지면/엄폐/풍경/차체)에서 가장 최근 합격 시안을 선택. 카테고리 첫 SKU라면 시트 A 또는 B 합격본.
+2. **첨부 + 매칭 줄 삽입** — 외부 ChatGPT 또는 Coplay `generate_or_edit_images` 호출 시 이미지 입력으로 첨부하고, 프롬프트 **최상단**(SATELLITE PHOTO 블록 위)에 다음 줄을 추가:
+
+   ```
+   STYLE REFERENCE — match the EXACT style, palette, dither pattern,
+   pixel scale, hex outline thickness, lighting direction, and shadow
+   length of the attached image. The new image must look like it
+   belongs to the same sheet.
+   ```
+
+3. **§8.4.3 OK 신호로 매치 검증** — 광원 방향·그림자 길이·8색 분포·외곽 라인 두께가 시드와 일치하는지 1차 점검. 매치 실패 시 시안 폐기.
+4. **드리프트 발생 시 재시도** — 첨부는 유지하되 매칭 줄을 더 강하게 변경:
+   *"The attached image is the canonical baseline. Reproduce its style with ZERO deviation in palette quantization and dither pattern. New content only differs in subject matter, not visual treatment."*
+
+**주의**: STYLE REFERENCE는 **헤더 텍스트를 대체하지 않는다**. §8 공통 헤더 + STYLE REFERENCE 첨부 두 레이어 모두 유지. 이미지만 첨부하고 헤더를 생략하면 모델이 시점을 임의 해석할 수 있음(2026-04-29 1차 시안 사례).
 
 ---
 
@@ -787,3 +820,4 @@ Assets/_Project/Sprites/
 | 2026-04-29 | v0.2.1 — §3.5 GPT 생성 프롬프트 초안 추가 (팔레트 시안 1장 + 단일 타일 1장 + 3단계 사용 절차). 외부 이미지 모델로 참고 시안 빠르게 뽑기 위한 복붙용. |
 | 2026-04-29 | v0.3 — §6.4 샘플 1지역(케마르 격리구·1막 무대) SKU 카탈로그 39종 + 스케일 비례(Assault 160×96, 엄폐 128×24/40) + 6변 방향 규약(N/NE/SE/S/SW/NW × 60° 회전 파생). §8.3 일괄 생성 프롬프트 3시트(지면 16 + 엄폐물 18 + 차체+풍경 5) + 시안 OK/NG 8 체크. §11 결정 필요 항목 8→9건(차체 스케일 정합 신설). 시안 합격 시 배틀씬 외곽 보더로 승격 가능. |
 | 2026-04-29 | v0.3.1 — **탑다운 시점 강제 보강**. 1차 시안에서 FM1 레퍼런스가 isometric을 끌어당기는 현상 확인. 모든 GPT 프롬프트(§3.5.1·§3.5.2·§8 공통 헤더·§8.3.1·§8.3.2·§8.3.3) 첫 줄을 `STRICT TOP-DOWN 90° ORTHOGRAPHIC` 블록으로 통일, FM1 인용을 *"palette and shading reference ONLY"* 로 격리. 정육각형 무결성·짧은 그림자(<10%)·표면 디테일 한정·부정형 키워드 일괄 추가. §8.4 운용 가이드 신설(원칙 4 / 이탈 신호 6 / OK 신호 6 / NG 회복 4단계). |
+| 2026-04-29 | v0.3.2 — **검증 베이스라인 단일 출처 통합**. `tile_con2.png`(콘크리트 잔해)·`tile_ro.png`(아스팔트 도로) 합격 기준으로 §8 공통 헤더를 4-블록 구조(SATELLITE PHOTO / PIXEL ART / PALETTE / VIEWPOINT)로 재작성. **FM1 텍스트 레퍼런스 전면 제거** — 문자열 "Front Mission 1" 자체가 isometric drift trigger로 확인되어 팔레트·매트 미감은 #-코드 8색과 PIXEL ART HARD CONSTRAINT 블록으로만 표현. §3.5.2·§8.3.1·§8.3.2·§8.3.3 프롬프트 중복 제거 — 각 섹션은 §8 헤더 인용 + 시트 고유 `SHEET LAYOUT`/`CONTENT` 단락만 보유 (drift 벡터 차단). §8.4.5 **STYLE REFERENCE 첨부 메커니즘** 신설(시드 레퍼런스 2종 명시 + 4단계 절차). 톤 일관성 **3중 방어선** 명시 — Layer 1 텍스트 헤더 / Layer 2 이미지 첨부 / Layer 3 §9 후처리 양자화. |
