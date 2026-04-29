@@ -17,6 +17,10 @@
 /feedback/
 /tmp/
 
+# Git worktrees (별도 브랜치 워크트리 — 부모 main에서 추적 안 함)
+/Crux-dev/
+/Crux-planning/
+
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
 
