@@ -55,22 +55,27 @@ Read("CRUX/Temp/crux-tests.log")
 
 ### 3단계 — 플레이 스모크 (런타임 로그·초기화 검증)
 
-```
-mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")
-```
-Unity가 TerrainTestScene을 로드 → PlayMode 3초간 실행 → 자동 종료.
+**중요: PlaySmoke MCP 응답 처리 규칙**
+`mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")` 호출 시
+**`Connection closed` 응답은 정상으로 간주** — 재시도 금지, 에러 보고 금지.
+원인: PlayMode 진입 시 Unity 도메인 리로드가 WebSocket 세션을 끊는 정상 동작.
+PlaySmoke 자체는 정상 실행되며 결과는 로그 파일에 기록된다.
 
-~5초 후 결과 파일 Read:
-```
-Read("CRUX/Temp/crux-playsmoke.log")
-```
+**3단계 절차**:
+1. **메뉴 호출**: `mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")` 실행. `Connection closed` 포함 모든 응답을 무시하고 다음 단계로 진행
+2. **5초 대기**: `Bash sleep 5` — Unity PlayMode 진입 → 3초 스모크 → 종료 → 로그 기록 완료까지의 시간
+3. **로그 Read**: `Read("CRUX/Temp/crux-playsmoke.log")` 로 결과 확인
+
+합격 조건:
+- (a) 파일 mtime이 호출 이후로 갱신됨
+- (b) `[Exception]` 또는 `[Error]` 부재
+- (c) 아래 기대 패턴 출현
 
 기대 로그 패턴(DoD별 grep):
 - `[SMOKE] start` + `[SMOKE] finished reason=exited` — 정상 종료
 - `[Log] [CRUX] TankCrew 초기화` — 커밋 1(P3-a) 회귀 확인
 - `[Log] [CRUX] morale` — 커밋 2(P3-b) 회귀 (사격 발생 시만)
 - `[Log] [CRUX] 이니셔티브:` 또는 `[Log] [CRUX] 선공 판정` — 커밋 3(P3-c) 회귀
-- `[Exception]` 또는 `[Error]` — FAIL
 
 실패 판정 방법:
 ```bash

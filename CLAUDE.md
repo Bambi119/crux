@@ -145,7 +145,7 @@ Data ──┐
 
 1. **컴파일** — `mcp__coplay-mcp__check_compile_errors` 또는 `mcp__unity__execute_menu_item(menuPath="Assets/Refresh")`
 2. **정적 테스트** — `mcp__unity__execute_menu_item(menuPath="Crux/Test/Run All Static")` → `CRUX/Temp/crux-tests.log` `failed=0`
-3. **플레이 스모크** — `mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")` → `CRUX/Temp/crux-playsmoke.log` Exception/Error 부재 + 필요한 `[CRUX]` 로그 출현
+3. **플레이 스모크** — `mcp__unity__execute_menu_item(menuPath="Crux/Test/PlaySmoke TerrainTest (3s)")` 호출 (`Connection closed` 응답은 정상, 재시도 금지) → `Bash sleep 5` 대기 → `CRUX/Temp/crux-playsmoke.log` Read: Exception/Error 부재 + 필요한 `[CRUX]` 로그 출현
 
 **실패 시**: 즉시 구현 에이전트에 재작업 위임. 루프 최대 2회. 3회차는 사용자 지시 대기.
 
